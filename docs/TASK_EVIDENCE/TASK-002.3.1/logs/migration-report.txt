@@ -1,0 +1,25 @@
+settings/settings.json:
+{
+  "version": 2,
+  "storage": {
+    "root": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata",
+    "database": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\database",
+    "knowledge": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\knowledge",
+    "prompts": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\prompts",
+    "workflows": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\workflows",
+    "drafts": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\drafts",
+    "history": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\history",
+    "cache": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\cache",
+    "logs": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\logs",
+    "backups": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\backups",
+    "exports": "D:\\AI\\ComfyUI-Prompt-Workbench-Git\\userdata\\exports",
+    "checkpoint": "",
+    "lora": ""
+  },
+  "connections": {
+    "ollama_url": "http://127.0.0.1:11434",
+    "comfyui_url": "http://127.0.0.1:8188"
+  }
+}
+
+legacy backup dirs: ['legacy-migration-20261117-145437']

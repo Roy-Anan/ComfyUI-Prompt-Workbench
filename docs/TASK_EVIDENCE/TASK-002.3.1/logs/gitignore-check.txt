@@ -1,0 +1,2 @@
+userdata/settings/settings.json -> .gitignore:28:/userdata/	userdata/settings/settings.json
+userdata/database/workbench.sqlite3 -> .gitignore:28:/userdata/	userdata/database/workbench.sqlite3

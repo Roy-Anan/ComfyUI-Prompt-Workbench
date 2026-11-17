@@ -15,17 +15,21 @@ def client(tmp_path, monkeypatch):
     )
 
     sys.modules.pop("main", None)
+    sys.modules.pop("datadir", None)
+    import datadir
     import main
 
     main.BOOTSTRAP_TOKEN = "test-session-token"
-    main.DATA_ROOT = tmp_path / "workbench-data"
-    main.SETTINGS_FILE = main.DATA_ROOT / "settings.json"
+    main.DATA_ROOT = datadir.default_data_root()
+    main.SETTINGS_FILE = datadir.settings_path(main.DATA_ROOT)
+    main.MIGRATION_REPORT = {}
     main.SESSION_TICKETS.clear()
 
     with TestClient(main.app) as test_client:
         yield test_client, main
 
     sys.modules.pop("main", None)
+    sys.modules.pop("datadir", None)
 
 
 def auth():
@@ -41,13 +45,23 @@ def bootstrap(client):
     return {"X-Workbench-CSRF": csrf}
 
 
-def test_health_requires_token(client):
+def test_health_is_unauthenticated_identity_probe(client):
     test_client, _ = client
 
-    assert test_client.get("/api/health").status_code == 401
+    # Health is an identity probe: reachable without a session and exposes the
+    # app identifier/version, but no user data.
+    public = test_client.get("/api/health")
+    assert public.status_code == 200
+    body = public.json()
+    assert body["ok"] is True
+    assert body["app"] == "ComfyUI-Prompt-Workbench"
+
+    # A protected endpoint still rejects a missing/valid session.
+    missing = test_client.get("/api/settings")
+    assert missing.status_code == 401
 
     wrong = test_client.get(
-        "/api/health",
+        "/api/settings",
         headers={"Authorization": "Bearer wrong-token"},
     )
     assert wrong.status_code == 401
@@ -326,7 +340,7 @@ def test_storage_validation_can_create_directory(client, tmp_path):
 def test_corrupt_settings_are_backed_up(client):
     test_client, main = client
 
-    main.DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    main.SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     main.SETTINGS_FILE.write_text(
         "{broken-json",
         encoding="utf-8",
@@ -338,7 +352,7 @@ def test_corrupt_settings_are_backed_up(client):
     assert response.json()["storage"]["root"] == str(main.DATA_ROOT)
 
     backups = list(
-        main.DATA_ROOT.glob("settings.corrupt-*.json")
+        main.SETTINGS_FILE.parent.glob("settings.corrupt-*.json")
     )
 
     assert len(backups) == 1
@@ -378,3 +392,169 @@ def test_spa_fallback_serves_index_when_dist_present(client, tmp_path, monkeypat
     response = test_client.get("/some/deep/route")
     assert response.status_code == 200
     assert "workbench" in response.text
+
+
+# ---- Data directory and migration ----------------------------------------
+
+def test_default_data_root_uses_project_userdata(monkeypatch):
+    monkeypatch.delenv("WORKBENCH_DATA_ROOT", raising=False)
+    sys.modules.pop("datadir", None)
+    import datadir
+
+    root = datadir.default_data_root()
+    assert root.name == "userdata"
+    assert root.parent == datadir.repo_root()
+
+
+def test_managed_subdirs_are_created(client):
+    test_client, main = client
+
+    response = test_client.get("/api/settings", headers=auth())
+    storage = response.json()["storage"]
+    for key in main.MANAGED_KEYS:
+        assert Path(storage[key]).is_dir()
+
+
+def _make_sqlite(db_file: Path) -> None:
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_file) as conn:
+        conn.execute("CREATE TABLE app_metadata(key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("INSERT INTO app_metadata VALUES ('source', 'legacy')")
+
+
+def test_migration_copies_legacy_data_without_overwriting(tmp_path, monkeypatch):
+    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
+    db = legacy / "database" / "workbench.sqlite3"
+    _make_sqlite(db)
+    (legacy / "settings").mkdir(parents=True)
+    (legacy / "settings" / "settings.json").write_text(
+        '{"version": 2}', encoding="utf-8"
+    )
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(tmp_path / "userdata"))
+    sys.modules.pop("datadir", None)
+    sys.modules.pop("main", None)
+    import datadir
+
+    target = datadir.default_data_root()
+    report = datadir.prepare_root(target)
+
+    assert report["action"] == "migrated"
+    assert report["database_integrity"] is True
+    copied_db = target / "database" / "workbench.sqlite3"
+    assert copied_db.is_file()
+    with sqlite3.connect(copied_db) as conn:
+        value = conn.execute("SELECT value FROM app_metadata WHERE key='source'").fetchone()[0]
+    assert value == "legacy"
+    # Old directory and its files are kept.
+    assert db.is_file()
+    # A backup of the legacy root exists under the new backups dir.
+    backups = list((target / "backups").glob("legacy-migration-*"))
+    assert backups
+
+
+def test_migration_does_not_overwrite_target_with_data(tmp_path, monkeypatch):
+    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
+    _make_sqlite(legacy / "database" / "workbench.sqlite3")
+
+    target = tmp_path / "userdata"
+    target_db = target / "database" / "workbench.sqlite3"
+    target_db.parent.mkdir(parents=True, exist_ok=True)
+    target_db.write_text("existing target", encoding="utf-8")
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(target))
+    sys.modules.pop("datadir", None)
+    import datadir
+
+    report = datadir.prepare_root(target)
+    assert report["action"] == "skipped-conflict"
+    assert target_db.read_text(encoding="utf-8") == "existing target"
+
+
+def test_migration_absent_legacy_root_initializes_new(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "missing-local"))
+    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(tmp_path / "userdata"))
+    sys.modules.pop("datadir", None)
+    import datadir
+
+    target = datadir.default_data_root()
+    report = datadir.prepare_root(target)
+    assert report["action"] == "none"
+    assert target.is_dir()
+
+
+# ---- Static path security -------------------------------------------------
+
+def test_static_path_traversal_is_rejected(client, tmp_path, monkeypatch):
+    _, main = client
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html>workbench</html>", encoding="utf-8")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("top-secret", encoding="utf-8")
+    monkeypatch.setattr(main, "FRONTEND_DIST", dist)
+
+    # The resolver must reject any path that escapes dist after normalization.
+    assert main._resolve_within_dist("../secret.txt") is None
+    assert main._resolve_within_dist("../../secret.txt") is None
+
+
+def test_static_url_encoded_traversal_is_rejected(client, tmp_path, monkeypatch):
+    _, main = client
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html>workbench</html>", encoding="utf-8")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("top-secret", encoding="utf-8")
+    monkeypatch.setattr(main, "FRONTEND_DIST", dist)
+
+    # URL-decoded traversal segments resolve outside dist and are rejected.
+    assert main._resolve_within_dist("%2e%2e%2fsecret.txt") is None
+    assert main._resolve_within_dist("..%2fsecret.txt") is None
+
+
+def test_static_adjacent_prefix_collision_is_rejected(client, tmp_path, monkeypatch):
+    _, main = client
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html>workbench</html>", encoding="utf-8")
+    sibling = tmp_path / "dist-other"
+    sibling.mkdir()
+    (sibling / "leak.txt").write_text("sibling-secret", encoding="utf-8")
+    monkeypatch.setattr(main, "FRONTEND_DIST", dist)
+
+    # A sibling directory sharing the "dist" prefix must not be reachable.
+    assert main._resolve_within_dist("../dist-other/leak.txt") is None
+
+
+def test_static_normal_asset_resolves_inside_dist(client, tmp_path, monkeypatch):
+    _, main = client
+    dist = tmp_path / "dist"
+    assets = dist / "assets"
+    assets.mkdir(parents=True)
+    (assets / "app.js").write_text("console.log(1)", encoding="utf-8")
+    monkeypatch.setattr(main, "FRONTEND_DIST", dist)
+
+    resolved = main._resolve_within_dist("assets/app.js")
+    assert resolved is not None
+    assert resolved.is_file()
+
+
+# ---- Loopback host validation --------------------------------------------
+
+def test_loopback_host_accepts_local_names():
+    sys.modules.pop("main", None)
+    import main
+
+    for host in ("127.0.0.1", "localhost", "::1"):
+        assert main.is_loopback_host(host) is True
+
+
+def test_loopback_host_rejects_public_and_lan():
+    sys.modules.pop("main", None)
+    import main
+
+    for host in ("0.0.0.0", "192.168.1.10", "10.0.0.5", "8.8.8.8"):
+        assert main.is_loopback_host(host) is False

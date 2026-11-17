@@ -143,3 +143,38 @@
 | ComfyUI 离线兼容 | 通过 | 离线返回 online:false，服务 200 不崩溃 |
 | 用户数据保护 | 通过 | 数据根在 LOCALAPPDATA，未进构建目录；未删除/重建数据库 |
 | 真实出图端到端验收 | 未完成 | 不在本次边界内 |
+
+## 9. TASK-002.3.1 本机 Web 安全加固与项目内数据目录迁移记录（2026-11-17）
+
+### 9.1 本次已实际完成并验证
+
+- **数据目录迁移**：默认数据根从 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench` 迁到项目内 `userdata/`（`WORKBENCH_DATA_ROOT` 可覆盖）；新增 `backend/datadir.py` 统一路径、子目录、迁移备份与完整性校验。旧库完整性 ok，迁入前在 `userdata/backups/legacy-migration-20261117-145437/` 备份；旧目录原样保留；`userdata/` 被 `.gitignore` 忽略，不入库。
+- **安全加固**：启动器前置 loopback 校验；停止器按可执行路径 + 命令行 + 启动时间核验身份、fail-closed、递归回收进程树；静态路径改为解码后真实路径包含判断，拒绝穿越与相邻前缀碰撞；`/api/health` 作为未认证身份探测并携带应用标识，启动器据此核验实例身份。
+- **测试与构建**：pytest 36 passed（Python 3.13.18 / pytest 8.4.2，1 条 StarletteDeprecationWarning）；`tsc -b` 与 `vite build` 通过（32 模块）。
+- **真机验收**：Edge 访问 `127.0.0.1:8000`，服务已连接（Python 3.13.18），存储根目录显示为项目内 `userdata`；仅监听 `127.0.0.1:8000`；受保护端点无会话仍 401。
+- **证据归档**：`docs/TASK_EVIDENCE/TASK-002.3.1/`（报告、test-results、logs、screenshots、git-diff）。
+
+### 9.2 尚未完成 / 未验证事项
+
+- Python 3.12 兼容性未验证（本机 `.venv` 为 3.13.18）。
+- Ollama / ComfyUI 在线状态下的真实调用与出图闭环未验收；本次仅离线连通性检测。
+- 业务功能（编辑器、知识库、规则引擎、工作流解析、队列、草稿版本、显存调度、生成历史等）属后续阶段，本次未实现。
+- 会话票据存进程内存，重启后需重新 bootstrap，属当前设计。
+
+### 9.3 验收情况记录（TASK-002.3.1）
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| Python pytest | 通过 | 36 passed，Python 3.13.18 / pytest 8.4.2，1 条弃用警告 |
+| TypeScript 检查 | 通过 | `tsc -b` 退出码 0 |
+| Vite 生产构建 | 通过 | 32 模块，产物 `dist/` |
+| 新根目录初始化 | 通过 | 10 个管理子目录 + `settings/` 建立 |
+| 旧库 / 新库完整性 | 通过 | 两侧 `integrity_check` = ok，schema_version=1 |
+| 迁移备份与旧数据保留 | 通过 | 备份目录保留旧库；旧根两文件原样存在 |
+| `userdata` 忽略 | 通过 | `git check-ignore` 命中 `/userdata/` |
+| 监听地址限制 | 通过 | 仅监听 127.0.0.1:8000；非回环地址被拒 |
+| PID 身份核验 | 通过 | 身份不匹配 fail-closed；匹配时回收进程树 |
+| 静态路径安全 | 通过 | 穿越 / 编码穿越 / 前缀碰撞均拒绝；正常资源可访问 |
+| 健康身份探测 | 通过 | 无会话 200 带应用标识；受保护端点仍 401 |
+| 浏览器真机验收 | 通过 | Edge 已连接，存储根为项目内 userdata |
+| 真实出图端到端验收 | 未完成 | 不在本次边界内 |

@@ -1,0 +1,10 @@
+python: 3.13.18
+platform: Windows-11-10.0.26200-SP0
+machine: AMD64
+node: v22.23.2
+node/npm: unavailable ([WinError 2] 系统找不到指定的文件。)
+fastapi: 0.163.1
+uvicorn: 0.54.0
+httpx: 0.28.1
+pydantic: 2.14.3
+starlette: 1.10.0

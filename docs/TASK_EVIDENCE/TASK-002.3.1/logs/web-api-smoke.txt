@@ -1,0 +1,31 @@
+health (identity probe, no session): HTTP 200
+{"ok":true,"app":"ComfyUI-Prompt-Workbench","app_id":"ComfyUI-Prompt-Workbench","version":"0.1.0-dev.4","python":"3.13.18","platform":"Windows-11-10.0.26200-SP0"}
+
+bootstrap (same-origin): HTTP 200
+{"ok":true,"app":"ComfyUI-Prompt-Workbench","version":"0.1.0-dev.4","csrf":"DdaKQG-rT4ORncQjC5TcjJtcTJy3xUXs6mtjb79WVwc"}
+
+services/status (protected, no session): HTTP 401
+{"detail":"Invalid or missing local session"}
+
+settings (protected, no session): HTTP 401
+{"detail":"Invalid or missing local session"}
+
+root SPA shell: HTTP 200
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ComfyUI Prompt Workbench</title>
+    <script type="module" crossorigin src="/assets/index-Bc5Fse9J.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DbZp0x2n.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+
+
+listening on 8000:
+  TCP    127.0.0.1:8000         0.0.0.0:0              LISTENING       7124
+pid file: 32140

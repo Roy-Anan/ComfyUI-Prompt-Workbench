@@ -152,3 +152,36 @@
   - Python 3.12 兼容性未单独验证（本机 3.13.18）。
   - Ollama / ComfyUI 在线状态下的真实调用验收待后续阶段。
   - 本任务不宣布 EXE/安装包完成，不恢复 Tauri 桌面路线。
+
+### 0.1.0-dev.4 — 2026-11-17（TASK-002.3.1，分支 dev）
+
+- **新增功能**：
+  - 项目内数据目录：默认根改为仓库内 `userdata/`（`WORKBENCH_DATA_ROOT` 可覆盖）；新增 `backend/datadir.py` 统一路径服务、管理子目录规划、迁移备份与 SQLite 完整性校验。
+  - 启动器 loopback 前置校验；健康检查按应用标识核验实例身份；端口占用区分本工作台与其他服务。
+  - 停止器 CIM 多重身份核验（可执行路径 + 命令行 + 启动时间）、递归进程树回收、身份不匹配 fail-closed。
+  - 静态路径真实路径包含判断（先解码 URL 编码），拒绝目录穿越与相邻前缀碰撞。
+  - `/api/health` 作为未认证身份探测，响应体携带 `app` / `app_id` / `version`。
+- **修改文件**：
+  - 新增 `backend/datadir.py`、`backend/test_scripts.py`。
+  - 修改 `backend/main.py`（接入 datadir、loopback 校验、路径解析、健康标识、中间件放行健康探测、版本 `0.1.0-dev.4`）。
+  - 修改 `backend/test_main.py`（目录/迁移/路径安全/loopback/健康身份用例，共 36 项）。
+  - 修改 `scripts/workbench_launcher.py`、`scripts/workbench_stopper.py`。
+  - 修改 `.gitignore`（新增 `/userdata/`、`*.tmp`）。
+  - 控制文档：`PROJECT_STATE.md`、`PROJECT_ARCHITECTURE.md`、`PROJECT_MASTER_PLAN.md`、`PROJECT_CHANGELOG.md`（本文件）。
+  - 证据目录：`docs/TASK_EVIDENCE/TASK-002.3.1/`。
+  - 未改动 `legacy-materials/`、既有 8 份基线文档与用户数据。
+- **修复问题**：
+  - 健康检查被认证中间件拦截返回 401，启动器无法识别本工作台实例。
+  - 停止器仅凭 PID 存在复用误杀风险。
+  - 静态托管字符串前缀匹配存在相邻目录碰撞与穿越风险。
+  - 数据根落在用户漫游目录、与源码隔离口径不统一。
+- **测试情况**：
+  - Python pytest：通过，36 passed（Python 3.13.18 / pytest 8.4.2，1 条 StarletteDeprecationWarning）。
+  - TypeScript 检查：通过（`tsc -b` 退出码 0）。
+  - Vite 生产构建：通过（32 模块，产物 `dist/`）。
+  - 真机迁移：旧库完整性 ok，迁入 `userdata/` 并备份；旧目录保留；新库完整性 ok。
+  - 真机浏览器：Edge 连接成功，存储根显示项目内 `userdata`；仅监听 `127.0.0.1:8000`。
+- **未完成事项**：
+  - Python 3.12 兼容性未单独验证（本机 3.13.18）。
+  - Ollama / ComfyUI 在线真实调用与出图闭环待后续阶段验收。
+  - 业务功能按边界本次未实现；不恢复 Tauri/Rust/EXE 路线。

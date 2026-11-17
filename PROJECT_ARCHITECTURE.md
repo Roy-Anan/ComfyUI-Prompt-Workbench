@@ -149,3 +149,9 @@ Tauri 桌面宿主 (Rust) → sidecar Python 服务；该路径因本机缺 Rust
 - **进程生命周期**：根目录 `启动工作台.bat` / `停止工作台.bat` 为普通用户入口；启动器复用项目 `.venv`，记录 PID 到 `.workbench.pid`（已忽略提交）；停止器按 PID 终止工作台进程树，不按进程名批量结束 Python。
 - **依赖边界**：正式运行只需要项目 `.venv` 中的 Python 依赖；Node/Vite 仅在构建前端产物时使用，正式运行不启动 Node 开发服务器。Tauri 运行依赖（`@tauri-apps/api`、`@tauri-apps/cli`）已从 `package.json` 移除，Rust 工程归档至 `legacy/src-tauri/`。
 - **数据与外部服务**：数据根仍为 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench`；SQLite 与设置文件保留；Ollama `127.0.0.1:11434`、ComfyUI `127.0.0.1:8188` 仅做连通性检测，不自启/自关/重启。
+
+### 7.4 TASK-002.3.1（2026-11-17，0.1.0-dev.4，安全加固与项目内数据目录）
+
+- **数据目录**：默认根改为仓库内 `userdata/`（`WORKBENCH_DATA_ROOT` 可覆盖）；`backend/datadir.py` 统一路径、子目录、迁移备份与完整性校验；`userdata/` 被 Git 忽略。旧根 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench` 仅作迁移参照并保留，不再作为默认根。
+- **安全边界**：启动器前置 loopback 校验；停止器按可执行路径 + 命令行 + 启动时间核验身份、fail-closed、递归回收进程树；静态路径用解码后真实路径包含判断；`/api/health` 为未认证身份探测，携带应用标识供启动器核验。
+- **外部服务**：Ollama / ComfyUI 仍仅做连通性检测，不自启、不关闭、不重启；模型权重、原图、原始工作流留在 ComfyUI 外部目录，工作台只记录路径与索引。

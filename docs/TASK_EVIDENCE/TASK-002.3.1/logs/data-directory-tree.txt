@@ -1,0 +1,25 @@
+new data root: D:\AI\ComfyUI-Prompt-Workbench-Git\userdata
+dir   backups/
+dir   backups\legacy-migration-20261117-145437/
+dir   backups\legacy-migration-20261117-145437\database/
+file  backups\legacy-migration-20261117-145437\database\workbench.sqlite3  16384 B
+dir   cache/
+dir   database/
+file  database\workbench.sqlite3  16384 B
+dir   drafts/
+dir   exports/
+dir   history/
+dir   knowledge/
+dir   logs/
+dir   prompts/
+dir   settings/
+file  settings\settings.json  1007 B
+dir   workflows/
+
+legacy root: %LOCALAPPDATA%\ComfyUI-Prompt-Workbench
+legacy exists: True
+file  database\workbench.sqlite3  16384 B
+file  settings.json  1139 B
+
+new db integrity: ok
+legacy db integrity: ok

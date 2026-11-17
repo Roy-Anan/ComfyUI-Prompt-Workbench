@@ -2,9 +2,11 @@
 
 Started by the double-click batch entry. It:
   * reuses the project virtualenv interpreter (never the ComfyUI bundled Python)
-  * checks whether port 8000 is already in use by this workbench
+  * enforces a loopback bind (refuses 0.0.0.0, LAN and public addresses)
+  * checks whether port 8000 already serves this workbench (identity check)
   * starts FastAPI as a detached tracked process and records its PID to a file
-  * waits for the health endpoint to respond, then opens the default browser
+  * waits for the health endpoint to identify the real workbench, then opens
+    the default browser
 
 The backend process survives after this launcher returns. The PID file is kept
 so the stopper can terminate exactly this workbench process tree.
@@ -13,6 +15,8 @@ so the stopper can terminate exactly this workbench process tree.
 from __future__ import annotations
 
 import http.client
+import ipaddress
+import json
 import os
 import secrets
 import socket
@@ -28,7 +32,30 @@ PID_FILE = REPO_ROOT / ".workbench.pid"
 HOST = os.environ.get("WORKBENCH_HOST", "127.0.0.1")
 PORT = int(os.environ.get("WORKBENCH_PORT", "8000"))
 HEALTH_PATH = "/api/health"
+APP_ID = "ComfyUI-Prompt-Workbench"
 OPEN_BROWSER = os.environ.get("WORKBENCH_OPEN_BROWSER", "1") != "0"
+
+
+def is_loopback_host(host: str) -> bool:
+    """Only explicit loopback names/addresses are allowed to bind."""
+    host = host.strip().lower()
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except OSError:
+            return False
+        for family, _, _, _, sockaddr in infos:
+            try:
+                addr = ipaddress.ip_address(sockaddr[0])
+            except ValueError:
+                return False
+            if not addr.is_loopback:
+                return False
+        return bool(infos)
 
 
 def port_in_use(host: str, port: int) -> bool:
@@ -37,18 +64,29 @@ def port_in_use(host: str, port: int) -> bool:
         return sock.connect_ex((host, port)) == 0
 
 
-def health_ok(host: str, port: int, timeout: float = 1.0) -> bool:
-    # Any HTTP response means the server is up; /api/health returns 401 to an
-    # unauthenticated probe, which still proves the runtime is listening.
+def health_identifies_workbench(host: str, port: int, timeout: float = 1.0) -> bool:
+    """True only if /api/health responds with this app's identity.
+
+    A bare HTTP response (even a 401) proves something is listening, but not
+    that it is the workbench. We require the health body to carry the expected
+    app identifier; an unauthenticated 401 on /api/health still returns the
+    app identity field, so this check works before a session ticket exists.
+    """
     try:
         conn = http.client.HTTPConnection(host, port, timeout=timeout)
         conn.request("GET", HEALTH_PATH)
         response = conn.getresponse()
-        response.read()
+        body = response.read()
         conn.close()
-        return True
     except (OSError, http.client.HTTPException):
         return False
+
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return False
+
+    return payload.get("app") == APP_ID or payload.get("app_id") == APP_ID
 
 
 def read_pid() -> int | None:
@@ -77,6 +115,13 @@ def pid_alive(pid: int) -> bool:
 
 
 def main() -> int:
+    if not is_loopback_host(HOST):
+        print(
+            f"[工作台] 拒绝绑定非本机地址 '{HOST}'：工作台只允许监听 127.0.0.1，"
+            "不开放局域网或公网。"
+        )
+        return 1
+
     if not VENV_PYTHON.is_file():
         print("[工作台] 未找到项目独立 Python 环境：", VENV_PYTHON)
         print("[工作台] 请先在项目 .venv 中准备依赖，不要使用 ComfyUI 整合包的 Python。")
@@ -84,14 +129,27 @@ def main() -> int:
 
     existing_pid = read_pid()
     if existing_pid and pid_alive(existing_pid) and port_in_use(HOST, PORT):
-        print(f"[工作台] 已有实例在运行（PID {existing_pid}，端口 {PORT}）。")
-        if OPEN_BROWSER:
-            import webbrowser
+        if health_identifies_workbench(HOST, PORT):
+            print(f"[工作台] 已有实例在运行（PID {existing_pid}，端口 {PORT}）。")
+            if OPEN_BROWSER:
+                import webbrowser
 
-            webbrowser.open(f"http://{HOST}:{PORT}")
-        return 0
+                webbrowser.open(f"http://{HOST}:{PORT}")
+            return 0
+        print(
+            f"[工作台] 端口 {PORT} 被其他程序占用，且不是本工作台实例；"
+            "不会结束该进程，请先关闭占用程序。"
+        )
+        return 1
 
     if port_in_use(HOST, PORT):
+        if health_identifies_workbench(HOST, PORT):
+            print(f"[工作台] 端口 {PORT} 已由本工作台实例占用，直接复用。")
+            if OPEN_BROWSER:
+                import webbrowser
+
+                webbrowser.open(f"http://{HOST}:{PORT}")
+            return 0
         print(f"[工作台] 端口 {PORT} 已被其他程序占用，无法启动工作台。")
         print("[工作台] 请关闭占用该端口的程序后重试；本脚本不会自动结束其他进程。")
         return 1
@@ -133,13 +191,13 @@ def main() -> int:
             print("[工作台] 服务进程已退出，启动失败。请查看上方错误信息。")
             PID_FILE.unlink(missing_ok=True)
             return 1
-        if health_ok(HOST, PORT):
+        if health_identifies_workbench(HOST, PORT):
             ready = True
             break
         time.sleep(0.5)
 
     if not ready:
-        print("[工作台] 健康检查超时，服务未在预期时间内就绪。")
+        print("[工作台] 健康检查超时：未识别到本工作台实例，服务未在预期时间内就绪。")
         return 1
 
     print(f"[工作台] 服务已就绪（PID {proc.pid}）。")

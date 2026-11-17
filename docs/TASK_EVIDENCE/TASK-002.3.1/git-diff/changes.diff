@@ -1,0 +1,1004 @@
+diff --git a/.gitignore b/.gitignore
+index 052d58b..55d12c5 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -18,10 +18,15 @@ legacy/src-tauri/gen/
+ .env
+ .env.*
+ *.log
++*.tmp
+ 
+ # Runtime PID file written by the launcher
+ .workbench.pid
+ 
+-# Local user data
++# User runtime data (database, knowledge, prompts, drafts, history, logs,
++# backups, exports). Lives inside the Git repo but must never be committed.
++/userdata/
++
++# Other local user data
+ data/
+ workbench-data/
+diff --git a/PROJECT_ARCHITECTURE.md b/PROJECT_ARCHITECTURE.md
+index aa0c67e..f7c958a 100644
+--- a/PROJECT_ARCHITECTURE.md
++++ b/PROJECT_ARCHITECTURE.md
+@@ -149,3 +149,9 @@ Tauri 桌面宿主 (Rust) → sidecar Python 服务；该路径因本机缺 Rust
+ - **进程生命周期**：根目录 `启动工作台.bat` / `停止工作台.bat` 为普通用户入口；启动器复用项目 `.venv`，记录 PID 到 `.workbench.pid`（已忽略提交）；停止器按 PID 终止工作台进程树，不按进程名批量结束 Python。
+ - **依赖边界**：正式运行只需要项目 `.venv` 中的 Python 依赖；Node/Vite 仅在构建前端产物时使用，正式运行不启动 Node 开发服务器。Tauri 运行依赖（`@tauri-apps/api`、`@tauri-apps/cli`）已从 `package.json` 移除，Rust 工程归档至 `legacy/src-tauri/`。
+ - **数据与外部服务**：数据根仍为 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench`；SQLite 与设置文件保留；Ollama `127.0.0.1:11434`、ComfyUI `127.0.0.1:8188` 仅做连通性检测，不自启/自关/重启。
++
++### 7.4 TASK-002.3.1（2026-11-17，0.1.0-dev.4，安全加固与项目内数据目录）
++
++- **数据目录**：默认根改为仓库内 `userdata/`（`WORKBENCH_DATA_ROOT` 可覆盖）；`backend/datadir.py` 统一路径、子目录、迁移备份与完整性校验；`userdata/` 被 Git 忽略。旧根 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench` 仅作迁移参照并保留，不再作为默认根。
++- **安全边界**：启动器前置 loopback 校验；停止器按可执行路径 + 命令行 + 启动时间核验身份、fail-closed、递归回收进程树；静态路径用解码后真实路径包含判断；`/api/health` 为未认证身份探测，携带应用标识供启动器核验。
++- **外部服务**：Ollama / ComfyUI 仍仅做连通性检测，不自启、不关闭、不重启；模型权重、原图、原始工作流留在 ComfyUI 外部目录，工作台只记录路径与索引。
+diff --git a/PROJECT_CHANGELOG.md b/PROJECT_CHANGELOG.md
+index e187ac0..b7b20ae 100644
+--- a/PROJECT_CHANGELOG.md
++++ b/PROJECT_CHANGELOG.md
+@@ -152,3 +152,36 @@
+   - Python 3.12 兼容性未单独验证（本机 3.13.18）。
+   - Ollama / ComfyUI 在线状态下的真实调用验收待后续阶段。
+   - 本任务不宣布 EXE/安装包完成，不恢复 Tauri 桌面路线。
++
++### 0.1.0-dev.4 — 2026-11-17（TASK-002.3.1，分支 dev）
++
++- **新增功能**：
++  - 项目内数据目录：默认根改为仓库内 `userdata/`（`WORKBENCH_DATA_ROOT` 可覆盖）；新增 `backend/datadir.py` 统一路径服务、管理子目录规划、迁移备份与 SQLite 完整性校验。
++  - 启动器 loopback 前置校验；健康检查按应用标识核验实例身份；端口占用区分本工作台与其他服务。
++  - 停止器 CIM 多重身份核验（可执行路径 + 命令行 + 启动时间）、递归进程树回收、身份不匹配 fail-closed。
++  - 静态路径真实路径包含判断（先解码 URL 编码），拒绝目录穿越与相邻前缀碰撞。
++  - `/api/health` 作为未认证身份探测，响应体携带 `app` / `app_id` / `version`。
++- **修改文件**：
++  - 新增 `backend/datadir.py`、`backend/test_scripts.py`。
++  - 修改 `backend/main.py`（接入 datadir、loopback 校验、路径解析、健康标识、中间件放行健康探测、版本 `0.1.0-dev.4`）。
++  - 修改 `backend/test_main.py`（目录/迁移/路径安全/loopback/健康身份用例，共 36 项）。
++  - 修改 `scripts/workbench_launcher.py`、`scripts/workbench_stopper.py`。
++  - 修改 `.gitignore`（新增 `/userdata/`、`*.tmp`）。
++  - 控制文档：`PROJECT_STATE.md`、`PROJECT_ARCHITECTURE.md`、`PROJECT_MASTER_PLAN.md`、`PROJECT_CHANGELOG.md`（本文件）。
++  - 证据目录：`docs/TASK_EVIDENCE/TASK-002.3.1/`。
++  - 未改动 `legacy-materials/`、既有 8 份基线文档与用户数据。
++- **修复问题**：
++  - 健康检查被认证中间件拦截返回 401，启动器无法识别本工作台实例。
++  - 停止器仅凭 PID 存在复用误杀风险。
++  - 静态托管字符串前缀匹配存在相邻目录碰撞与穿越风险。
++  - 数据根落在用户漫游目录、与源码隔离口径不统一。
++- **测试情况**：
++  - Python pytest：通过，36 passed（Python 3.13.18 / pytest 8.4.2，1 条 StarletteDeprecationWarning）。
++  - TypeScript 检查：通过（`tsc -b` 退出码 0）。
++  - Vite 生产构建：通过（32 模块，产物 `dist/`）。
++  - 真机迁移：旧库完整性 ok，迁入 `userdata/` 并备份；旧目录保留；新库完整性 ok。
++  - 真机浏览器：Edge 连接成功，存储根显示项目内 `userdata`；仅监听 `127.0.0.1:8000`。
++- **未完成事项**：
++  - Python 3.12 兼容性未单独验证（本机 3.13.18）。
++  - Ollama / ComfyUI 在线真实调用与出图闭环待后续阶段验收。
++  - 业务功能按边界本次未实现；不恢复 Tauri/Rust/EXE 路线。
+diff --git a/PROJECT_MASTER_PLAN.md b/PROJECT_MASTER_PLAN.md
+index e9db754..79c44be 100644
+--- a/PROJECT_MASTER_PLAN.md
++++ b/PROJECT_MASTER_PLAN.md
+@@ -78,10 +78,10 @@ ComfyUI Prompt Workbench 是一个面向 Windows 11 的**本机浏览器 Web 工
+ 
+ ## 8. 存储路径管理
+ 
+-- 工作台数据目录可配置；模型和原图继续由用户原有目录管理，工作台只记录路径与索引。
+-- 只扫描用户登记的模型目录；轻量识别不扫描整块硬盘、不加载 GPU 模型。
++- 工作台默认数据目录位于项目内 `userdata/`（可由 `WORKBENCH_DATA_ROOT` 覆盖）；运行时用户数据与源码隔离，`userdata/` 不纳入 Git 跟踪。
++- 模型和原图继续由用户原有目录管理，工作台只记录路径与索引；只扫描用户登记的模型目录，轻量识别不扫描整块硬盘、不加载 GPU 模型。
+ - 图片原件、模型权重、LoRA、原始工作流不放进数据库，也不复制进工作台数据目录。
+-- 关键 JSON 快照应记录 `schema_version`；数据库迁移先备份/校验，迁移失败不得静默破坏旧数据。
++- 关键 JSON 快照应记录 `schema_version`；数据库迁移先备份/校验，迁移失败不得静默破坏旧数据；旧数据目录在确认稳定前保留不删。
+ 
+ ## 9. 开发阶段（M0–M7，路线图口径）
+ 
+diff --git a/PROJECT_STATE.md b/PROJECT_STATE.md
+index 30d11fa..9677814 100644
+--- a/PROJECT_STATE.md
++++ b/PROJECT_STATE.md
+@@ -143,3 +143,38 @@
+ | ComfyUI 离线兼容 | 通过 | 离线返回 online:false，服务 200 不崩溃 |
+ | 用户数据保护 | 通过 | 数据根在 LOCALAPPDATA，未进构建目录；未删除/重建数据库 |
+ | 真实出图端到端验收 | 未完成 | 不在本次边界内 |
++
++## 9. TASK-002.3.1 本机 Web 安全加固与项目内数据目录迁移记录（2026-11-17）
++
++### 9.1 本次已实际完成并验证
++
++- **数据目录迁移**：默认数据根从 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench` 迁到项目内 `userdata/`（`WORKBENCH_DATA_ROOT` 可覆盖）；新增 `backend/datadir.py` 统一路径、子目录、迁移备份与完整性校验。旧库完整性 ok，迁入前在 `userdata/backups/legacy-migration-20261117-145437/` 备份；旧目录原样保留；`userdata/` 被 `.gitignore` 忽略，不入库。
++- **安全加固**：启动器前置 loopback 校验；停止器按可执行路径 + 命令行 + 启动时间核验身份、fail-closed、递归回收进程树；静态路径改为解码后真实路径包含判断，拒绝穿越与相邻前缀碰撞；`/api/health` 作为未认证身份探测并携带应用标识，启动器据此核验实例身份。
++- **测试与构建**：pytest 36 passed（Python 3.13.18 / pytest 8.4.2，1 条 StarletteDeprecationWarning）；`tsc -b` 与 `vite build` 通过（32 模块）。
++- **真机验收**：Edge 访问 `127.0.0.1:8000`，服务已连接（Python 3.13.18），存储根目录显示为项目内 `userdata`；仅监听 `127.0.0.1:8000`；受保护端点无会话仍 401。
++- **证据归档**：`docs/TASK_EVIDENCE/TASK-002.3.1/`（报告、test-results、logs、screenshots、git-diff）。
++
++### 9.2 尚未完成 / 未验证事项
++
++- Python 3.12 兼容性未验证（本机 `.venv` 为 3.13.18）。
++- Ollama / ComfyUI 在线状态下的真实调用与出图闭环未验收；本次仅离线连通性检测。
++- 业务功能（编辑器、知识库、规则引擎、工作流解析、队列、草稿版本、显存调度、生成历史等）属后续阶段，本次未实现。
++- 会话票据存进程内存，重启后需重新 bootstrap，属当前设计。
++
++### 9.3 验收情况记录（TASK-002.3.1）
++
++| 验收项 | 状态 | 证据 / 说明 |
++| --- | --- | --- |
++| Python pytest | 通过 | 36 passed，Python 3.13.18 / pytest 8.4.2，1 条弃用警告 |
++| TypeScript 检查 | 通过 | `tsc -b` 退出码 0 |
++| Vite 生产构建 | 通过 | 32 模块，产物 `dist/` |
++| 新根目录初始化 | 通过 | 10 个管理子目录 + `settings/` 建立 |
++| 旧库 / 新库完整性 | 通过 | 两侧 `integrity_check` = ok，schema_version=1 |
++| 迁移备份与旧数据保留 | 通过 | 备份目录保留旧库；旧根两文件原样存在 |
++| `userdata` 忽略 | 通过 | `git check-ignore` 命中 `/userdata/` |
++| 监听地址限制 | 通过 | 仅监听 127.0.0.1:8000；非回环地址被拒 |
++| PID 身份核验 | 通过 | 身份不匹配 fail-closed；匹配时回收进程树 |
++| 静态路径安全 | 通过 | 穿越 / 编码穿越 / 前缀碰撞均拒绝；正常资源可访问 |
++| 健康身份探测 | 通过 | 无会话 200 带应用标识；受保护端点仍 401 |
++| 浏览器真机验收 | 通过 | Edge 已连接，存储根为项目内 userdata |
++| 真实出图端到端验收 | 未完成 | 不在本次边界内 |
+diff --git a/backend/main.py b/backend/main.py
+index a269bc2..9f83f6a 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -15,41 +15,35 @@ from urllib.request import Request as UrlRequest, urlopen
+ 
+ from fastapi import FastAPI, HTTPException, Request
+ from fastapi.middleware.cors import CORSMiddleware
+-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
++from fastapi.responses import FileResponse, JSONResponse
+ from pydantic import BaseModel, Field
+ 
++import datadir
++
+ APP_NAME = "ComfyUI-Prompt-Workbench"
+-APP_VERSION = "0.1.0-dev.3"
++APP_VERSION = "0.1.0-dev.4"
+ 
+ # Bootstrapping token: only used to request a per-session ticket. In the
+ # local Web runtime it is generated per launch by the start script and passed
+ # through an environment variable; it is never baked into the frontend build.
+ BOOTSTRAP_TOKEN = os.environ.get("WORKBENCH_SESSION_TOKEN", "")
+ 
+-DATA_ROOT = Path(
+-    os.environ.get(
+-        "WORKBENCH_DATA_ROOT",
+-        str(
+-            Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
+-            / APP_NAME
+-        ),
+-    )
+-).expanduser()
+-
+-SETTINGS_FILE = DATA_ROOT / "settings.json"
++# Unified data root: <repo>/userdata by default; overridable via env var.
++DATA_ROOT = datadir.default_data_root()
++SETTINGS_FILE = datadir.settings_path(DATA_ROOT)
+ 
+ # Frontend build directory served by FastAPI in the local Web runtime.
+ BACKEND_DIR = Path(__file__).resolve().parent
+ FRONTEND_DIST = BACKEND_DIR.parent / "frontend" / "dist"
+ 
+-MANAGED_KEYS = {
+-    "database", "knowledge", "prompts", "workflows", "drafts",
+-    "history", "cache", "logs", "backups", "exports",
+-}
+-OPTIONAL_EXTERNAL_KEYS = {"checkpoint", "lora"}
++MANAGED_KEYS = set(datadir.MANAGED_KEYS)
++OPTIONAL_EXTERNAL_KEYS = set(datadir.OPTIONAL_EXTERNAL_KEYS)
+ ALLOWED_STORAGE_KEYS = MANAGED_KEYS | OPTIONAL_EXTERNAL_KEYS | {"root"}
+ ALLOWED_CONNECTION_KEYS = {"ollama_url", "comfyui_url"}
+ 
++# Migration report for the current process; populated on first settings load.
++MIGRATION_REPORT: dict[str, Any] = {}
++
+ # Local-only origins allowed by CORS. The production Web runtime is same-origin
+ # (FastAPI serves both API and frontend), so no broad LAN/public origin is added.
+ ALLOWED_ORIGINS = {
+@@ -68,29 +62,7 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
+ 
+ 
+ def default_settings() -> dict[str, Any]:
+-    root = DATA_ROOT
+-    return {
+-        "version": 2,
+-        "storage": {
+-            "root": str(root),
+-            "database": str(root / "database"),
+-            "knowledge": str(root / "knowledge"),
+-            "prompts": str(root / "prompts"),
+-            "workflows": str(root / "workflows"),
+-            "drafts": str(root / "drafts"),
+-            "history": str(root / "history"),
+-            "cache": str(root / "cache"),
+-            "logs": str(root / "logs"),
+-            "backups": str(root / "backups"),
+-            "exports": str(root / "exports"),
+-            "checkpoint": "",
+-            "lora": "",
+-        },
+-        "connections": {
+-            "ollama_url": "http://127.0.0.1:11434",
+-            "comfyui_url": "http://127.0.0.1:8188",
+-        },
+-    }
++    return datadir.default_settings(DATA_ROOT)
+ 
+ 
+ def write_test(path: Path) -> None:
+@@ -178,27 +150,12 @@ def initialize_database(settings: dict[str, Any]) -> str:
+ 
+ 
+ def save_settings_file(settings: dict[str, Any]) -> None:
+-    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+-
+-    temp_file = SETTINGS_FILE.with_name(
+-        f"{SETTINGS_FILE.name}.{secrets.token_hex(6)}.tmp"
+-    )
+-
+-    try:
+-        temp_file.write_text(
+-            json.dumps(settings, ensure_ascii=False, indent=2),
+-            encoding="utf-8",
+-        )
+-        temp_file.replace(SETTINGS_FILE)
+-    finally:
+-        try:
+-            temp_file.unlink(missing_ok=True)
+-        except OSError:
+-            pass
++    datadir.save_settings_file(DATA_ROOT, settings)
+ 
+ 
+ def backup_corrupt_settings() -> Path:
+     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
++    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+     backup = SETTINGS_FILE.with_name(
+         f"settings.corrupt-{timestamp}-{secrets.token_hex(3)}.json"
+     )
+@@ -207,46 +164,41 @@ def backup_corrupt_settings() -> Path:
+ 
+ 
+ def load_settings() -> dict[str, Any]:
+-    DATA_ROOT.mkdir(parents=True, exist_ok=True)
++    global MIGRATION_REPORT
++
++    # Prepare managed directories and migrate any legacy data once per process.
++    MIGRATION_REPORT = datadir.prepare_root(DATA_ROOT)
+     settings = default_settings()
+ 
+-    if SETTINGS_FILE.exists():
++    try:
++        loaded = datadir.load_settings_file(DATA_ROOT)
++    except (OSError, ValueError, TypeError, json.JSONDecodeError):
++        loaded = None
+         try:
+-            loaded = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+-
+-            if not isinstance(loaded, dict):
+-                raise ValueError("Settings root must be an object")
+-
+-            storage = loaded.get("storage", {})
+-            connections = loaded.get("connections", {})
+-
+-            if not isinstance(storage, dict):
+-                raise ValueError("Settings storage must be an object")
+-
+-            if not isinstance(connections, dict):
+-                raise ValueError("Settings connections must be an object")
+-
+-            # Ignore unknown keys in an existing settings file.
+-            for key in MANAGED_KEYS | OPTIONAL_EXTERNAL_KEYS:
+-                if key in storage and isinstance(storage[key], str):
+-                    settings["storage"][key] = storage[key]
+-
+-            for key in ALLOWED_CONNECTION_KEYS:
+-                if key in connections and isinstance(connections[key], str):
+-                    settings["connections"][key] = connections[key]
+-
+-            # The actual data root is controlled by the local host.
+-            settings["storage"]["root"] = str(DATA_ROOT)
+-
+-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+-            try:
+-                backup_corrupt_settings()
+-            except OSError as exc:
+-                raise RuntimeError(
+-                    f"Settings are corrupt and backup failed: {exc}"
+-                ) from exc
+-
+-            settings = default_settings()
++            backup_corrupt_settings()
++        except OSError as exc:
++            raise RuntimeError(
++                f"Settings are corrupt and backup failed: {exc}"
++            ) from exc
++
++    if loaded is not None:
++        storage = loaded.get("storage", {})
++        connections = loaded.get("connections", {})
++
++        if not isinstance(storage, dict):
++            raise ValueError("Settings storage must be an object")
++        if not isinstance(connections, dict):
++            raise ValueError("Settings connections must be an object")
++
++        # Preserve only external ComfyUI paths; managed paths are rebuilt
++        # against the current data root so a legacy AppData path is not kept.
++        for key in OPTIONAL_EXTERNAL_KEYS:
++            if key in storage and isinstance(storage[key], str):
++                settings["storage"][key] = storage[key]
++
++        for key in ALLOWED_CONNECTION_KEYS:
++            if key in connections and isinstance(connections[key], str):
++                settings["connections"][key] = connections[key]
+ 
+     ensure_managed_directories(settings)
+     initialize_database(settings)
+@@ -318,6 +270,12 @@ async def require_session(request: Request, call_next):
+     if not request.url.path.startswith("/api"):
+         return await call_next(request)
+ 
++    # The health endpoint is an unauthenticated identity probe: the launcher
++    # uses it to confirm the listener is actually this workbench before
++    # issuing a session. It exposes only app id/version, no user data.
++    if request.url.path == "/api/health":
++        return await call_next(request)
++
+     # Reject cross-origin state changes from untrusted origins.
+     if request.method not in SAFE_METHODS and not _origin_allowed(request):
+         return JSONResponse(
+@@ -409,6 +367,7 @@ def health():
+     return {
+         "ok": True,
+         "app": APP_NAME,
++        "app_id": APP_NAME,
+         "version": APP_VERSION,
+         "python": platform.python_version(),
+         "platform": platform.platform(),
+@@ -572,6 +531,29 @@ def _dist_ready() -> bool:
+     return FRONTEND_DIST.is_dir() and (FRONTEND_DIST / "index.html").is_file()
+ 
+ 
++def _resolve_within_dist(full_path: str) -> Path | None:
++    """Resolve ``full_path`` against dist and confirm it stays inside dist.
++
++    Uses real-path containment (not a string prefix) so ``../`` traversal and
++    adjacent-directory prefix collisions (e.g. ``dist-other``) are rejected.
++    URL-encoded traversal (``%2e%2e%2f``) is decoded before resolving.
++    Returns None when the resolved path escapes dist.
++    """
++    from urllib.parse import unquote
++
++    dist_root = FRONTEND_DIST.resolve()
++    decoded = unquote(full_path)
++    # Normalize away any traversal segments before joining.
++    normalized = Path("/", decoded).as_posix().lstrip("/")
++    candidate = (dist_root / normalized).resolve()
++
++    try:
++        candidate.relative_to(dist_root)
++    except ValueError:
++        return None
++    return candidate
++
++
+ @app.get("/{full_path:path}")
+ def serve_frontend(request: Request, full_path: str):
+     # Unknown /api routes must return JSON, never the SPA HTML.
+@@ -584,8 +566,8 @@ def serve_frontend(request: Request, full_path: str):
+             detail="Frontend build missing: run the frontend build before starting the Web runtime.",
+         )
+ 
+-    requested = (FRONTEND_DIST / full_path).resolve()
+-    if not str(requested).startswith(str(FRONTEND_DIST.resolve())):
++    requested = _resolve_within_dist(full_path)
++    if requested is None:
+         raise HTTPException(status_code=403, detail="Forbidden path")
+ 
+     if requested.is_file():
+@@ -595,15 +577,41 @@ def serve_frontend(request: Request, full_path: str):
+     return FileResponse(FRONTEND_DIST / "index.html")
+ 
+ 
++def is_loopback_host(host: str) -> bool:
++    """Return True only for explicit loopback addresses/names."""
++    import ipaddress
++    import socket
++
++    host = host.strip().lower()
++    if host in {"localhost", "127.0.0.1", "::1"}:
++        return True
++    try:
++        return ipaddress.ip_address(host).is_loopback
++    except ValueError:
++        # Resolve names defensively; only accept if every resolved address
++        # is loopback.
++        try:
++            infos = socket.getaddrinfo(host, None)
++        except OSError:
++            return False
++        for family, _, _, _, sockaddr in infos:
++            try:
++                addr = ipaddress.ip_address(sockaddr[0])
++            except ValueError:
++                return False
++            if not addr.is_loopback:
++                return False
++        return bool(infos)
++
++
+ def main() -> None:
+     import uvicorn
+ 
+     host = os.environ.get("WORKBENCH_HOST", "127.0.0.1")
+     port = int(os.environ.get("WORKBENCH_PORT", "8000"))
+ 
+-    # Default must stay loopback; refuse an explicit public bind unless the
+-    # operator deliberately overrides it.
+-    if host not in {"127.0.0.1", "localhost"}:
++    # Default must stay loopback; refuse LAN/public binds.
++    if not is_loopback_host(host):
+         raise SystemExit(
+             f"Refusing to bind to non-loopback host '{host}'. "
+             "The local Web runtime defaults to 127.0.0.1."
+diff --git a/backend/test_main.py b/backend/test_main.py
+index 7d94fd6..ee24dc9 100644
+--- a/backend/test_main.py
++++ b/backend/test_main.py
+@@ -15,17 +15,21 @@ def client(tmp_path, monkeypatch):
+     )
+ 
+     sys.modules.pop("main", None)
++    sys.modules.pop("datadir", None)
++    import datadir
+     import main
+ 
+     main.BOOTSTRAP_TOKEN = "test-session-token"
+-    main.DATA_ROOT = tmp_path / "workbench-data"
+-    main.SETTINGS_FILE = main.DATA_ROOT / "settings.json"
++    main.DATA_ROOT = datadir.default_data_root()
++    main.SETTINGS_FILE = datadir.settings_path(main.DATA_ROOT)
++    main.MIGRATION_REPORT = {}
+     main.SESSION_TICKETS.clear()
+ 
+     with TestClient(main.app) as test_client:
+         yield test_client, main
+ 
+     sys.modules.pop("main", None)
++    sys.modules.pop("datadir", None)
+ 
+ 
+ def auth():
+@@ -41,13 +45,23 @@ def bootstrap(client):
+     return {"X-Workbench-CSRF": csrf}
+ 
+ 
+-def test_health_requires_token(client):
++def test_health_is_unauthenticated_identity_probe(client):
+     test_client, _ = client
+ 
+-    assert test_client.get("/api/health").status_code == 401
++    # Health is an identity probe: reachable without a session and exposes the
++    # app identifier/version, but no user data.
++    public = test_client.get("/api/health")
++    assert public.status_code == 200
++    body = public.json()
++    assert body["ok"] is True
++    assert body["app"] == "ComfyUI-Prompt-Workbench"
++
++    # A protected endpoint still rejects a missing/valid session.
++    missing = test_client.get("/api/settings")
++    assert missing.status_code == 401
+ 
+     wrong = test_client.get(
+-        "/api/health",
++        "/api/settings",
+         headers={"Authorization": "Bearer wrong-token"},
+     )
+     assert wrong.status_code == 401
+@@ -326,7 +340,7 @@ def test_storage_validation_can_create_directory(client, tmp_path):
+ def test_corrupt_settings_are_backed_up(client):
+     test_client, main = client
+ 
+-    main.DATA_ROOT.mkdir(parents=True, exist_ok=True)
++    main.SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+     main.SETTINGS_FILE.write_text(
+         "{broken-json",
+         encoding="utf-8",
+@@ -338,7 +352,7 @@ def test_corrupt_settings_are_backed_up(client):
+     assert response.json()["storage"]["root"] == str(main.DATA_ROOT)
+ 
+     backups = list(
+-        main.DATA_ROOT.glob("settings.corrupt-*.json")
++        main.SETTINGS_FILE.parent.glob("settings.corrupt-*.json")
+     )
+ 
+     assert len(backups) == 1
+@@ -378,3 +392,169 @@ def test_spa_fallback_serves_index_when_dist_present(client, tmp_path, monkeypat
+     response = test_client.get("/some/deep/route")
+     assert response.status_code == 200
+     assert "workbench" in response.text
++
++
++# ---- Data directory and migration ----------------------------------------
++
++def test_default_data_root_uses_project_userdata(monkeypatch):
++    monkeypatch.delenv("WORKBENCH_DATA_ROOT", raising=False)
++    sys.modules.pop("datadir", None)
++    import datadir
++
++    root = datadir.default_data_root()
++    assert root.name == "userdata"
++    assert root.parent == datadir.repo_root()
++
++
++def test_managed_subdirs_are_created(client):
++    test_client, main = client
++
++    response = test_client.get("/api/settings", headers=auth())
++    storage = response.json()["storage"]
++    for key in main.MANAGED_KEYS:
++        assert Path(storage[key]).is_dir()
++
++
++def _make_sqlite(db_file: Path) -> None:
++    db_file.parent.mkdir(parents=True, exist_ok=True)
++    with sqlite3.connect(db_file) as conn:
++        conn.execute("CREATE TABLE app_metadata(key TEXT PRIMARY KEY, value TEXT)")
++        conn.execute("INSERT INTO app_metadata VALUES ('source', 'legacy')")
++
++
++def test_migration_copies_legacy_data_without_overwriting(tmp_path, monkeypatch):
++    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
++    db = legacy / "database" / "workbench.sqlite3"
++    _make_sqlite(db)
++    (legacy / "settings").mkdir(parents=True)
++    (legacy / "settings" / "settings.json").write_text(
++        '{"version": 2}', encoding="utf-8"
++    )
++
++    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
++    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(tmp_path / "userdata"))
++    sys.modules.pop("datadir", None)
++    sys.modules.pop("main", None)
++    import datadir
++
++    target = datadir.default_data_root()
++    report = datadir.prepare_root(target)
++
++    assert report["action"] == "migrated"
++    assert report["database_integrity"] is True
++    copied_db = target / "database" / "workbench.sqlite3"
++    assert copied_db.is_file()
++    with sqlite3.connect(copied_db) as conn:
++        value = conn.execute("SELECT value FROM app_metadata WHERE key='source'").fetchone()[0]
++    assert value == "legacy"
++    # Old directory and its files are kept.
++    assert db.is_file()
++    # A backup of the legacy root exists under the new backups dir.
++    backups = list((target / "backups").glob("legacy-migration-*"))
++    assert backups
++
++
++def test_migration_does_not_overwrite_target_with_data(tmp_path, monkeypatch):
++    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
++    _make_sqlite(legacy / "database" / "workbench.sqlite3")
++
++    target = tmp_path / "userdata"
++    target_db = target / "database" / "workbench.sqlite3"
++    target_db.parent.mkdir(parents=True, exist_ok=True)
++    target_db.write_text("existing target", encoding="utf-8")
++
++    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
++    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(target))
++    sys.modules.pop("datadir", None)
++    import datadir
++
++    report = datadir.prepare_root(target)
++    assert report["action"] == "skipped-conflict"
++    assert target_db.read_text(encoding="utf-8") == "existing target"
++
++
++def test_migration_absent_legacy_root_initializes_new(tmp_path, monkeypatch):
++    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "missing-local"))
++    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(tmp_path / "userdata"))
++    sys.modules.pop("datadir", None)
++    import datadir
++
++    target = datadir.default_data_root()
++    report = datadir.prepare_root(target)
++    assert report["action"] == "none"
++    assert target.is_dir()
++
++
++# ---- Static path security -------------------------------------------------
++
++def test_static_path_traversal_is_rejected(client, tmp_path, monkeypatch):
++    _, main = client
++    dist = tmp_path / "dist"
++    dist.mkdir()
++    (dist / "index.html").write_text("<html>workbench</html>", encoding="utf-8")
++    secret = tmp_path / "secret.txt"
++    secret.write_text("top-secret", encoding="utf-8")
++    monkeypatch.setattr(main, "FRONTEND_DIST", dist)
++
++    # The resolver must reject any path that escapes dist after normalization.
++    assert main._resolve_within_dist("../secret.txt") is None
++    assert main._resolve_within_dist("../../secret.txt") is None
++
++
++def test_static_url_encoded_traversal_is_rejected(client, tmp_path, monkeypatch):
++    _, main = client
++    dist = tmp_path / "dist"
++    dist.mkdir()
++    (dist / "index.html").write_text("<html>workbench</html>", encoding="utf-8")
++    secret = tmp_path / "secret.txt"
++    secret.write_text("top-secret", encoding="utf-8")
++    monkeypatch.setattr(main, "FRONTEND_DIST", dist)
++
++    # URL-decoded traversal segments resolve outside dist and are rejected.
++    assert main._resolve_within_dist("%2e%2e%2fsecret.txt") is None
++    assert main._resolve_within_dist("..%2fsecret.txt") is None
++
++
++def test_static_adjacent_prefix_collision_is_rejected(client, tmp_path, monkeypatch):
++    _, main = client
++    dist = tmp_path / "dist"
++    dist.mkdir()
++    (dist / "index.html").write_text("<html>workbench</html>", encoding="utf-8")
++    sibling = tmp_path / "dist-other"
++    sibling.mkdir()
++    (sibling / "leak.txt").write_text("sibling-secret", encoding="utf-8")
++    monkeypatch.setattr(main, "FRONTEND_DIST", dist)
++
++    # A sibling directory sharing the "dist" prefix must not be reachable.
++    assert main._resolve_within_dist("../dist-other/leak.txt") is None
++
++
++def test_static_normal_asset_resolves_inside_dist(client, tmp_path, monkeypatch):
++    _, main = client
++    dist = tmp_path / "dist"
++    assets = dist / "assets"
++    assets.mkdir(parents=True)
++    (assets / "app.js").write_text("console.log(1)", encoding="utf-8")
++    monkeypatch.setattr(main, "FRONTEND_DIST", dist)
++
++    resolved = main._resolve_within_dist("assets/app.js")
++    assert resolved is not None
++    assert resolved.is_file()
++
++
++# ---- Loopback host validation --------------------------------------------
++
++def test_loopback_host_accepts_local_names():
++    sys.modules.pop("main", None)
++    import main
++
++    for host in ("127.0.0.1", "localhost", "::1"):
++        assert main.is_loopback_host(host) is True
++
++
++def test_loopback_host_rejects_public_and_lan():
++    sys.modules.pop("main", None)
++    import main
++
++    for host in ("0.0.0.0", "192.168.1.10", "10.0.0.5", "8.8.8.8"):
++        assert main.is_loopback_host(host) is False
+diff --git a/scripts/workbench_launcher.py b/scripts/workbench_launcher.py
+index fe0330f..dd530f9 100644
+--- a/scripts/workbench_launcher.py
++++ b/scripts/workbench_launcher.py
+@@ -2,9 +2,11 @@
+ 
+ Started by the double-click batch entry. It:
+   * reuses the project virtualenv interpreter (never the ComfyUI bundled Python)
+-  * checks whether port 8000 is already in use by this workbench
++  * enforces a loopback bind (refuses 0.0.0.0, LAN and public addresses)
++  * checks whether port 8000 already serves this workbench (identity check)
+   * starts FastAPI as a detached tracked process and records its PID to a file
+-  * waits for the health endpoint to respond, then opens the default browser
++  * waits for the health endpoint to identify the real workbench, then opens
++    the default browser
+ 
+ The backend process survives after this launcher returns. The PID file is kept
+ so the stopper can terminate exactly this workbench process tree.
+@@ -13,6 +15,8 @@ so the stopper can terminate exactly this workbench process tree.
+ from __future__ import annotations
+ 
+ import http.client
++import ipaddress
++import json
+ import os
+ import secrets
+ import socket
+@@ -28,28 +32,62 @@ PID_FILE = REPO_ROOT / ".workbench.pid"
+ HOST = os.environ.get("WORKBENCH_HOST", "127.0.0.1")
+ PORT = int(os.environ.get("WORKBENCH_PORT", "8000"))
+ HEALTH_PATH = "/api/health"
++APP_ID = "ComfyUI-Prompt-Workbench"
+ OPEN_BROWSER = os.environ.get("WORKBENCH_OPEN_BROWSER", "1") != "0"
+ 
+ 
++def is_loopback_host(host: str) -> bool:
++    """Only explicit loopback names/addresses are allowed to bind."""
++    host = host.strip().lower()
++    if host in {"localhost", "127.0.0.1", "::1"}:
++        return True
++    try:
++        return ipaddress.ip_address(host).is_loopback
++    except ValueError:
++        try:
++            infos = socket.getaddrinfo(host, None)
++        except OSError:
++            return False
++        for family, _, _, _, sockaddr in infos:
++            try:
++                addr = ipaddress.ip_address(sockaddr[0])
++            except ValueError:
++                return False
++            if not addr.is_loopback:
++                return False
++        return bool(infos)
++
++
+ def port_in_use(host: str, port: int) -> bool:
+     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+         sock.settimeout(1.0)
+         return sock.connect_ex((host, port)) == 0
+ 
+ 
+-def health_ok(host: str, port: int, timeout: float = 1.0) -> bool:
+-    # Any HTTP response means the server is up; /api/health returns 401 to an
+-    # unauthenticated probe, which still proves the runtime is listening.
++def health_identifies_workbench(host: str, port: int, timeout: float = 1.0) -> bool:
++    """True only if /api/health responds with this app's identity.
++
++    A bare HTTP response (even a 401) proves something is listening, but not
++    that it is the workbench. We require the health body to carry the expected
++    app identifier; an unauthenticated 401 on /api/health still returns the
++    app identity field, so this check works before a session ticket exists.
++    """
+     try:
+         conn = http.client.HTTPConnection(host, port, timeout=timeout)
+         conn.request("GET", HEALTH_PATH)
+         response = conn.getresponse()
+-        response.read()
++        body = response.read()
+         conn.close()
+-        return True
+     except (OSError, http.client.HTTPException):
+         return False
+ 
++    try:
++        payload = json.loads(body.decode("utf-8"))
++    except (ValueError, UnicodeDecodeError):
++        return False
++
++    return payload.get("app") == APP_ID or payload.get("app_id") == APP_ID
++
+ 
+ def read_pid() -> int | None:
+     if not PID_FILE.exists():
+@@ -77,6 +115,13 @@ def pid_alive(pid: int) -> bool:
+ 
+ 
+ def main() -> int:
++    if not is_loopback_host(HOST):
++        print(
++            f"[工作台] 拒绝绑定非本机地址 '{HOST}'：工作台只允许监听 127.0.0.1，"
++            "不开放局域网或公网。"
++        )
++        return 1
++
+     if not VENV_PYTHON.is_file():
+         print("[工作台] 未找到项目独立 Python 环境：", VENV_PYTHON)
+         print("[工作台] 请先在项目 .venv 中准备依赖，不要使用 ComfyUI 整合包的 Python。")
+@@ -84,14 +129,27 @@ def main() -> int:
+ 
+     existing_pid = read_pid()
+     if existing_pid and pid_alive(existing_pid) and port_in_use(HOST, PORT):
+-        print(f"[工作台] 已有实例在运行（PID {existing_pid}，端口 {PORT}）。")
+-        if OPEN_BROWSER:
+-            import webbrowser
+-
+-            webbrowser.open(f"http://{HOST}:{PORT}")
+-        return 0
++        if health_identifies_workbench(HOST, PORT):
++            print(f"[工作台] 已有实例在运行（PID {existing_pid}，端口 {PORT}）。")
++            if OPEN_BROWSER:
++                import webbrowser
++
++                webbrowser.open(f"http://{HOST}:{PORT}")
++            return 0
++        print(
++            f"[工作台] 端口 {PORT} 被其他程序占用，且不是本工作台实例；"
++            "不会结束该进程，请先关闭占用程序。"
++        )
++        return 1
+ 
+     if port_in_use(HOST, PORT):
++        if health_identifies_workbench(HOST, PORT):
++            print(f"[工作台] 端口 {PORT} 已由本工作台实例占用，直接复用。")
++            if OPEN_BROWSER:
++                import webbrowser
++
++                webbrowser.open(f"http://{HOST}:{PORT}")
++            return 0
+         print(f"[工作台] 端口 {PORT} 已被其他程序占用，无法启动工作台。")
+         print("[工作台] 请关闭占用该端口的程序后重试；本脚本不会自动结束其他进程。")
+         return 1
+@@ -133,13 +191,13 @@ def main() -> int:
+             print("[工作台] 服务进程已退出，启动失败。请查看上方错误信息。")
+             PID_FILE.unlink(missing_ok=True)
+             return 1
+-        if health_ok(HOST, PORT):
++        if health_identifies_workbench(HOST, PORT):
+             ready = True
+             break
+         time.sleep(0.5)
+ 
+     if not ready:
+-        print("[工作台] 健康检查超时，服务未在预期时间内就绪。")
++        print("[工作台] 健康检查超时：未识别到本工作台实例，服务未在预期时间内就绪。")
+         return 1
+ 
+     print(f"[工作台] 服务已就绪（PID {proc.pid}）。")
+diff --git a/scripts/workbench_stopper.py b/scripts/workbench_stopper.py
+index 04c1d56..5dc93a9 100644
+--- a/scripts/workbench_stopper.py
++++ b/scripts/workbench_stopper.py
+@@ -1,19 +1,31 @@
+ """Stop the workbench local Web runtime started by the launcher.
+ 
+-Only the PID recorded in .workbench.pid (and its direct child uvicorn worker)
+-is terminated. The stopper never kills Python processes by name, and it does
+-not touch Ollama, ComfyUI, or any other Python service.
++Safety model:
++  * The recorded PID is never trusted alone. Before terminating, the stopper
++    verifies process identity against several stable attributes: executable
++    path, command line, working directory and the workbench Python venv.
++  * If identity cannot be confirmed (PID reused by another program, missing
++    attributes, or a mismatch), the process is left alone and a warning is
++    printed for manual review.
++  * The whole workbench process tree (root plus recursive descendants) is
++    terminated. Python processes are never killed by name, and Ollama,
++    ComfyUI, or any other Python service is untouched.
+ """
+ 
+ from __future__ import annotations
+ 
+ import ctypes
++import json
++import subprocess
+ import sys
+ import time
+ from pathlib import Path
+ 
+ REPO_ROOT = Path(__file__).resolve().parent.parent
+ PID_FILE = REPO_ROOT / ".workbench.pid"
++VENV_PYTHON = REPO_ROOT / ".venv" / "Scripts" / "python.exe"
++BACKEND_DIR = REPO_ROOT / "backend"
++APP_MARKER = "uvicorn"  # Command-line marker for the tracked backend process.
+ 
+ kernel32 = ctypes.windll.kernel32
+ 
+@@ -28,17 +40,80 @@ def pid_alive(pid: int) -> bool:
+     return bool(alive) and exit_code.value == 259
+ 
+ 
++def _process_info(pid: int) -> dict[str, str] | None:
++    """Read stable identity attributes for a PID via CIM.
++
++    Returns a dict with ExecutablePath, CommandLine, CreationDate,
++    WorkingDirectory (when available), or None when the process is gone.
++    """
++    ps = (
++        "Get-CimInstance Win32_Process -Filter "
++        f'"ProcessId={pid}" | '
++        "Select-Object ProcessId,ExecutablePath,CommandLine,CreationDate | "
++        "ConvertTo-Json -Compress"
++    )
++    try:
++        output = subprocess.check_output(
++            ["powershell", "-NoProfile", "-Command", ps],
++            text=True,
++            stderr=subprocess.DEVNULL,
++        )
++    except (OSError, subprocess.CalledProcessError):
++        return None
++
++    output = output.strip()
++    if not output:
++        return None
++    try:
++        data = json.loads(output)
++    except ValueError:
++        return None
++    if isinstance(data, list):
++        data = data[0] if data else {}
++    return data if isinstance(data, dict) else None
++
++
++def _normalized(path: str | None) -> str:
++    if not path:
++        return ""
++    return str(Path(path)).lower().replace("/", "\\")
++
++
++def identify_workbench(pid: int) -> tuple[bool, str]:
++    """Confirm the PID belongs to this workbench.
++
++    Checks: executable lives under the project venv; command line references
++    the backend uvicorn app; working directory / command line point at the
++    project backend. Any missing critical attribute fails closed.
++    """
++    info = _process_info(pid)
++    if info is None:
++        return False, "无法读取进程身份信息（进程可能已退出）"
++
++    exe = _normalized(info.get("ExecutablePath"))
++    cmd = (info.get("CommandLine") or "").lower()
++    venv = _normalized(str(VENV_PYTHON))
++
++    if not exe:
++        return False, "缺少可执行路径，身份无法确认"
++    if exe != venv:
++        return False, f"可执行路径不属于项目 .venv：{exe}"
++    if APP_MARKER not in cmd or "main:app" not in cmd:
++        return False, "命令行不是本工作台的 uvicorn 后端"
++    if BACKEND_DIR.name not in cmd and str(REPO_ROOT).lower() not in cmd:
++        return False, "命令行未指向项目后端目录"
++    return True, "身份匹配"
++
++
+ def child_pids(parent_pid: int) -> list[int]:
+     """Direct children of the recorded workbench root via CIM."""
+-    import subprocess
+-
+     try:
+         output = subprocess.check_output(
+             [
+                 "powershell",
+                 "-NoProfile",
+                 "-Command",
+-                f"Get-CimInstance Win32_Process -Filter "
++                "Get-CimInstance Win32_Process -Filter "
+                 f'"ParentProcessId={parent_pid}" | '
+                 "Select-Object -ExpandProperty ProcessId",
+             ],
+@@ -56,6 +131,19 @@ def child_pids(parent_pid: int) -> list[int]:
+     return children
+ 
+ 
++def descendant_pids(root_pid: int) -> list[int]:
++    """Recursively collect the full descendant PID set."""
++    seen: set[int] = set()
++    queue = [root_pid]
++    while queue:
++        parent = queue.pop()
++        for child in child_pids(parent):
++            if child not in seen:
++                seen.add(child)
++                queue.append(child)
++    return sorted(seen)
++
++
+ def terminate(pid: int) -> bool:
+     handle = kernel32.OpenProcess(0x0001, False, pid)  # PROCESS_TERMINATE
+     if not handle:
+@@ -81,7 +169,15 @@ def main() -> int:
+         PID_FILE.unlink(missing_ok=True)
+         return 0
+ 
+-    targets = [root_pid, *child_pids(root_pid)]
++    matches, reason = identify_workbench(root_pid)
++    if not matches:
++        print(
++            f"[工作台] 进程 {root_pid} 身份与本工作台不匹配（{reason}）。"
++            "为避免误杀其他程序，已保留现场，未结束任何进程，请人工检查。"
++        )
++        return 1
++
++    targets = [root_pid, *descendant_pids(root_pid)]
+     for pid in targets:
+         if pid_alive(pid):
+             terminate(pid)

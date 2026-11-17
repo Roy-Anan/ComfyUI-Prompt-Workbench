@@ -18,10 +18,15 @@ legacy/src-tauri/gen/
 .env
 .env.*
 *.log
+*.tmp
 
 # Runtime PID file written by the launcher
 .workbench.pid
 
-# Local user data
+# User runtime data (database, knowledge, prompts, drafts, history, logs,
+# backups, exports). Lives inside the Git repo but must never be committed.
+/userdata/
+
+# Other local user data
 data/
 workbench-data/
