@@ -1,0 +1,61 @@
+{
+  "app": {
+    "name": "ComfyUI Prompt Workbench",
+    "version": "2.0",
+    "host": "127.0.0.1",
+    "port": 8199,
+    "theme": "dark"
+  },
+  "ollama": {
+    "base_url": "http://127.0.0.1:11434",
+    "model": "comfyui-prompt:v1",
+    "base_model": "qwen3:latest",
+    "keep_alive": "30m",
+    "timeout": 240,
+    "options": {
+      "temperature": 0.35,
+      "top_p": 0.85,
+      "top_k": 20,
+      "repeat_penalty": 1.3,
+      "repeat_last_n": 1024,
+      "num_predict": 1400,
+      "num_ctx": 8192
+    },
+    "note": "必须连 Ollama 桌面版 App 起的服务；不要自己另起 ollama serve（默认模型库为空）。options 前四项与 Modelfile 一致，repeat_penalty / num_predict 是工作台层防跑飞，不改规则文件"
+  },
+  "comfyui": {
+    "base_url": "http://127.0.0.1:8188",
+    "models_dir": "D:/AI/Qiuye/ComfyUI-aki-v3.2/ComfyUI/models/checkpoints",
+    "workflows_dir": "D:/AI/Qiuye/ComfyUI-aki-v3.2/ComfyUI/user/default/workflows",
+    "loras_dir": "D:/AI/Qiuye/ComfyUI-aki-v3.2/ComfyUI/models/loras",
+    "timeout": 300,
+    "http_timeout": 30
+  },
+  "workbench": {
+    "default_workflow": "suyuexisdxl.json",
+    "system_prompt_variant": "精简版",
+    "history_max_messages": 20
+  },
+  "hardware": {
+    "gpu": "RTX 4060 Laptop",
+    "vram_gb": 8,
+    "ram_gb": 16,
+    "batch_size": 1
+  },
+  "application": {
+    "auto_restore_ollama": true,
+    "auto_save_history": true
+  },
+  "vram": {
+    "auto_manage": true,
+    "min_free_mb": 4000,
+    "wait_free_seconds": 40,
+    "poll_interval": 1.0,
+    "free_comfy_after": true,
+    "free_wait_seconds": 20,
+    "reload_ollama": true,
+    "reload_keep_alive": "30m",
+    "strict_vram": false,
+    "note": "出图前卸载 Ollama 释放约 5.8GB；出图后 POST /free 释放 ComfyUI 模型；再预加载 Ollama。strict_vram=false 时显存不够只警告不阻断"
+  }
+}

@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ComfyUI Prompt Workbench</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand-row">
+    <div class="brand"><span class="dot"></span>ComfyUI Prompt Workbench<span class="tag">V2.0 · 正式版</span></div>
+    <div class="top-actions">
+      <button id="btnRuntime" class="mini-btn" title="刷新运行状态">运行状态</button>
+      <button id="btnLogs" class="mini-btn" title="查看工作台日志">日志</button>
+      <button id="btnSettings" class="mini-btn" title="打开设置">设置</button>
+    </div>
+  </div>
+  <div class="sub">说画面构想 → 生成正负提示词 → 自动让出显存 → ComfyUI 出图并回显 → 自动恢复 Ollama 继续聊</div>
+  <div class="chips">
+    <span class="chip" id="chip-ollama">Ollama …</span>
+    <span class="chip" id="chip-model">模型 …</span>
+    <span class="chip" id="chip-comfy">ComfyUI …</span>
+    <span class="chip" id="chip-vram">显存 …</span>
+  </div>
+  <div class="runtime-strip" id="runtimeBar">
+    <div class="rt-item">
+      <span class="rt-dot" id="rtDot"></span>
+      <span class="rt-k">运行</span>
+      <span class="rt-v" id="rtUptime">读取中…</span>
+    </div>
+    <div class="rt-item">
+      <span class="rt-k">当前任务</span>
+      <span class="rt-v" id="rtTask">空闲</span>
+    </div>
+    <div class="rt-item">
+      <span class="rt-k">完成</span>
+      <span class="rt-v" id="rtBusy">对话 0 · 出图 0</span>
+    </div>
+    <div class="rt-item rt-grow">
+      <span class="rt-k">最近事件</span>
+      <span class="rt-v rt-ellipsis" id="rtEvent">—</span>
+    </div>
+    <button id="rtRefresh" class="mini-btn" title="立即刷新">刷新</button>
+  </div>
+</header>
+
+<div id="errorBanner" class="error-banner" hidden>
+  <span class="eb-icon">!</span>
+  <span id="errorText" class="eb-text"></span>
+  <button id="errorLog" class="mini-btn">查看日志</button>
+  <button id="errorClose" class="eb-close" title="关闭">×</button>
+</div>
+
+<main class="layout">
+  <aside class="panel side">
+    <div class="side-head">
+      <h2>会话</h2>
+      <button id="newconv" class="mini-btn">新建</button>
+    </div>
+    <div id="convlist" class="convlist"><div class="small muted">加载中…</div></div>
+
+    <h2 style="margin-top:18px">当前工作流</h2>
+    <div class="wf-row">
+      <select id="wf"></select>
+      <button id="wfimport" class="mini-btn" title="导入 UI Workflow 或 API Prompt JSON">导入</button>
+      <input id="wfFile" type="file" accept=".json,application/json" hidden>
+    </div>
+    <div class="small muted" id="wfinfo"></div>
+    <div id="wfdetail" class="wf-detail"></div>
+    <div id="wfmap" class="wf-map"></div>
+
+    <h2 style="margin-top:16px">模型 / Profile</h2>
+    <div id="model" class="mini muted">选择工作流后自动识别</div>
+
+    <details id="injbox">
+      <summary>查看注入给 Ollama 的内容</summary>
+      <div class="small muted" id="injmeta"></div>
+      <pre id="inject">（加载中）</pre>
+    </details>
+
+    <button id="unload" class="ghost full">卸载 Ollama 模型</button>
+  </aside>
+
+  <section class="panel chat">
+    <div class="chat-head">
+      <input id="convtitle" class="title-input" placeholder="会话标题（回车保存）" maxlength="80">
+      <div class="chat-actions">
+        <button id="exportconv" class="ghost mini-btn">导出 MD</button>
+        <button id="newchat" class="ghost mini-btn">新建对话</button>
+      </div>
+    </div>
+    <div id="convinfo" class="small muted"></div>
+    <div id="log" class="log"><div class="empty muted">在下面直接说画面构想。</div></div>
+    <div class="gallery-head">
+      <span class="gh-title">出图记录 <span id="gcount" class="muted"></span></span>
+      <label class="small muted" title="勾选后每次出图用新种子；不勾选沿用工作流里的 seed"><input type="checkbox" id="randseed"> 随机种子</label>
+    </div>
+    <div id="gallery" class="gallery"><div class="small muted">还没有出图。</div></div>
+    <div class="compose">
+      <textarea id="msg" rows="3" placeholder="例如：一个白发少女坐在窗边，午后逆光，半写实插画风，氛围安静"></textarea>
+      <div class="compose-actions">
+        <button id="send">发送</button>
+        <button id="regenerate" class="ghost" title="用同一条需求重新生成">重新生成</button>
+      </div>
+    </div>
+    <div id="meta" class="small muted"></div>
+  </section>
+</main>
+
+<footer>仅本机使用 · V2.0 正式版：显存自动管理、运行状态、图片预览、错误提示、设置、日志、备份均已落地 · 深色界面</footer>
+
+<!-- 图片预览 -->
+<div id="previewModal" class="modal lightbox" hidden>
+  <div class="lightbox-bar">
+    <div class="lightbox-title" id="previewCaption">图片预览</div>
+    <div class="lightbox-actions">
+      <button id="zoomOut" class="mini-btn" title="缩小">−</button>
+      <button id="zoomReset" class="mini-btn" title="适应窗口">适应</button>
+      <button id="zoomIn" class="mini-btn" title="放大">+</button>
+      <button id="previewDownload" class="mini-btn">下载原图</button>
+      <button id="previewClose" class="mini-btn">关闭</button>
+    </div>
+  </div>
+  <div class="lightbox-stage"><img id="previewImg" alt="出图预览"></div>
+  <div class="lightbox-meta small" id="previewMeta"></div>
+</div>
+
+<!-- 设置 -->
+<div id="settingsModal" class="modal" hidden>
+  <div class="modal-card settings-card" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="settingsTitle">设置</div>
+        <div class="small muted">只改白名单内的项；保存前自动备份上一版</div>
+      </div>
+      <button id="settingsClose" class="eb-close" title="关闭">×</button>
+    </div>
+    <div class="settings-tabs" id="settingsTabs">
+      <button class="stab active" data-tab="app">应用</button>
+      <button class="stab" data-tab="chat">对话</button>
+      <button class="stab" data-tab="system">系统信息</button>
+      <button class="stab" data-tab="backup">备份</button>
+      <button class="stab" data-tab="about">关于</button>
+    </div>
+    <div class="settings-body">
+      <section class="stab-panel active" data-panel="app">
+        <label class="setting-row"><span><b>自动保存对话与提示词</b><small>关闭后刷新不保留这一轮</small></span><input type="checkbox" id="setAutoSave"></label>
+        <label class="setting-row"><span><b>出图后自动恢复 Ollama</b><small>保持“出完图能接着聊”</small></span><input type="checkbox" id="setAutoRestore"></label>
+        <label class="setting-row"><span><b>删除前二次确认</b><small>删除对话 / 工作流 / 备份时弹确认</small></span><input type="checkbox" id="setConfirmDelete"></label>
+        <div class="setting-row"><span><b>界面主题</b><small>当前只提供深色，避免浅色下对比度不足</small></span><span class="pill ok">深色</span></div>
+      </section>
+
+      <section class="stab-panel" data-panel="chat">
+        <div class="setting-row"><span><b>带多少条历史上下文</b><small>越大越连贯，也越吃 prompt token；范围 2–60</small></span><input id="setHistory" class="num-input" type="number" min="2" max="60" step="1"></div>
+        <div class="setting-row"><span><b>系统提示词版本</b><small>精简版适合 8GB 显存；全量版更完整但更长</small></span>
+          <select id="setVariant" class="compact-select"><option value="精简版">精简版</option><option value="全量版">全量版</option></select>
+        </div>
+        <div class="setting-note">提示词生成参数（temperature / repeat_penalty / num_predict）属于规则包定稿，不在页面改；要改请编辑 `config.json → ollama.options` 后重启。</div>
+      </section>
+
+      <section class="stab-panel" data-panel="system">
+        <div class="sys-grid" id="sysVersion"></div>
+        <div class="sys-grid" id="sysServices"></div>
+        <div class="sys-grid" id="sysPaths"></div>
+        <div class="sys-subtitle">显存自动管理</div>
+        <div class="sys-grid" id="sysVram"></div>
+        <div class="sys-subtitle">数据与体检</div>
+        <div class="sys-grid" id="sysBackupInfo"></div>
+        <div id="sysIntegrity" class="sys-integrity"></div>
+        <div id="sysLogs" class="sys-integrity"></div>
+      </section>
+
+      <section class="stab-panel" data-panel="backup">
+        <div class="setting-note">备份包含 `history\`、`settings\`、`workflows\` 和 `config.json`；不含出图原图、日志与备份自身。删除备份只移到 `backups\_trash`。</div>
+        <div class="backup-create">
+          <input id="backupNote" class="text-input" maxlength="200" placeholder="备注（可选），例如：阶段 7 验收前">
+          <button id="backupCreate">立即备份</button>
+        </div>
+        <div class="backup-bar">
+          <span id="backupInfo" class="small muted"></span>
+          <button id="backupRefresh" class="mini-btn">刷新列表</button>
+        </div>
+        <div id="backupList" class="backup-list"><div class="small muted">读取中…</div></div>
+      </section>
+
+      <section class="stab-panel" data-panel="about">
+        <div class="about-title">ComfyUI Prompt Workbench V2.0</div>
+        <p class="about-text">计划书七个阶段已全部落地：规则包 + Profile 精确匹配、提示词生成与防跑飞、对话持久化、工作流导入与连线判定、ComfyUI 出图、显存自动管理、UI 与最终打包。</p>
+        <div class="sys-grid">
+          <div class="sys-row"><span class="k">更新方式</span><span class="v">保留 `history\` / `settings\` / `outputs\`，替换程序文件；升级前点“立即备份”。</span></div>
+          <div class="sys-row"><span class="k">部署说明</span><span class="v">见安装包内 `部署步骤_Windows.md`</span></div>
+          <div class="sys-row"><span class="k">测试</span><span class="v">单元测试 + 真机冒烟；不声称没测过的事</span></div>
+        </div>
+        <div class="setting-note">已知边界写在 `阶段7_实施记录.md` 第八节：深色单主题、备份不含出图、日志 600 条、8GB 只能串行等。</div>
+      </section>
+    </div>
+    <div class="modal-foot">
+      <span id="settingsFeedback" class="small muted"></span>
+      <div class="foot-actions">
+        <button id="settingsReload" class="ghost mini-btn">重新读取</button>
+        <button id="settingsSave">保存设置</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 日志 -->
+<div id="logsModal" class="modal drawer" hidden>
+  <div class="drawer-card" role="dialog" aria-modal="true" aria-labelledby="logsTitle">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="logsTitle">运行日志</div>
+        <div class="small muted" id="logsPath">logs\workbench.log</div>
+      </div>
+      <button id="logsClose" class="eb-close" title="关闭">×</button>
+    </div>
+    <div class="logs-bar">
+      <select id="logsLevel" class="compact-select">
+        <option value="">全部级别</option>
+        <option value="info">info 及以上</option>
+        <option value="warn">warn 及以上</option>
+        <option value="error">仅 error</option>
+      </select>
+      <button id="logsRefresh" class="mini-btn">刷新</button>
+      <a id="logsDownload" class="mini-btn link-btn" href="/api/logs/download">下载日志</a>
+      <span class="small muted" id="logsCount"></span>
+    </div>
+    <div id="logsList" class="logs-list"><div class="small muted">读取中…</div></div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts"></div>
+<script src="/app.js"></script>
+</body>
+</html>

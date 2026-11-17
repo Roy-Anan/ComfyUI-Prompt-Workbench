@@ -1,0 +1,19 @@
+{
+  "application": {
+    "theme": "dark",
+    "auto_save_history": true,
+    "auto_restore_ollama": true,
+    "confirm_delete": true
+  },
+  "chat": {
+    "history_max_messages": 20,
+    "system_prompt_variant": "精简版"
+  },
+  "ollama": {
+    "base_url": "http://127.0.0.1:11434",
+    "model": "comfyui-prompt:v1"
+  },
+  "comfyui": {
+    "base_url": "http://127.0.0.1:8188"
+  }
+}

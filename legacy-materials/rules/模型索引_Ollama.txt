@@ -1,0 +1,24 @@
+# MODEL INDEX（精简索引，供本地 LLM 选模型；完整参数与范例见对应 MODEL_PROFILES/*.txt，按轮次只贴当前那一个）
+# 匹配优先用完整 checkpoint 文件名，不要只按模糊关键词。参数依据标记含义见系统提示词第 8 节。
+
+| 文件名 | 架构 | 派系 | 画风 | 提示词体系 | 关键参数 / 注意 |
+| --- | --- | --- | --- | --- | --- |
+| anything-v5.safetensors | SD1.5 | 经典二次元 1.5 | 二次元动漫、通用插画 | Danbooru 标签 | 身份 [已核实]；官方参数/范例/VAE/ClipSkip [未给出]；社区参考 DPM++ SDE Karras / Euler a、20~30 步、CFG 6~8（待核实） |
+| GhostMix_v2.0.safetensors | SD1.5 | 通用混合 1.5 | 半写实、写实人像 | 标签 + 短语 | 身份 [镜像核实]；VAE 可能内置（BakedVAE，待作者页确认）；官方参数 [未给出]；社区参考 DPM++ 系列、20~30 步、CFG 5~7、512×768（待核实） |
+| majicMIX realistic v7.safetensors | SD1.5 | 通用混合 1.5 | 写实人像、亚洲面孔 | 短语 + 摄影描述 | [作者推荐] Euler a / Euler / Restart、20~40 步、CFG 6~8、Clip Skip 2；[作者示例] Euler a/20 步/CFG 12/512×768/ft-mse VAE（非强制）；负面嵌入 ng_deepnegative_v1_75t、badhandv4；Scheduler/固定分辨率/完整文本负面 [未给出] |
+| ponyDiffusionV6XL_v6.safetensors | SDXL | Pony 系 | 二次元动漫 | Pony score 标签 | [作者推荐] Clip Skip 2、Euler a、1024px 级；[起始测试值] 25 步；独立 sdxl_vae 非必须；多数情况不需负面、不堆 masterpiece/hd 画质词；固定 CFG/Scheduler/完整负面 [未给出] |
+| autismmixSDXL_autismmixPony.safetensors | SDXL | Pony 系 | 二次元动漫 | Pony 标签 + BREAK | 身份 [镜像核实]，Pony V6 + LoRA 合并；标签 score_9…score_4_up, source_anime, BREAK；传统动漫风负面可加 3d；VAE/ClipSkip/固定采样 [未给出] |
+| CyberRealisticPony_V18.0_F16.safetensors | SDXL | Pony 系 | 写实人像、欧美面孔 | Pony 标签 | [作者推荐] DPM++ SDE / 2M Karras / Euler a、30+ 步、CFG 5、Clip Skip 2、896×1152 / 832×1216；正面 score_9, score_8_up, score_7_up, (SUBJECT),；VAE/Scheduler/触发词 [未给出] |
+| RH_Illustrious_2.5D_V1.safetensors | SDXL | Illustrious 系 | 2.5D 插画、半写实动画 | 自然描述，不用 Pony 标签 | 身份 [已核实]，IL-XL 微调；官方采样器/步数/CFG/分辨率/Clip Skip 全 [未给出]，禁止用系内通用值冒充官方推荐 |
+| Juggernaut-XI-byRunDiffusion.safetensors | SDXL | Juggernaut 系 | 写实人像、欧美面孔 | 自然语言 + 摄影 | [作者示例] DPM++ 2M SDE/Exponential/35 步/CFG 4/832×1216；[作者指南] DPM++ 2M Karras/25~40 步/CFG 4~6/1024×1024/832×1216/1216×832；VAE 内置；Clip Skip/更多范例 [未给出]；本机实测不符预期，不作首选 |
+| huslyorealismxl_v2DMD.safetensors | SDXL | 写实 XL | 写实人像、成熟人像、加速版(DMD) | 自然语言 + 摄影 | 身份 [镜像核实]，DMD 蒸馏加速版；[作者推荐] LCM/Karras/7 步/CFG 1；必须低步低 CFG；VAE/ClipSkip/完整正面范例 [未给出]；参数勿套普通版/V3 |
+| HuslyoRealismSDXL_v3.safetensors | SDXL | 写实 XL | 写实人像 | 自然语言 + 摄影 | 身份 [已核实] V3，可作 Refiner（作者声明）；现有参数来自系列普通版说明，非 V3 专属；V3 独立参数/VAE/ClipSkip [未给出]；勿与普通版/DMD 混用 |
+| intorealismUltra_v80.safetensors | SDXL | 写实 XL | 写实人像 | 自然语言 + 摄影 | 身份 [已核实] V8.0，DMD2+Light 混合早期测试版；[作者推荐] Euler A Karras / Exponential、6~12 步、CFG 1.5~2、896×1152 / 832×1216；VAE/ClipSkip/范例 [未给出] |
+| juggernautXL_ragnarokBy.safetensors | SDXL | Juggernaut 系 | 写实人像（面孔倾向待核实） | 自然语言 + 摄影 | 身份 [镜像核实]；[作者推荐] SDXL Checkpoint、VAE 内置、832×1216、DPM++ 2M SDE、30~40 步、CFG 3~6；负面先留空再逐步加；Scheduler/ClipSkip/完整范例 [未给出]；勿套 Juggernaut XI 参数 |
+| waiIllustriousSDXL_v170.safetensors | SDXL | Illustrious 系 | 2.5D 插画、二次元动漫 | 自然描述 + 少量质量词 | 身份 [镜像核实]，官方文件名 WAI-Nsfw-Illustrious-17；[作者推荐] VAE 内置、>1024×1024/示例 1024×1344、Euler a、15~30 步、CFG 5~7；正面 masterpiece,best quality,amazing quality,；负面 bad quality,worst quality,worst detail,sketch,censor,；别堆画质词、负面别过长；Scheduler/ClipSkip/触发词 [未给出] |
+
+## 体系速记
+- Pony 系（Pony/AutismMix/Cyber）：用 score 标签体系，负面与普通 SDXL 不同。
+- Illustrious 系（RH/WAI）：自然描述或少量质量词，不用 Pony score 标签。
+- 写实 XL（Huslyo DMD/V3、IntoRealism）：注意蒸馏/加速版低步低 CFG，版本之间参数不混用。
+- Juggernaut 系（XI/Ragnarok）：两个版本分开，参数不互套。

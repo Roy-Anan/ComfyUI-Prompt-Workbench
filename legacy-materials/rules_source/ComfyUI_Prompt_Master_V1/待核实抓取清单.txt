@@ -1,0 +1,114 @@
+# 待核实抓取清单（第三轮核查回填后，交联网 GPT / 浏览器继续补缺口）
+
+更新日期：2026-11-07
+用途：第三轮联网核查已回填身份与作者参数；本清单只列仍未从官方作者卡确认的字段。
+请把本清单交给能联网的 GPT 或浏览器抓取，回填到 MODEL_PROFILES/ 对应文件。
+
+## 抓取纪律（必须遵守）
+1. 只摘录官方模型卡 / 作者示例 / 作者页面明确写出的信息；镜像站内容标注为镜像，不称作者官网。
+2. 页面没写的字段一律标“未给出”，不要凭模型名、架构常识或同系列其他版本参数补全。
+3. 区分 [已核实] / [镜像核实] / [作者推荐] / [作者示例] / [作者指南] / [起始测试值] / [未给出]；示例图参数不等于强制推荐。
+4. 作者对成熟向内容的说法属于单方声明，不等于每幅输出保证。
+5. 回填前对照完整文件名与 SHA256，不要串用同系列其他版本（尤其 Huslyo 普通版 / DMD 版 / V3，Juggernaut XI / Ragnarok）。
+
+## 本地文件 SHA256 对照表（供 GPT 核对版本，勿改动）
+
+| 文件名 | 大小(MB) | 本地 SHA256 |
+| --- | --- | --- |
+| anything-v5.safetensors | 2033.8 | 7F96A1A9CA9B3A3242A9AE95D19284F0D2DA8D5282B42D2D974398BF7663A252 |
+| GhostMix_v2.0.safetensors | 2288.9 | E3EDB8A26F44DFDDC124129004B5DED3378BE974B8D3BF82F43B9660D416D3D1 |
+| majicMIX realistic v7.safetensors | 2033.8 | 7C819B6D13663ED720C2254F4FE18373107DFEF2448D337913C8FC545640881E |
+| ponyDiffusionV6XL_v6.safetensors | 6616.6 | 67AB2FD8EC439A89B3FEDB15CC65F54336AF163C7EB5E4F2ACC98F090A29B0B3 |
+| autismmixSDXL_autismmixPony.safetensors | 6616.6 | 821AA5537F8DDAFDBF963827551865C31C5BBFAB1ABE7925CB5F006C8F71E485 |
+| CyberRealisticPony_V18.0_F16.safetensors | 6616.6 | 1D580C1C3F3612FA4DB88AF65372255582D5509CA0B28F85387273368301941B |
+| RH_Illustrious_2.5D_V1.safetensors | 6616.6 | A3FBC24507AC082AB87C47EB4C3974DF2FA9A5F73A2D84F5D5D64B7A4E00CDFB |
+| Juggernaut-XI-byRunDiffusion.safetensors | 6776.2 | 33E58E86686F6B386C526682B5DA9228EAD4F91D994ABD4B053442DC5B42719E |
+| huslyorealismxl_v2DMD.safetensors | 6616.6 | 33B5ABCA14DC6F6A49E5353D94B30E77C63518DA734915D74AF3F0CEF74538A3 |
+| HuslyoRealismSDXL_v3.safetensors | 6616.6 | D1BCFA292CD6E67A53390B46BE70CFE37A2823293F87858F88A17EC95E121CDA |
+| intorealismUltra_v80.safetensors | 6616.6 | FA67805B5769A4533A42A50ACF8A39100BE6FF991AE28706099F71E32BBC7380 |
+| juggernautXL_ragnarokBy.safetensors | 6776.2 | DD08FA32F98D05A2443CA1419E46DF1575A0811F6E3B246D9DD47FF20F5EB66A |
+| waiIllustriousSDXL_v170.safetensors | 6616.6 | F116B0C78FF441467B0CDC8F1936E1ED18EA31E9997C7B132B1B8DB533F0BD04 |
+
+核对要求：找到官方版本页后，优先用官方提供的文件 SHA256（或文件大小）与上表比对；
+哈希/大小一致才能确认本地文件对应该官方版本；对不上时以官方版本为准，标注“哈希不匹配”，不要强行对应。
+
+## 本轮已核实（不要再重复抓取身份）
+- Anything V5：SD1.5 Checkpoint，SHA256 一致（HF 镜像 / civarchive 版本记录）。
+- GhostMix V2.0：HF 镜像哈希一致，对应 GhostMix V2.0；镜像文件名 GhostMix-V2.0-fp16-BakedVAE（文件名不同，内容相同）。
+- majicMIX V7：SD1.5 Checkpoint，哈希一致；[作者推荐] Euler a/Euler/Restart、20~40 步、CFG 6~8、Clip Skip 2；[作者示例] 512×768/Euler a/20 步/CFG 12/ft-mse VAE。
+- Pony V6 XL：Checkpoint，哈希一致；[作者推荐] Clip Skip 2、Euler a、1024px 级；独立 sdxl_vae；25 步为起始参考；多数情况不需负面、不堆画质词。
+- AutismMix Pony：版本镜像哈希一致；Pony V6 + LoRA 合并；标签片段与评论写法已收录。
+- CyberRealistic V18：文件名 + 短哈希匹配；[作者推荐] DPM++ SDE/2M Karras/Euler a、30+ 步、CFG 5、Clip Skip 2、896×1152/832×1216，正负面范例已收录。
+- RH 2.5D V1：IL-XL 微调 Checkpoint，哈希一致，2.5D 半写实动画。
+- Juggernaut XI：SDXL 1.0 Checkpoint，VAE 内置；[作者示例] 832×1216/DPM++ 2M SDE/Exponential/35 步/CFG 4；[作者指南] DPM++ 2M Karras/25~40 步/CFG 4~6，分辨率 1024×1024/832×1216/1216×832。
+- Huslyo V2 DMD：DMD 专属版本哈希一致；[作者推荐] LCM/Karras/7 步/CFG 1。
+- Huslyo V3：哈希一致，确认即作者 V3，SDXL 1.0，可作 Refiner；参数来自系列普通版说明，非 V3 专属。
+- IntoRealism V8：哈希一致，确认 V8.0，SDXL 1.0，DMD2+Light 混合早期测试版；[作者推荐] Euler A Karras/Exponential、6~12 步、CFG 1.5~2、896×1152/832×1216。
+- Juggernaut XL Ragnarok：镜像哈希一致；[作者推荐] SDXL Checkpoint、VAE 内置、832×1216、DPM++ 2M SDE、30~40 步、CFG 3~6；作者建议负面先留空。
+- WAI Illustrious v17.0：镜像哈希一致（官方文件名 WAI-Nsfw-Illustrious-17）；[作者推荐] Illustrious SDXL Checkpoint、VAE 内置、>1024×1024/示例 1024×1344、Euler a、15~30 步、CFG 5~7；正负面标签片段已收录。
+
+---
+
+## 1. anything-v5.safetensors（身份已核实）
+待抓：作者完整正负面提示词；VAE；官方采样器/调度器/步数/CFG/分辨率；触发词。
+检索线索：HF genai-archive/anything-v5；civarchive 636436281485913520。
+
+## 2. GhostMix_v2.0.safetensors（身份镜像核实，参数待确认）
+待抓：作者确认的 VAE（是否内置）；Clip Skip；官方采样器/调度器/步数/CFG/分辨率；触发词；完整正负面范例。
+注意：BakedVAE 仅为镜像文件名推断，需作者版本页确认。
+检索线索：civitai.com/models/36520/ghostmix。
+
+## 3. majicMIX realistic v7.safetensors（身份已核实，推荐参数已补）
+待抓：完整文本 Negative Prompt；Scheduler；官方固定分辨率；是否强制外置 VAE；触发词。
+检索线索：civitai 43331?modelVersionId=176425；HF majicmixRealistic_v7.json。
+
+## 4. autismmixSDXL_autismmixPony.safetensors（身份镜像核实）
+待抓：VAE；Clip Skip；固定采样器/调度器/步数/CFG/分辨率；完整负面范例。
+检索线索：civitai.tech/models/288584?modelVersionId=324619。
+
+## 5. CyberRealisticPony_V18.0_F16.safetensors（参数已核实）
+待抓：VAE 文件名；Scheduler；触发词；完整画廊图元数据。
+检索线索：civitai.tech/models/443821。
+
+## 6. ponyDiffusionV6XL_v6.safetensors（参数部分已核实）
+待抓：固定 CFG；Scheduler；完整负面范例（若有）；sdxl_vae 是否需随本 checkpoint 加载。
+检索线索：civitai.tech/models/257749?modelVersionId=290640。
+
+## 7. RH_Illustrious_2.5D_V1.safetensors（身份已核实，参数全缺）
+待抓：VAE；Clip Skip；触发词；官方采样器/调度器/步数/CFG/分辨率；完整正负面范例。
+注意：作者未公开参数前，不得用 Illustrious 系内通用值冒充该版本官方推荐。
+检索线索：HF RunningHubAI/rh-illustrious-2.5d-v1-checkpoint 的 usage/sample 元数据区。
+
+## 8. Juggernaut-XI-byRunDiffusion.safetensors（示例与指南已核实）
+待抓：Clip Skip；Scheduler；更多完整正负面范例；其他推荐分辨率/采样器。
+检索线索：rundiffusion.com/juggernaut-xi。
+
+## 9. huslyorealismxl_v2DMD.safetensors（身份镜像核实）
+待抓：VAE；Clip Skip；完整正向范例。
+检索线索：fastsdmodel.com/models/1802228 DMD 段；作者主页。
+
+## 10. HuslyoRealismSDXL_v3.safetensors（身份已核实）
+待抓：V3 独立采样参数（非系列普通版说明）；VAE；Clip Skip 是否 V3 专属；画廊完整正向范例；确认系列负面是否适用 V3。
+检索线索：civarchive 1802228?modelVersionId=3400474。
+
+## 11. intorealismUltra_v80.safetensors（身份与参数已核实）
+待抓：VAE；Clip Skip；触发词；完整正负面范例；本机实测表现另记 TEST_FEEDBACK。
+检索线索：civarchive 1950841?modelVersionId=2614800；civitai 2383077（工作流线索）。
+
+## 12. juggernautXL_ragnarokBy.safetensors（身份镜像核实，作者设置已补）
+待抓：Clip Skip；Scheduler；完整画廊正负面范例；面孔倾向确认。
+注意：不得套用 Juggernaut XI 的示例/指南参数；作者 NSFW 训练说明为单方声明。
+检索线索：civitaiarchive.com/models/133005?modelVersionId=1759168。
+
+## 13. waiIllustriousSDXL_v170.safetensors（身份镜像核实，作者设置已补）
+待抓：Clip Skip；Scheduler；触发词；完整画廊正负面范例；画风细节确认。
+检索线索：civitaiarchive.com/models/827184?modelVersionId=2883731。
+
+---
+
+## 可直接粘贴给 GPT 的抓取指令
+“请访问下列 Stable Diffusion checkpoint 的官方模型卡（优先 Civitai、Hugging Face、作者主页；镜像站请注明为镜像）。先用上方本地 SHA256 / 文件大小与官方版本页文件哈希或大小比对，输出‘哈希一致 / 大小一致 / 不匹配 / 官方未提供哈希’。只摘录官方页面或作者示例明确写出的信息；页面未写的标‘未给出’，不要凭模型名或常识补全，也不要串用同系列其他版本。对每个模型输出：模型卡 URL、底座架构、模型类型、VAE（内置/外置文件名/未给出）、Clip Skip、触发词、推荐 Resolution、Sampler、Scheduler、Steps、CFG、官方 Positive Prompt 范例（原文）、官方 Negative Prompt 范例（原文）、作者成熟向声明（原文摘录，注明是否为单方声明）。模型清单：<粘贴上方各条文件名与已核实项>。”
+
+## 回填位置
+- 参数与范例：MODEL_PROFILES/ 对应 .txt 的 [GENERATION SETTINGS] 与 [PROMPT STYLE]。
+- 本机实测结果：TEST_FEEDBACK/ 对应模型反馈记录，不要写进作者推荐。

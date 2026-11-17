@@ -1,0 +1,30 @@
+# MODEL DATABASE — 初始登记
+# 注意：架构与风格是按已知文件名作的初步归类；最终请以作者模型卡、metadata 和本机测试为准。
+# 文件名匹配时优先使用完整 checkpoint 文件名，不要只按模糊关键词匹配。
+
+[SD1.5 / Anime or mixed]
+anything-v5.safetensors = MODEL_PROFILES/Anything_V5.txt
+GhostMix_v2.0.safetensors = MODEL_PROFILES/GhostMix_V2.txt
+
+[SD1.5 / Realistic]
+majicMIX realistic v7.safetensors = MODEL_PROFILES/majicMIX_Realistic_V7.txt
+
+[Pony-based SDXL]
+autismmixSDXL_autismmixPony.safetensors = MODEL_PROFILES/AutismMix_Pony.txt
+CyberRealisticPony_V18.0_F16.safetensors = MODEL_PROFILES/CyberRealisticPony_V18.txt
+ponyDiffusionV6XL_v6.safetensors = MODEL_PROFILES/PonyDiffusion_V6_XL.txt
+
+[SDXL / Realistic]
+huslyorealismxl_v2DMD.safetensors = MODEL_PROFILES/HuslyoRealismXL_V2_DMD.txt
+HuslyoRealismSDXL_v3.safetensors = MODEL_PROFILES/HuslyoRealismXL_V3.txt
+intorealismUltra_v80.safetensors = MODEL_PROFILES/IntoRealism_Ultra_V8.txt
+
+[SDXL / Juggernaut 系]
+Juggernaut-XI-byRunDiffusion.safetensors = MODEL_PROFILES/Juggernaut_XI.txt
+juggernautXL_ragnarokBy.safetensors = MODEL_PROFILES/JuggernautXL_Ragnarok.txt
+
+[Illustrious]
+RH_Illustrious_2.5D_V1.safetensors = MODEL_PROFILES/RH_Illustrious_2.5D_V1.txt
+waiIllustriousSDXL_v170.safetensors = MODEL_PROFILES/WaiIllustrious_v170.txt
+
+# 新模型：复制 TEMPLATES/NEW_MODEL_PROFILE_TEMPLATE.txt，填写后在此增加映射。

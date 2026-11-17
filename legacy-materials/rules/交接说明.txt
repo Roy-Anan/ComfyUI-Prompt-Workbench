@@ -1,0 +1,65 @@
+# 交接说明（给接手的智能体 / 迁移到其他机器或其他 AI）
+
+更新日期：2026-11-08
+本包是 ComfyUI / Stable Diffusion 本地出图的提示词规则与底模资料库。本说明帮助陌生接手方在不依赖历史对话的情况下，快速弄清结构、入口、加载方式和迁移步骤。
+
+## 1. 先读哪个文件（阅读顺序）
+1. `README_使用说明.txt` —— 包的整体用途、结构、新增模型流程。
+2. `系统提示词_全量版.txt` —— 全量写词规则（角色、模型识别、优先级、写法、负面词、参数标记、合规红线、输出格式、去重规则）。
+3. `模型数据库.txt` —— 13 个 checkpoint 文件名到 profile 的映射。
+4. 按需打开 `MODEL_PROFILES/` 下当前要用的那一个模型 profile。
+
+精简 Ollama 场景另见：`系统提示词_Ollama精简版.txt`、`模型索引_Ollama.txt`、`OLLAMA_使用说明.txt`。
+
+## 2. 目录结构
+- 根目录：规则、数据库、索引、输出模板、Modelfile、待核实清单。
+- `MODEL_PROFILES/`：13 个底模的专属配置（架构、提示词习惯、作者参数、范例、本机实测、待核实项）。
+- `TEMPLATES/NEW_MODEL_PROFILE_TEMPLATE.txt`：新底模建档模板。
+- `TEST_FEEDBACK/反馈记录模板.txt`：本机实测反馈记录模板。
+- 配套表格（不在本文件夹内）：上一级 `..\模型说明.xlsx`，含 `底模清单`、`分级与限制`、`标签字典` 三个工作表；迁移时如需一并带走，从 `checkpoints\` 目录拷贝。
+
+## 3. 按需加载，不要全量塞入上下文
+- 内置 system 已含规则和 13 模型索引；Ollama 场景只需再提供当前模型**单个** profile，不要把 13 个 profile 正文一次性塞进上下文。
+- 简单出图、索引参数够用时可以不贴 profile；需要范例、触发词、完整负面或精确参数依据时再贴对应那一个。
+- 换模型时替换对应 profile；聊久了或换模型就开新对话，重新贴当前 profile（索引不用重贴）。
+- 全量 `系统提示词_全量版.txt` 适合长上下文模型；8B 小模型 / 短上下文用 `系统提示词_Ollama精简版.txt` 精简版。
+
+## 4. 数据口径与依据标记（不要改写口径）
+参数与身份都带依据标记，接手方不得把低可靠度信息升级成官方推荐：
+- `[已核实]` 本地文件与官方/镜像记录 SHA256 一致；
+- `[镜像核实]` 经 HF / CivArchive 等镜像哈希对照确认，镜像不等于作者官网；
+- `[作者推荐]` 当前版本作者明确给出；
+- `[作者示例]` 作者示例图元数据参数，非强制推荐；
+- `[作者指南]` 作者教程/指南的另一套建议，与示例分开；
+- `[已实测]` 本机实测；
+- `[起始测试值]` 仅用于探索，不代表最佳值；
+- `[待核实]` / `[未给出]` 无可靠依据，不要凭常识补全。
+- 同系列不同版本参数禁止互套（尤其 Huslyo 普通版 / DMD / V3，Juggernaut XI / Ragnarok）。
+- 待补的官方信息见 `待核实抓取清单.txt`，含每条缺口、检索线索和可粘贴给联网 GPT 的抓取指令。
+
+
+## 6. 迁移到另一台 Ollama 机器
+前提：该机已安装 Ollama，且已有同名底座模型 `qwen3:latest`（8B 量化 VL，Q4_K_M）。
+1. 拷贝整个规则包文件夹到目标机对应目录。
+2. 进入包目录执行：
+   `ollama create comfyui-prompt:v1 -f Modelfile.qwen3-comfyui`
+3. 运行：`ollama run comfyui-prompt:v1`
+- 包内 `启动提示词助手.bat` 是本机双击入口；桌面快捷方式 `ComfyUI 提示词助手.lnk` 指向该 bat。迁移到新机器后桌面 lnk 不跟随（写的是本机绝对路径），直接双击包内 bat，或按上面命令行启动即可。
+- Modelfile 内联了精简 system，参数 `num_ctx 8192`、`temperature 0.7`、`top_p 0.8`、`top_k 20`。
+- `comfyui-prompt:v1` 是基于底座权重的派生配置条目，不是独立新权重模型；删除用 `ollama rm comfyui-prompt:v1`，不影响底座。
+- 若目标机底座模型名不同，改 Modelfile 里的 `FROM` 行后再 create。
+
+## 7. 迁移到非 Ollama 的其他 AI / 智能体
+- 不需要 Modelfile，也不需要 `ollama create`。
+- 把 `系统提示词_Ollama精简版.txt`（或全量 `系统提示词_全量版.txt`）作为系统提示词；精简 system 已含索引，只需再提供当前模型 profile；`模型索引_Ollama.txt` / `模型数据库.txt` 仅在需要核对映射时查阅。
+- 输出格式参照 `输出模板.txt`。
+
+## 8. 本机环境备注（仅供参考，不代表通用配置）
+- 显卡 RTX 4060 Laptop 8GB 显存、16GB RAM；默认 Batch Size 1，从较低分辨率开始。
+- 8GB 跑 SDXL 不叠加修脸 / 修手 / 放大 / ControlNet 节点。
+- 本地 LoRA：SDXL 版 `suyuexifull_c1-st6000` 只挂 SDXL 底模；SD1.5 版 `suyuexi.safetensors` 只挂 SD1.5 底模，跨架构混挂会报权重形状错配。
+
+## 9. 维护
+- 新增底模：复制 `TEMPLATES/NEW_MODEL_PROFILE_TEMPLATE.txt` 建档 → 在 `模型数据库.txt` 加映射 → 精简场景在 `模型索引_Ollama.txt` 和 `系统提示词_Ollama精简版.txt` 内置索引表各加一行 → 同步上级 `模型说明.xlsx`；之后重建 Modelfile 并重新 `ollama create`。
+- 改了 `系统提示词_Ollama精简版.txt` 后：规则包目录跑 `python register_assistant.py` 一键生成 Modelfile 并 `ollama create` 重建条目；`--build-only` 只生成不注册。只改源文件不重建不生效；采样参数改 `register_assistant.py` 的 PARAMETER 段后重跑。
+- 缺依据的字段写 `[待核实]` / `[未给出]`，不要猜。

@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "ComfyUI Prompt Workbench",
+    "version": "2.0",
+    "status": "stable",
+    "description": "本机 ComfyUI 提示词工作台：精确模型匹配、规则注入、多轮对话、工作流导入、真出图与 8GB 显存自动管理。",
+    "root": ".",
+    "agent_entry": "AGENTS.md",
+    "human_entry": "交接说明.md",
+    "user_manual": "README_使用说明.md",
+    "release_zip": "dist/ComfyUI_Prompt_Workbench_V2.0.zip",
+    "license": "本机个人使用；对外发布前由用户确认许可与内容合规。",
+    "owner": "项目用户"
+  },
+  "version_sources": [
+    "app/__init__.py",
+    "config.json"
+  ],
+  "environment": {
+    "os": "Windows",
+    "python": {
+      "path": "D:\\AI\\Qiuye\\ComfyUI-aki-v3.2\\python\\python.exe",
+      "fallback": "python",
+      "version": "3.13.11",
+      "note": "本机唯一可用解释器；换机时改启动脚本或使用 PATH 中的 python。"
+    },
+    "hardware": {
+      "gpu": "RTX 4060 Laptop",
+      "vram_gb": 8,
+      "ram_gb": 16,
+      "default_batch_size": 1
+    },
+    "optional_tools": {
+      "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "websocket_client": "仅 tools/ui_probe.py 需要，不是运行时依赖"
+    }
+  },
+  "runtime": {
+    "host": "127.0.0.1",
+    "port": 8199,
+    "entry": "app/server.py",
+    "start_script": "启动工作台.bat",
+    "health_url": "http://127.0.0.1:8199/api/health",
+    "page_url": "http://127.0.0.1:8199"
+  },
+  "services": {
+    "ollama": {
+      "base_url": "http://127.0.0.1:11434",
+      "model": "comfyui-prompt:v1",
+      "base_model": "qwen3:latest",
+      "keep_alive": "30m",
+      "must_use_desktop_app": true,
+      "note": "必须连 Ollama 桌面版；不要另起 ollama serve。"
+    },
+    "comfyui": {
+      "base_url": "http://127.0.0.1:8188",
+      "models_dir": "D:/AI/Qiuye/ComfyUI-aki-v3.2/ComfyUI/models/checkpoints",
+      "workflows_dir": "D:/AI/Qiuye/ComfyUI-aki-v3.2/ComfyUI/user/default/workflows",
+      "loras_dir": "D:/AI/Qiuye/ComfyUI-aki-v3.2/ComfyUI/models/loras"
+    }
+  },
+  "commands": {
+    "start": {
+      "argv": ["{python}", "app/server.py"],
+      "cwd": "."
+    },
+    "start_with_browser": {
+      "argv": ["{python}", "app/server.py", "--open-browser"],
+      "cwd": "."
+    },
+    "unit": {
+      "argv": ["{python}", "-m", "unittest", "discover", "-s", "tests", "-v"],
+      "cwd": "."
+    },
+    "smoke": {
+      "argv": ["{python}", "-u", "tests/smoke_server.py"],
+      "cwd": ".",
+      "requires": ["端口 8199 空闲", "Ollama 11434", "ComfyUI 8188", "先备份用户数据"]
+    },
+    "ui_static": {
+      "argv": ["{python}", "tools/check_ui.py"],
+      "cwd": "."
+    },
+    "ui_browser": {
+      "argv": ["{python}", "tools/ui_probe.py"],
+      "cwd": ".",
+      "requires": ["Chrome", "websocket-client"]
+    },
+    "check_handover": {
+      "argv": ["{python}", "tools/check_handover.py"],
+      "cwd": "."
+    },
+    "package": {
+      "argv": ["{python}", "tools/make_release.py", "V2.0"],
+      "cwd": "."
+    },
+    "verify_zip": {
+      "argv": ["{python}", "tools/verify_zip.py", "V2.0"],
+      "cwd": "."
+    }
+  },
+  "app_modules": {
+    "app/__init__.py": "版本号与应用包标识",
+    "app/server.py": "HTTP 路由、静态页面、接口编排、启动入口",
+    "app/profile_lookup.py": "完整 checkpoint 文件名的精确匹配与模型库完整性",
+    "app/prompt_context.py": "系统提示词 + 当前模型 profile + 对话上下文注入",
+    "app/prompt_extract.py": "从助手回复切出正/负提示词与参数，不改写内容",
+    "app/output_guard.py": "输出跑飞检测（长度、逗号、重复短语），只判定不改写",
+    "app/ollama_client.py": "Ollama 对话、卸载、预加载",
+    "app/comfy_workflow.py": "UI/API 工作流解析与按连线判定正负节点",
+    "app/workflow_lib.py": "工作流库导入、列出、人工映射、删除归档",
+    "app/comfy_api.py": "UI Workflow 转 API Prompt、提交、轮询、取图、/free",
+    "app/vram_manager.py": "8GB 显存状态机：卸 Ollama → 出图 → 释放 ComfyUI → 恢复 Ollama",
+    "app/history_store.py": "会话、消息、提示词、出图记录的原子持久化",
+    "app/settings_store.py": "设置读写、白名单/范围校验、保存前备份",
+    "app/backup.py": "备份 history/settings/workflows/config，ZIP manifest 带 SHA256",
+    "app/workbench_log.py": "JSON 行滚动日志、内存最近 600 条、启动读回",
+    "app/runtime_state.py": "当前任务、计数器、last_error",
+    "app/lora_meta.py": "safetensors 头部识别 LoRA 架构，不按文件名猜"
+  },
+  "web_files": [
+    "web/index.html",
+    "web/style.css",
+    "web/app.js"
+  ],
+  "test_files": [
+    "tests/test_profile_lookup.py",
+    "tests/test_stage2.py",
+    "tests/test_stage3.py",
+    "tests/test_stage4.py",
+    "tests/test_stage5.py",
+    "tests/test_stage6.py",
+    "tests/test_stage7.py",
+    "tests/smoke_server.py"
+  ],
+  "docs_index": [
+    "AGENTS.md",
+    "交接说明.md",
+    "README_使用说明.md",
+    "部署步骤_Windows.md",
+    "更新说明.md",
+    "规则包整合记录.md",
+    "阶段2_实施记录.md",
+    "阶段3_实施记录.md",
+    "阶段4_实施记录.md",
+    "阶段5_实施记录.md",
+    "阶段6_实施记录.md",
+    "阶段7_实施记录.md"
+  ],
+  "stages": [
+    {
+      "stage": 1,
+      "title": "规则包整合与 Profile 精确匹配",
+      "status": "done",
+      "record": "规则包整合记录.md",
+      "evidence": ["logs/阶段1_最终验证.txt", "logs/测试结果_阶段1.txt", "logs/冒烟结果_阶段1.txt"]
+    },
+    {
+      "stage": 2,
+      "title": "提示词生成、防跑飞与真实对话",
+      "status": "done",
+      "record": "阶段2_实施记录.md",
+      "evidence": ["logs/测试结果_阶段2.txt"]
+    },
+    {
+      "stage": 3,
+      "title": "多轮对话、持久化与设置",
+      "status": "done",
+      "record": "阶段3_实施记录.md",
+      "evidence": ["logs/测试结果_阶段3.txt"]
+    },
+    {
+      "stage": 4,
+      "title": "工作流导入与按连线判定正负节点",
+      "status": "done",
+      "record": "阶段4_实施记录.md",
+      "evidence": ["logs/测试结果_阶段4.txt"]
+    },
+    {
+      "stage": 5,
+      "title": "ComfyUI 真出图与图片回显",
+      "status": "done",
+      "record": "阶段5_实施记录.md",
+      "evidence": ["logs/测试结果_阶段5.txt", "logs/UI截图_阶段5.png"]
+    },
+    {
+      "stage": 6,
+      "title": "8GB 显存自动管理",
+      "status": "done",
+      "record": "阶段6_实施记录.md",
+      "evidence": ["logs/测试结果_阶段6.txt", "logs/UI截图_阶段6.png"]
+    },
+    {
+      "stage": 7,
+      "title": "深色 UI、运行状态、日志、备份、设置、最终交付",
+      "status": "done",
+      "record": "阶段7_实施记录.md",
+      "evidence": [
+        "logs/测试结果_阶段7.txt",
+        "logs/冒烟结果_阶段7.txt",
+        "logs/阶段7_UI自检结果.json",
+        "logs/UI截图_阶段7_首页.png",
+        "logs/UI截图_阶段7_设置.png",
+        "logs/UI截图_阶段7_备份.png",
+        "logs/UI截图_阶段7_日志.png",
+        "logs/UI截图_阶段7_预览.png",
+        "logs/UI截图_阶段7_错误提示.png"
+      ]
+    }
+  ],
+  "data_policy": {
+    "protected_user_data": ["history", "settings", "workflows", "outputs", "backups"],
+    "runtime_data": ["logs"],
+    "package_excludes": [
+      "dist",
+      "history",
+      "settings",
+      "outputs",
+      "backups",
+      "chrome_headless",
+      "__pycache__",
+      ".git"
+    ],
+    "backup_contents": ["history", "settings", "workflows", "config.json"],
+    "backup_excludes": ["outputs", "logs", "backups"],
+    "delete_policy": {
+      "conversation": "移入 history/conversations/_archive",
+      "backup": "移入 backups/_trash",
+      "workflow": "工作台库删除归档，不直接抹除"
+    }
+  },
+  "api_contract_doc": {
+    "path": "README_使用说明.md",
+    "section": "接口",
+    "server_route_doc": "app/server.py 顶部 docstring"
+  },
+  "package_required": [
+    "AGENTS.md",
+    "交接说明.md",
+    "PROJECT_MANIFEST.json",
+    "README_使用说明.md",
+    "部署步骤_Windows.md",
+    "更新说明.md",
+    "阶段7_实施记录.md",
+    "config.json",
+    "启动工作台.bat",
+    "app/server.py",
+    "web/index.html",
+    "web/style.css",
+    "web/app.js",
+    "tools/check_handover.py",
+    "tools/make_release.py",
+    "tools/verify_zip.py",
+    "rules/模型数据库.txt",
+    "rules_source/模型说明.xlsx"
+  ],
+  "invariants": [
+    "只认 rules/模型数据库.txt 登记的完整 checkpoint 文件名，不做关键词、前缀、相似度匹配。",
+    "正负节点按工作流连线判定，禁止写死节点编号。",
+    "参数依据标记原样保留，不改写、不合并、不省略。",
+    "8GB 显存默认 batch_size=1；Ollama 与 ComfyUI 不同时驻留。",
+    "Ollama 必须连桌面版服务，不另起 ollama serve。",
+    "只监听 127.0.0.1。",
+    "主题只实现 dark；其他值强制回 dark。",
+    "history/settings/outputs/backups 不打包；dist 不递归。",
+    "删除会话进 _archive，删除备份进 _trash，不直接抹除。",
+    "日志不记提示词和对话正文。",
+    "没有真实测试/出图证据，不声称已通过。"
+  ],
+  "known_boundaries": [
+    "8GB 显存下 Ollama 与 ComfyUI 不能同时驻留。",
+    "主题只做深色，浅色会被强制回 dark。",
+    "备份不含 outputs 原图与 logs。",
+    "confirm_delete 只是页面二次确认；直接调 API 不弹确认。",
+    "出图 400 校验失败也计入 errors 并写 last_error。",
+    "同参数同种子可能命中 ComfyUI 执行缓存，1–2 秒返回同图。",
+    "本机没有系统级 Python，依赖秋叶包内解释器。",
+    "nvidia-smi 首次直调可能空输出，需重定向读取。",
+    "阶段 1 没有单独的阶段1_实施记录.md，记录在规则包整合记录.md。",
+    "本项目是单机 localhost 方案，不提供公网部署、账号体系或多用户隔离。"
+  ],
+  "change_protocol": {
+    "doc": "AGENTS.md",
+    "section": "变更协议",
+    "must_run_before_release": [
+      "tools/check_handover.py",
+      "tools/verify_zip.py V2.0"
+    ]
+  }
+}

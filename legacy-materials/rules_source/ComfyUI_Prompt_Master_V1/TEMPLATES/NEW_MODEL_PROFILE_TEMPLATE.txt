@@ -1,0 +1,77 @@
+# NEW MODEL PROFILE TEMPLATE
+# 复制本文件，另存为 MODEL_PROFILES/模型名_版本.txt
+# 不确定的信息填写“待核实”，不要猜测。
+
+[IDENTITY]
+Display Name:
+Exact Checkpoint Filename:
+Version:
+Author:
+Download / Model Card URL:
+File Format: safetensors / other
+File Size:
+SHA256 (optional):
+
+[ARCHITECTURE]
+Base Architecture: SD1.5 / SDXL / Pony / Illustrious / other / unknown
+Base Model:
+Precision: FP16 / BF16 / FP8 / other / unknown
+Model Type: full checkpoint / merge / DMD / Lightning / Turbo / LCM / distilled / unknown
+VAE: baked-in / external / unknown
+Clip Skip:
+Trigger Words:
+
+[PROMPT STYLE]
+Preferred Prompt Format: natural language / tag-based / hybrid / author-specific
+Author Positive Prompt Example:
+Author Negative Prompt Example:
+Recommended Quality / Style Tags:
+Tags or Phrases to Avoid:
+Special Token Order:
+Source of These Rules:
+
+[GENERATION SETTINGS]
+Recommended Resolution:
+Sampler:
+Scheduler:
+Steps:
+CFG:
+Denoise:
+Refiner:
+Other:
+Parameter Source: [作者推荐] / [已实测] / [起始测试值] / [待核实]
+派系标签: 沿用标签字典（单选，如 Pony 系 / Illustrious 系 / Juggernaut 系 / 写实 XL / 通用混合 1.5 / 经典二次元 1.5）
+画风标签: 沿用标签字典（可多选，用、分隔，如 写实人像、二次元动漫、2.5D 插画、亚洲面孔、欧美面孔、加速版(DMD)）
+
+[MODEL BEHAVIOR]
+Strengths:
+Known Weaknesses:
+Known Biases / Frequent Unwanted Elements:
+NSFW / Mature Content Statement from Author (quote or concise paraphrase + source):
+Important: author claim is not a guarantee of every output or prompt.
+
+[LOCAL WORKFLOW]
+ComfyUI Version:
+Checkpoint Loader:
+VAE Node / Setting:
+LoRAs Used:
+ControlNet / IPAdapter:
+Other Nodes:
+VRAM Mode:
+Working Resolution:
+Batch Size:
+
+[LOCAL TEST FEEDBACK]
+Test Date:
+Seed:
+Prompt:
+Observed Result:
+What Worked:
+What Failed:
+Next Variable to Test:
+
+[CONFIDENCE]
+Verified by author documentation: yes / no / partial
+Verified locally: yes / no
+Uncertain fields:
+Last Updated:

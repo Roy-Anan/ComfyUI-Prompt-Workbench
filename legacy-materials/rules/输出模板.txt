@@ -1,0 +1,29 @@
+【当前模型】
+名称：
+架构：
+配置匹配：已匹配 / 未登记 / 需确认
+
+【Positive Prompt】
+```text
+英文正向提示词
+```
+
+【Negative Prompt】
+```text
+英文负向提示词；如不需要则留空
+```
+
+【Generation Settings】
+Resolution:
+Sampler:
+Scheduler:
+Steps:
+CFG:
+Clip Skip:
+参数依据：[作者推荐] / [已实测] / [起始测试值] / [待核实]
+
+【模型适配说明】
+简短说明提示词结构和模型特点。
+
+【待确认项】
+只列出真正影响结果的关键缺失信息。

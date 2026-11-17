@@ -1,0 +1,89 @@
+# Ollama 本地提示词助手使用说明（comfyui-prompt:v1）
+
+## 一、这是什么
+- 基于本机底座 `qwen3:latest`（8B 量化 VL，Q4_K_M）派生的本地提示词助手条目 `comfyui-prompt:v1`，纯本地离线，不联网、不下载新权重。
+- 模型里固化了：写词规则、合规红线、输出格式、去重规则，以及 13 个底模的精简索引（架构 / 派系 / 画风 / 提示词体系 / 关键参数）。
+- 助手只产出英文提示词与参数建议，不直接驱动 ComfyUI；结果由你检查后再复制到工作流出图。
+
+## 二、本机环境与上下文
+- Ollama 0.40.15；底座 `qwen3:latest`，GGUF 原生 `context_length 262144`（256k，理论上限）。
+- 运行设定 `num_ctx 8192` 是保守值，**不是模型上限**。8GB 显存扣掉约 4.8GB 权重后余量有限，KV cache 随上下文线性增长，本机不追高。
+- 上下文占用粗估：内置 system（已含索引）约 2.4k token，单个 profile 约 0.5~0.7k token，合计约 3.1k / 8192，剩约 5k token 留给对话历史与提示词输出。
+
+## 三、文件清单与对话时是否要贴
+| 文件 | 用途 | 对话时是否粘贴 |
+| --- | --- | --- |
+| `系统提示词_Ollama精简版.txt` | 精简规则 + 内置索引；其副本已固化进模型 | 不贴 |
+| `模型索引_Ollama.txt` | 13 模型索引独立文件，供人工查阅 / 非 Ollama 场景 | 不贴 |
+| `MODEL_PROFILES/` | 13 个完整 profile（架构、写法习惯、作者参数、范例、实测、待核实） | 只贴当前那一个 |
+| `Modelfile.qwen3-comfyui` | 模型定义，`ollama create` 用；由脚本从精简版提示词生成 | 不贴 |
+| `register_assistant.py` | 一键脚本：生成 Modelfile 并 `ollama create` 重建条目；`--build-only` 只生成不注册 | 不贴 |
+| `模型数据库.txt` | checkpoint 文件名 → profile 映射 | 查阅 |
+| `输出模板.txt` | 输出分段模板 | 查阅 |
+| `系统提示词_全量版.txt` | 全量写词规则（长上下文模型用） | 精简场景不贴 |
+| `待核实抓取清单.txt` | 各模型待补官方信息与检索线索 | 查阅 |
+
+## 四、启动方式（三选一）
+1. **桌面双击 `ComfyUI 提示词助手`**（快捷方式，指向包内 bat）——最省事。
+2. **双击包内 `启动提示词助手.bat`**——桌面快捷方式失效时用它；bat 用 ollama 绝对路径启动，退出后窗口停留，方便看报错。
+3. **命令行**：
+   `ollama run comfyui-prompt:v1`
+
+## 五、对话两步流程
+### 第一步：启动后规则与索引已自带
+规则、13 模型索引都已固化在模型里，**不用贴** `系统提示词_Ollama精简版.txt`，也**不用贴** `模型索引_Ollama.txt`。
+
+### 第二步：按需贴当前 profile，再提画面需求
+- **简单出图**：索引里的派系、提示词体系、关键参数够用时，可直接描述画面，不贴 profile。
+- **需要范例 / 触发词 / 完整负面 / 精确参数依据**：打开 `MODEL_PROFILES/` 下当前模型对应的那一个，全文复制粘贴到对话，再给出当前 checkpoint 完整文件名和画面创意。
+- 一次只贴**一个** profile；不要把 13 个 profile 正文全塞进对话。
+- 给模型名优先用完整 checkpoint 文件名，不要只报模糊关键词。
+
+## 六、上下文截断与应对
+- 上下文塞满后，最早的消息会被滑窗截断，表现为模型忘记当前模型、画风体系或规则。
+- 出现异常：**开新对话 → 重新贴当前 profile**（索引不用重贴）。
+- 换底模：替换对应 profile，不要把多个 profile 正文累积在同一个对话里。
+
+## 七、模型条目说明（不是新模型）
+- `comfyui-prompt:v1` **不是**独立训练或下载的大模型，是复用 `qwen3` 底座 blob 的派生配置条目；不重复占用约 4.8GB 权重空间。
+- 删除条目：`ollama rm comfyui-prompt:v1`，不影响底座 `qwen3:latest`。
+- 两者并存：`ollama run qwen3:latest` 是原始模型，不带助手规则；`ollama run comfyui-prompt:v1` 才进入提示词助手环境。
+
+## 八、维护
+### 1. 改了规则后，重新生成 Modelfile 并重建条目
+规则只写在源文件 `系统提示词_Ollama精简版.txt`；`Modelfile.qwen3-comfyui` 只是它的内联副本，不要直接手改 Modelfile 当源。
+
+**一键（推荐）**：在规则包目录运行
+`python register_assistant.py`
+脚本从源提示词生成 Modelfile，再自动 `ollama create comfyui-prompt:v1 -f Modelfile.qwen3-comfyui` 重建条目；完成后新开对话验证，当前已打开的旧会话不会刷新。
+
+**只生成不注册**：
+`python register_assistant.py --build-only`
+仅从源提示词生成 Modelfile（全文内联进 SYSTEM，写入 4 个 PARAMETER，UTF-8 无 BOM，并检查三引号冲突），不跑 `ollama create`；需要注册时再手动执行：
+`ollama create comfyui-prompt:v1 -f Modelfile.qwen3-comfyui`
+
+注意：
+- 只改源 txt、不跑脚本、不 create，模型里跑的仍是旧规则；
+- 改采样参数（num_ctx / temperature / top_p / top_k）：改 `register_assistant.py` 里的 PARAMETER 段，再重跑脚本；
+- 脚本会用源 txt 覆盖 Modelfile，手改 Modelfile 的内容下次生成会被冲掉。
+
+### 2. 新增底模
+1. 在 `MODEL_PROFILES/` 建 profile；
+2. `模型数据库.txt` 加文件名 → profile 映射；
+3. 在 `模型索引_Ollama.txt` 和 `系统提示词_Ollama精简版.txt` 的内置索引表各加一行；
+4. 同步上级 `模型说明.xlsx`；
+5. 重建 Modelfile 并重新 `ollama create` 覆盖。
+
+### 3. 参数口径
+缺依据的字段写 `[待核实]` / `[未给出]`，不要让小模型凭常识补全；同系列不同版本参数禁止互套。
+
+## 九、常见问题排查
+- **首次加载占显存**：8GB 环境别同时开 SDXL 出图，避免 OOM；必要时结束残留 python 进程或重启 ComfyUI 释放显存。
+- **报权重形状错配**：多半是 LoRA 跨架构混挂（SD1.5 LoRA 挂 SDXL 或反之），先核对底模与 LoRA 架构。
+- **想调大上下文**：历史明显不够用时，`num_ctx` 可试到 16384；8GB 显存偏紧、可能 OOM；256k 是理论上限，本机不开。
+- **出图皮肤 / 画质问题**：只做与内容无关的画质、采样、光线 / 皮肤词诊断；擦边描述按合规红线直接删除，不往露骨方向优化。
+
+## 十、合规边界（与内置 system 第 9 节一致）
+- 不生成露骨色情、性裸露、性器官、低俗色情画面；不涉及未成年人；人物必须成年。
+- 内衣、胸罩、透视、露点、暴露类词汇不写进标签和提示词。
+- 成熟性感氛围可保留，但不往露骨方向优化；模型"支持 NSFW"只是作者单方声明或社区标签，不构成生成违规内容的许可。
