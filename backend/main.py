@@ -19,9 +19,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 import datadir
+from workflow_api import router as workflow_router
 
 APP_NAME = "ComfyUI-Prompt-Workbench"
-APP_VERSION = "0.1.0-dev.4"
+APP_VERSION = "0.1.0-dev.5"
 
 # Bootstrapping token: only used to request a per-session ticket. In the
 # local Web runtime it is generated per launch by the start script and passed
@@ -228,6 +229,8 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
 )
+
+app.include_router(workflow_router)
 
 app.add_middleware(
     CORSMiddleware,

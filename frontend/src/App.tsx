@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "./api";
+import WorkflowWorkbench from "./WorkflowWorkbench";
 
 type Health = {
   ok: boolean;
@@ -68,6 +69,7 @@ export default function App() {
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在连接本地服务…");
+  const [activePage, setActivePage] = useState<"settings" | "workflows">("settings");
 
   async function refresh() {
     const [healthResult, settingsResult, serviceResult] =
@@ -252,6 +254,25 @@ export default function App() {
         </button>
       </header>
 
+      <nav className="page-nav">
+        <button
+          className={activePage === "settings" ? "" : "secondary"}
+          onClick={() => setActivePage("settings")}
+        >
+          服务与设置
+        </button>
+        <button
+          className={activePage === "workflows" ? "" : "secondary"}
+          onClick={() => setActivePage("workflows")}
+        >
+          工作流工作区
+        </button>
+      </nav>
+
+      {activePage === "workflows" ? (
+        <WorkflowWorkbench />
+      ) : (
+        <>
       <section className="status-grid">
         <article className="panel status-card">
           <div className="card-title">工作台本地服务</div>
@@ -413,6 +434,8 @@ export default function App() {
         </div>
       </section>
 
+  </>
+)}
       <footer>
         <span>版本 {health?.version ?? "读取中"}</span>
         <span>M0 · 本地服务基础版</span>

@@ -1,0 +1,212 @@
+diff --git a/backend/main.py b/backend/main.py
+index f9c65d4..34a83a6 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -19,9 +19,10 @@ from fastapi.responses import FileResponse, JSONResponse
+ from pydantic import BaseModel, Field
+ 
+ import datadir
++from workflow_api import router as workflow_router
+ 
+ APP_NAME = "ComfyUI-Prompt-Workbench"
+-APP_VERSION = "0.1.0-dev.4"
++APP_VERSION = "0.1.0-dev.5"
+ 
+ # Bootstrapping token: only used to request a per-session ticket. In the
+ # local Web runtime it is generated per launch by the start script and passed
+@@ -229,6 +230,8 @@ app = FastAPI(
+     redoc_url=None,
+ )
+ 
++app.include_router(workflow_router)
++
+ app.add_middleware(
+     CORSMiddleware,
+     allow_origins=sorted(ALLOWED_ORIGINS),
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 5af69a7..2b68fbf 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -1,5 +1,6 @@
+ import { useEffect, useState } from "react";
+ import { apiGet, apiPost } from "./api";
++import WorkflowWorkbench from "./WorkflowWorkbench";
+ 
+ type Health = {
+   ok: boolean;
+@@ -68,6 +69,7 @@ export default function App() {
+   const [checks, setChecks] = useState<Record<string, string>>({});
+   const [busy, setBusy] = useState(true);
+   const [message, setMessage] = useState("正在连接本地服务…");
++  const [activePage, setActivePage] = useState<"settings" | "workflows">("settings");
+ 
+   async function refresh() {
+     const [healthResult, settingsResult, serviceResult] =
+@@ -252,6 +254,25 @@ export default function App() {
+         </button>
+       </header>
+ 
++      <nav className="page-nav">
++        <button
++          className={activePage === "settings" ? "" : "secondary"}
++          onClick={() => setActivePage("settings")}
++        >
++          服务与设置
++        </button>
++        <button
++          className={activePage === "workflows" ? "" : "secondary"}
++          onClick={() => setActivePage("workflows")}
++        >
++          工作流工作区
++        </button>
++      </nav>
++
++      {activePage === "workflows" ? (
++        <WorkflowWorkbench />
++      ) : (
++        <>
+       <section className="status-grid">
+         <article className="panel status-card">
+           <div className="card-title">工作台本地服务</div>
+@@ -413,6 +434,8 @@ export default function App() {
+         </div>
+       </section>
+ 
++  </>
++)}
+       <footer>
+         <span>版本 {health?.version ?? "读取中"}</span>
+         <span>M0 · 本地服务基础版</span>
+diff --git a/frontend/src/styles.css b/frontend/src/styles.css
+index 1f70dc6..a83c643 100644
+--- a/frontend/src/styles.css
++++ b/frontend/src/styles.css
+@@ -262,3 +262,128 @@ button.secondary {
+     grid-template-columns: minmax(0, 1fr);
+   }
+ }
++
++.page-nav {
++  display: flex;
++  gap: 10px;
++  margin: 0 0 18px;
++  flex-wrap: wrap;
++}
++.workflow-page {
++  min-width: 0;
++}
++.workflow-page h3 {
++  margin: 0 0 12px;
++  font-size: 15px;
++}
++.workflow-page h4 {
++  margin: 18px 0 8px;
++  font-size: 13px;
++}
++.workflow-columns {
++  display: grid;
++  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.4fr);
++  gap: 24px;
++  margin-top: 20px;
++}
++.workflow-list,
++.workflow-node-list {
++  display: grid;
++  gap: 9px;
++}
++.workflow-list-item {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-start;
++  width: 100%;
++  gap: 6px;
++  text-align: left;
++  background: #151e2b;
++  border-color: #39475b;
++}
++.workflow-list-item.selected {
++  border-color: #83a9df;
++  background: #22344c;
++}
++.workflow-list-item small,
++.workflow-node-row small {
++  color: #9ca8ba;
++  overflow-wrap: anywhere;
++}
++.workflow-import-button {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  border: 1px solid #506b97;
++  border-radius: 9px;
++  padding: 10px 16px;
++  color: white;
++  background: #29456f;
++  cursor: pointer;
++  white-space: nowrap;
++}
++.workflow-import-button input {
++  display: none;
++}
++.workflow-node-row {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) minmax(145px, 190px);
++  align-items: center;
++  gap: 14px;
++  padding: 12px;
++  border: 1px solid #344052;
++  border-radius: 9px;
++  background: #151c27;
++}
++.workflow-node-row > div {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++  min-width: 0;
++}
++.workflow-node-row select,
++.workflow-text-field textarea {
++  width: 100%;
++  min-width: 0;
++  border: 1px solid #39475b;
++  border-radius: 8px;
++  padding: 10px 12px;
++  color: #e9edf5;
++  background: #111722;
++  font: inherit;
++}
++.workflow-text-field {
++  display: grid;
++  gap: 8px;
++  margin: 16px 0;
++}
++.workflow-text-field textarea {
++  resize: vertical;
++  line-height: 1.55;
++}
++.workflow-meta {
++  display: block;
++  color: #9ca8ba;
++  font-size: 12px;
++  overflow-wrap: anywhere;
++}
++.workflow-warning {
++  padding: 10px 12px;
++  border-left: 3px solid #d18b68;
++  background: #2b211e;
++  color: #e8c3ae;
++  line-height: 1.5;
++}
++.workflow-message {
++  padding: 8px 2px 18px;
++  color: #aebbd0;
++  overflow-wrap: anywhere;
++}
++@media (max-width: 760px) {
++  .workflow-columns {
++    grid-template-columns: minmax(0, 1fr);
++  }
++  .workflow-node-row {
++    grid-template-columns: minmax(0, 1fr);
++  }
++}
