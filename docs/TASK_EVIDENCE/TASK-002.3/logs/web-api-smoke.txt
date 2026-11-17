@@ -1,0 +1,5 @@
+GET /api/bootstrap (same-origin, no token) -> 200
+bootstrap body: {"ok":true,"app":"ComfyUI-Prompt-Workbench","version":"0.1.0-dev.3","csrf":"1eBHl9YoXj_smL22pbPWvom0YKLP-zaqmRevWgP3fh0"}
+GET /api/health (ticket cookie) -> 200 body: {"ok":true,"app":"ComfyUI-Prompt-Workbench","version":"0.1.0-dev.3","python":"3.13.18","platform":"Windows-11-10.0.26200-SP0"}
+GET /api/settings (ticket cookie) -> 200
+GET /api/services/status -> 200 body: {"ollama":{"online":false,"status_code":null,"url":"http://127.0.0.1:11434","error":"<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"},"comfyui":{"online":false,"status_code":null,"url":"http://127.0.0.1:8188","error":"<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>"}}

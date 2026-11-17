@@ -1,0 +1,12 @@
+=== Python (project venv) ===
+Python 3.13.18
+=== Node / npm ===
+v22.23.2
+10.9.8
+=== Data root: C:\Users\15380\AppData\Local\ComfyUI-Prompt-Workbench ===
+settings.json  (1139 bytes)
+database\workbench.sqlite3  (16384 bytes)
+=== SQLite version table ===
+db exists: True
+schema_version: 1
+tables: ['app_metadata', 'schema_version']

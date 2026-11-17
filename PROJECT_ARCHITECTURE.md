@@ -7,23 +7,28 @@
 
 ## 1. 总体拓扑
 
-模块化单体，分三层进程与一组本地外部服务：
+> **方向变更（TASK-002.3，2026-11-17）**：正式运行形态为本机浏览器 Web 应用，FastAPI 同源托管前端静态产物与 API；Tauri/Rust 桌面宿主方向已取消，历史代码归档于 `legacy/src-tauri/`，不参与 Web 运行时。下图为当前 Web 拓扑；第 2 节中 Tauri/Rust 相关职责为历史规划口径，落地以第 7 节 M0 现状为准。
+
+模块化单体，单一 Python 进程对内提供 API 与静态页面，一组本地外部服务：
 
 ```text
-┌──────────────────────────── Tauri 桌面宿主 (Rust) ───────────────────────────┐
-│  窗口 / 通知 / 文件对话框 / sidecar 生命周期 / 本地握手与健康检查              │
+┌──────────────────────── 本机浏览器 (Edge / Chrome) ─────────────────────────┐
+│  访问 http://127.0.0.1:8000 · 同源 fetch · Cookie 会话票据 + CSRF 头          │
 └───────────────┬──────────────────────────────────────────────────────────────┘
-                │ 本地 loopback：随机端口 + 随机会话凭据
-┌───────────────▼────────────────────── React 前端 (TypeScript + Vite) ─────────┐
-│  中文 UI / Prompt 编辑器 / 候选·草稿·历史·LoRA·队列·设置页面                  │
-└───────────────┬──────────────────────────────────────────────────────────────┘
-                │ 本地后端 API（前端不直连 ComfyUI / Ollama）
-┌───────────────▼──────────────────────── Python 业务服务 (FastAPI, sidecar) ────┐
-│  api / core / domain / workflow / rules / prompt / queue / drafts / history /  │
-│  loras / repositories / adapters(ollama·comfyui·gpu)                           │
+                │ 同源 loopback：FastAPI 同时返回前端静态文件与 /api/*
+┌───────────────▼──────────────────────── Python 业务服务 (FastAPI) ────────────┐
+│  静态托管 frontend/dist · SPA 回退 · api 路由 · core/domain/workflow/rules/…   │
+│  repositories/adapters(ollama·comfyui·gpu)                                    │
 └───────┬──────────────────────────────┬─────────────────────────────────┬──────┘
         │ SQLite 数据层                 │ Ollama Adapter                   │ ComfyUI Adapter
         └──────────────────────────────┴─────────────────────────────────┴──────┘
+```
+
+历史 Tauri 桌面拓扑（已归档，不再作为运行目标）：
+
+```text
+Tauri 桌面宿主 (Rust) → sidecar Python 服务；该路径因本机缺 Rust/MSVC 工具链且
+方向已取消，不再继续投入；源码见 legacy/src-tauri/。
 ```
 
 ## 2. 模块职责与边界
@@ -136,3 +141,11 @@
 - **日志职责**：Rust sidecar 子进程 stdout/stderr 分流到数据根 `logs/sidecar-stdout.log`、`logs/sidecar-stderr.log`；会话令牌仅经 `WORKBENCH_SESSION_TOKEN` 环境变量传递，不写入日志；启动失败/超时错误附带 stderr 日志路径。
 - **健康检查**：宿主在 TCP 连通后再以 Bearer 令牌请求 `/api/health`，返回 200 且体含 `ok:true` 才判定就绪，不仅凭端口打开判定。
 - **尚未落地**：第 2.3 节列出的 domain/workflow/rules/prompt/queue/drafts/history/loras 等业务模块、业务实体表、显存管理、知识库与注入编辑 UI、工作流解析与出图闭环，均属后续阶段。
+
+### 7.3 TASK-002.3（2026-11-17，0.1.0-dev.3，本机 Web 架构）
+
+- **运行形态**：FastAPI 托管 `frontend/dist/` 静态产物并提供 `/api/*`；浏览器经同源相对路径访问，默认 `http://127.0.0.1:8000`，只绑定 loopback；`WORKBENCH_HOST` / `WORKBENCH_PORT` 可配置，非 loopback 绑定在启动时被拒绝。
+- **会话与安全**：`/api/bootstrap` 为同源回环浏览器签发 HttpOnly 会话票据与 CSRF 令牌；Cookie 会话的状态变更需 `X-Workbench-CSRF` 头；Origin 白名单校验；引导令牌仅环境变量传递，不入前端产物；保留原 API 认证，未关闭安全检查。
+- **进程生命周期**：根目录 `启动工作台.bat` / `停止工作台.bat` 为普通用户入口；启动器复用项目 `.venv`，记录 PID 到 `.workbench.pid`（已忽略提交）；停止器按 PID 终止工作台进程树，不按进程名批量结束 Python。
+- **依赖边界**：正式运行只需要项目 `.venv` 中的 Python 依赖；Node/Vite 仅在构建前端产物时使用，正式运行不启动 Node 开发服务器。Tauri 运行依赖（`@tauri-apps/api`、`@tauri-apps/cli`）已从 `package.json` 移除，Rust 工程归档至 `legacy/src-tauri/`。
+- **数据与外部服务**：数据根仍为 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench`；SQLite 与设置文件保留；Ollama `127.0.0.1:11434`、ComfyUI `127.0.0.1:8188` 仅做连通性检测，不自启/自关/重启。

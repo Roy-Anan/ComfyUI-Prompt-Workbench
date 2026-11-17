@@ -116,3 +116,39 @@
   - 打包方案（PyInstaller sidecar、Tauri externalBin、NSIS、版本对齐、CSP、依赖拆分）由 ChatGPT 后续设计。
   - 打包环境（Rust/MSVC）与干净 Win11 x64 安装验收待后续任务。
   - 本任务不宣布 M0 桌面闭环通过，也不宣布正式 EXE 已完成。
+
+### 0.1.0-dev.3 — 2026-11-17（TASK-002.3，分支 dev）
+
+- **新增功能**：
+  - 本机 Web 运行模式：FastAPI 同源托管 `frontend/dist/` 静态产物与 `/api/*`；SPA 深层路由回退 `index.html`；未知 API 返回 JSON 404；`dist/` 缺失返回 503；静态资源与 SPA 壳免 API 认证。
+  - Web 会话与安全：`/api/bootstrap` 为同源回环浏览器签发 HttpOnly 会话票据与 CSRF 令牌；Cookie 会话状态变更需 `X-Workbench-CSRF` 头；Origin 白名单校验；引导令牌仅环境变量传递，不入前端构建。
+  - 一键启停入口：根目录 `启动工作台.bat` / `停止工作台.bat`；`scripts/workbench_launcher.py`（复用 `.venv`、端口/重复实例检查、健康检查后开浏览器）；`scripts/workbench_stopper.py`（按 PID 终止工作台进程树，不按名杀 Python）。
+  - 前端同源 API 客户端 `frontend/src/api.ts`；前端去除 Tauri `invoke` 与写死端口/令牌。
+  - 依赖拆分：`backend/requirements-dev.txt` 单独承载 pytest；运行清单不再含测试依赖。
+  - 历史 Tauri 工程归档至 `legacy/src-tauri/`，附 `legacy/README.md` 说明其不属于 Web 运行时。
+- **修改文件**：
+  - `backend/main.py`（静态托管、会话票据/CSRF/Origin、loopback 绑定校验、版本 `0.1.0-dev.3`）。
+  - `backend/test_main.py`（新增 bootstrap 票据、CSRF、Origin 拒绝、API 404 JSON、SPA 回退、同源/外部 Origin bootstrap 用例，共 20 项）。
+  - `backend/requirements.txt`、`backend/requirements-dev.txt`。
+  - `frontend/src/App.tsx`、`frontend/src/api.ts`（新增）、`frontend/package.json`、`frontend/package-lock.json`。
+  - `.gitignore`（Tauri 归档路径、`.workbench.pid` 运行时文件）。
+  - 控制文档：`PROJECT_MASTER_PLAN.md`、`PROJECT_STATE.md`、`PROJECT_ARCHITECTURE.md`、`PROJECT_CHANGELOG.md`（本文件）。
+  - 证据目录：`docs/TASK_EVIDENCE/TASK-002.3/`。
+  - 未改动 `legacy-materials/`、既有 8 份基线文档与用户数据。
+- **修复问题**：
+  - 启动器健康检查把 401 误判为未就绪：改为只要收到 HTTP 响应即视为服务已起。
+  - 启动器脱离运行后清理 PID 文件导致停止脚本找不到后端：改为分离进程并持久保留后端 PID。
+  - 停止器依赖已移除的 `wmic`：改用 CIM 查询子进程；仅终止记录 PID 及其子进程。
+  - 修复 `urllib.request.Request` 与 FastAPI `Request` 命名冲突导致的探测异常。
+- **测试情况**：
+  - Python pytest：通过，20 passed（Python 3.13.18 / pytest 8.4.2，1 条 StarletteDeprecationWarning）。
+  - TypeScript 检查：通过（`tsc -b` 退出码 0）。
+  - Vite 生产构建：通过（32 模块，产物 `dist/`）。
+  - 真实浏览器验收（Edge，127.0.0.1:8000）：页面已连接（Python 3.13.18），设置/存储/连接数据渲染正常，刷新后 SPA 回退与会话保持正常。
+  - 生命周期：重复启动识别已有实例不冲突；停止后端口释放、PID 清除；再次启动成功；监听仅 `127.0.0.1:8000`。
+  - Ollama / ComfyUI 离线：返回 `online:false`，服务 200 不崩溃。
+- **未完成事项**：
+  - 业务功能（编辑器、知识库、规则引擎、工作流解析、队列、显存调度、出图闭环）按边界本次未实现。
+  - Python 3.12 兼容性未单独验证（本机 3.13.18）。
+  - Ollama / ComfyUI 在线状态下的真实调用验收待后续阶段。
+  - 本任务不宣布 EXE/安装包完成，不恢复 Tauri 桌面路线。

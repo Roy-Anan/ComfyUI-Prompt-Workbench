@@ -1,10 +1,5 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-
-type BackendConfig = {
-  port: number;
-  token: string;
-};
+import { apiGet, apiPost } from "./api";
 
 type Health = {
   ok: boolean;
@@ -57,31 +52,6 @@ const storageLabels: Record<string, string> = {
   lora: "LoRA 模型目录（只读扫描）",
 };
 
-async function api<T>(
-  config: BackendConfig,
-  path: string,
-  init: RequestInit = {},
-): Promise<T> {
-  const response = await fetch(
-    `http://127.0.0.1:${config.port}${path}`,
-    {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${config.token}`,
-        "Content-Type": "application/json",
-        ...init.headers,
-      },
-    },
-  );
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`${response.status}: ${detail}`);
-  }
-
-  return response.json() as Promise<T>;
-}
-
 function StatusDot({ online }: { online: boolean }) {
   return (
     <span
@@ -92,7 +62,6 @@ function StatusDot({ online }: { online: boolean }) {
 }
 
 export default function App() {
-  const [config, setConfig] = useState<BackendConfig | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [services, setServices] = useState<ServiceStatus | null>(null);
@@ -100,12 +69,12 @@ export default function App() {
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在连接本地服务…");
 
-  async function refresh(current: BackendConfig) {
+  async function refresh() {
     const [healthResult, settingsResult, serviceResult] =
       await Promise.all([
-        api<Health>(current, "/api/health"),
-        api<Settings>(current, "/api/settings"),
-        api<ServiceStatus>(current, "/api/services/status"),
+        apiGet<Health>("/api/health"),
+        apiGet<Settings>("/api/settings"),
+        apiGet<ServiceStatus>("/api/services/status"),
       ]);
 
     setHealth(healthResult);
@@ -118,14 +87,7 @@ export default function App() {
 
     async function connect() {
       try {
-        const backend = await invoke<BackendConfig>(
-          "get_backend_config",
-        );
-
-        if (!alive) return;
-
-        setConfig(backend);
-        await refresh(backend);
+        await refresh();
 
         if (alive) {
           setMessage("本地服务已连接");
@@ -149,12 +111,10 @@ export default function App() {
   }, []);
 
   async function refreshStatus() {
-    if (!config) return;
-
     setBusy(true);
 
     try {
-      await refresh(config);
+      await refresh();
       setMessage("状态已刷新");
     } catch (error) {
       setMessage(`刷新失败：${String(error)}`);
@@ -164,7 +124,7 @@ export default function App() {
   }
 
   async function checkPath(key: string) {
-    if (!config || !settings) return;
+    if (!settings) return;
 
     const path = settings.storage[key]?.trim() ?? "";
 
@@ -182,15 +142,11 @@ export default function App() {
     }));
 
     try {
-      const result = await api<PathCheck>(
-        config,
+      const result = await apiPost<PathCheck>(
         "/api/storage/validate",
         {
-          method: "POST",
-          body: JSON.stringify({
-            path,
-            create: key !== "checkpoint" && key !== "lora",
-          }),
+          path,
+          create: key !== "checkpoint" && key !== "lora",
         },
       );
 
@@ -222,7 +178,7 @@ export default function App() {
   }
 
   async function saveSettings() {
-    if (!config || !settings) return;
+    if (!settings) return;
 
     setBusy(true);
 
@@ -230,15 +186,11 @@ export default function App() {
       const { root: _fixedRoot, ...editableStorage } =
         settings.storage;
 
-      const updated = await api<Settings>(
-        config,
+      const updated = await apiPost<Settings>(
         "/api/settings",
         {
-          method: "POST",
-          body: JSON.stringify({
-            storage: editableStorage,
-            connections: settings.connections,
-          }),
+          storage: editableStorage,
+          connections: settings.connections,
         },
       );
 
@@ -294,7 +246,7 @@ export default function App() {
 
         <button
           onClick={refreshStatus}
-          disabled={busy || !config}
+          disabled={busy}
         >
           刷新状态
         </button>
@@ -352,7 +304,7 @@ export default function App() {
           <div>
             <h2>存储位置</h2>
             <p>
-              根目录由桌面宿主固定。本版本只允许修改子目录，
+              根目录由本地宿主固定。本版本只允许修改子目录，
               不会自动迁移已有数据。
             </p>
           </div>

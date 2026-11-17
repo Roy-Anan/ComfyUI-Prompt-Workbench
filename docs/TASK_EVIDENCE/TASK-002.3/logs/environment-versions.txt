@@ -1,0 +1,15 @@
+=== OS ===
+Caption        : Microsoft Windows 11 家庭版 中文版
+Version        : 10.0.26200
+OSArchitecture : 64 位
+=== Python venv ===
+Python 3.13.18
+=== Node / npm ===
+v22.23.2
+10.9.8
+=== key Python packages ===
+fastapi 0.163.1
+uvicorn 0.54.0
+httpx 0.28.1
+pydantic 2.14.3
+pytest 8.4.2

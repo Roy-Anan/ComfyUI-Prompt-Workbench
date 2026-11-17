@@ -10,14 +10,17 @@ htmlcov/
 node_modules/
 frontend/dist/
 
-# Rust / Tauri
-frontend/src-tauri/target/
-frontend/src-tauri/gen/
+# Rust / Tauri (archived under legacy/src-tauri; not part of the Web runtime)
+legacy/src-tauri/target/
+legacy/src-tauri/gen/
 
 # Local settings and logs
 .env
 .env.*
 *.log
+
+# Runtime PID file written by the launcher
+.workbench.pid
 
 # Local user data
 data/

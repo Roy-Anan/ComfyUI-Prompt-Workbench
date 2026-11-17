@@ -1,0 +1,3 @@
+GET / -> 200 len=412
+GET /some/deep/route -> 200 len=412
+GET /api/does-not-exist -> Unauthorized type=

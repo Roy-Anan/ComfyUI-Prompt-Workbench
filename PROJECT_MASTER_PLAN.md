@@ -8,7 +8,9 @@
 
 ## 1. 产品定位与目标
 
-ComfyUI Prompt Workbench 是一个面向 Windows 11 的本地桌面工作台，用于为本地 ComfyUI 工作流编写、优化、审核和管理图像生成提示词。
+ComfyUI Prompt Workbench 是一个面向 Windows 11 的**本机浏览器 Web 工作台**，用于为本地 ComfyUI 工作流编写、优化、审核和管理图像生成提示词。
+
+> **方向变更（TASK-002.3，2026-11-17）**：产品正式定为本地 Web 应用，通过本机浏览器访问 `http://127.0.0.1:8000`；不再以 EXE/NSIS 安装包为交付目标，不再继续开发 Tauri/Rust 桌面宿主。下列技术路线表中 Tauri/PyInstaller 行为早期基线记录，当前正式运行以 Web 栈为准（见第 3 节变更注记）。
 
 - 它不是 ComfyUI 的替代品，也不是通用工作流编辑器；ComfyUI 继续负责模型加载、采样、图像生成和原图保存。
 - 工作台负责工作流识别、模型提示词规则、Prompt 创作与安全写入、LLM/显存协调、任务队列、生成记录和 LoRA 资料管理。
@@ -20,21 +22,22 @@ ComfyUI Prompt Workbench 是一个面向 Windows 11 的本地桌面工作台，�
 - 目标硬件基线：16GB RAM / RTX 4060 Laptop 8GB VRAM（真实显存阈值与释放行为需在真机测量后锁定）。
 - 本地外部服务：用户自行安装并启动的 Ollama（本地 LLM）与 ComfyUI（本地出图）；工作台只连接用户配置的本地地址，不替用户启动或关闭这些服务。
 
-## 3. 技术路线（推荐初始基线，待 M0 原型验证后冻结）
+## 3. 技术路线（当前 Web 基线）
 
 | 层 | 技术 | 职责 |
 | --- | --- | --- |
-| 桌面宿主 | Tauri 2.x | Windows 窗口、应用生命周期、系统对话框、通知、sidecar 管理、安装包 |
-| 前端 | React + TypeScript + Vite | 中文桌面 UI、Prompt 编辑器、候选/草稿/历史/LoRA 页面 |
-| 本地业务服务 | Python 3.12 起步 + FastAPI | 领域逻辑、工作流解析/验证、LLM/ComfyUI 适配、队列、数据访问 |
-| Python 打包 | PyInstaller | 将 Python 服务与依赖打包为 Tauri 可启动的 Windows sidecar |
-| 数据层 | SQLite | 本地结构化数据 |
+| 运行入口 | 本机浏览器（Edge/Chrome） | 访问 `http://127.0.0.1:8000`，同源使用前端页面与 API |
+| 前端 | React + TypeScript + Vite（构建产物由 FastAPI 托管） | 中文 UI、Prompt 编辑器、候选/草稿/历史/LoRA 页面 |
+| 本地业务服务 | Python + FastAPI | 领域逻辑、工作流解析/验证、LLM/ComfyUI 适配、队列、数据访问、静态托管 |
+| 数据层 | SQLite + 本地文件 | 本地结构化数据与知识库/草稿/历史文件 |
 | LLM 适配 | Ollama Adapter（第一版） | 模型发现、调用、停止、卸载、运行状态验证 |
 | 出图适配 | ComfyUI Adapter（HTTP + WebSocket） | 工作流任务提交、事件、历史、队列状态与中断 |
 
-架构为模块化单体，不拆微服务。Python 后端是业务逻辑的唯一权威实现；Rust/Tauri 层保持轻薄；前端只展示与发起命令，不承担安全边界判断。
+架构为模块化单体，不拆微服务。Python 后端是业务逻辑的唯一权威实现；前端只展示与发起命令，不承担安全边界判断。
 
-> 技术状态说明：上述版本与选型是推荐初始基线，需在 M0 原型阶段验证 sidecar 启动、通信、打包和 Windows 安装体验后再锁定；未验证前不把具体版本号写成永久约束。
+> **历史基线记录（已取消）**：早期规划曾采用 Tauri 2.x 桌面宿主 + PyInstaller sidecar 打包；该方向在 TASK-002.3 正式取消，不再继续投入 Rust/Cargo/MSVC/NSIS/EXE 流水线。历史工程文件归档于 `legacy/src-tauri/`，不参与 Web 运行时。
+>
+> **版本口径**：本机 `.venv` 实测 Python 3.13.18，测试在该版本通过；Python 3.12 兼容性尚未单独验证，未在未测试情况下降级或替换环境。
 
 ## 4. 核心模块划分
 
@@ -84,7 +87,7 @@ ComfyUI Prompt Workbench 是一个面向 Windows 11 的本地桌面工作台，�
 
 阶段划分以 `docs/ROADMAP.md` 为准，下列为概览：
 
-- **M0 项目基线与工程准备**：文档/ADR/目录/规范齐备；建立 Tauri + React + TS + Vite + Python sidecar 骨架；配置格式化、检查、测试、CI 与 Windows 构建。
+- **M0 项目基线与工程准备**：文档/ADR/目录/规范齐备；建立 React + TS + Vite 前端与 FastAPI 本机 Web 骨架；配置检查、测试与本机一键启停入口（Tauri/EXE 方向已取消，见第 3 节）。
 - **M1 ComfyUI 连接与工作流解析**：连接配置与重连；导入并解析工作流；识别节点、模型、Checkpoint、文本编码器、LoRA 与正负 Prompt 节点；用户确认识别结果。
 - **M2 工作流白名单与完整性保护**：白名单、深拷贝、快照、结构化差异、白名单写入与回滚、写入后复验。
 - **M3 模型身份库与规则引擎**：SQLite 身份与 SHA256；三级规则继承；规则版本/来源/可信度；冲突检测与动态检索；云端研究资料导入审核。

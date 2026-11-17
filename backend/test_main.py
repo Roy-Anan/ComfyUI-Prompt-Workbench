@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("WORKBENCH_SESSION_TOKEN", "test-session-token")
@@ -16,17 +17,29 @@ def client(tmp_path, monkeypatch):
     sys.modules.pop("main", None)
     import main
 
-    main.SESSION_TOKEN = "test-session-token"
+    main.BOOTSTRAP_TOKEN = "test-session-token"
     main.DATA_ROOT = tmp_path / "workbench-data"
     main.SETTINGS_FILE = main.DATA_ROOT / "settings.json"
+    main.SESSION_TICKETS.clear()
 
     with TestClient(main.app) as test_client:
         yield test_client, main
 
     sys.modules.pop("main", None)
 
+
 def auth():
     return {"Authorization": "Bearer test-session-token"}
+
+
+def bootstrap(client):
+    """Exchange the bootstrap token for a session ticket + CSRF cookie."""
+    test_client, _ = client
+    response = test_client.get("/api/bootstrap", headers=auth())
+    assert response.status_code == 200
+    csrf = response.json()["csrf"]
+    return {"X-Workbench-CSRF": csrf}
+
 
 def test_health_requires_token(client):
     test_client, _ = client
@@ -42,6 +55,78 @@ def test_health_requires_token(client):
     valid = test_client.get("/api/health", headers=auth())
     assert valid.status_code == 200
     assert valid.json()["ok"] is True
+
+
+def test_bootstrap_issues_ticket_and_csrf(client):
+    test_client, _ = client
+
+    response = test_client.get("/api/bootstrap", headers=auth())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["csrf"]
+
+    cookies = {c.name: c.value for c in test_client.cookies.jar}
+    assert "workbench_session" in cookies
+    assert "workbench_csrf" in cookies
+
+    # Ticket cookie alone authorizes a same-origin GET.
+    authed = test_client.get("/api/health")
+    assert authed.status_code == 200
+
+
+def test_bootstrap_same_origin_issues_ticket_without_token(client):
+    test_client, _ = client
+
+    # Same-origin browser fetch omits Origin; ticket is issued directly.
+    response = test_client.get("/api/bootstrap")
+    assert response.status_code == 200
+    cookies = {c.name: c.value for c in test_client.cookies.jar}
+    assert "workbench_session" in cookies
+    assert "workbench_csrf" in cookies
+
+    authed = test_client.get("/api/health")
+    assert authed.status_code == 200
+
+
+def test_bootstrap_external_origin_requires_token(client):
+    test_client, _ = client
+
+    response = test_client.get(
+        "/api/bootstrap",
+        headers={"Origin": "https://untrusted.example"},
+    )
+    assert response.status_code == 401
+
+    authed = test_client.get(
+        "/api/bootstrap",
+        headers={
+            "Origin": "https://untrusted.example",
+            "Authorization": "Bearer test-session-token",
+        },
+    )
+    assert authed.status_code == 200
+
+
+def test_post_requires_csrf_header(client):
+    test_client, _ = client
+    test_client.get("/api/bootstrap", headers=auth())
+
+    # Cookie ticket present but CSRF header missing -> 403.
+    missing = test_client.post(
+        "/api/settings",
+        json={"connections": {"ollama_url": "http://127.0.0.1:11434"}},
+    )
+    assert missing.status_code == 403
+
+    csrf = bootstrap(client)
+    ok = test_client.post(
+        "/api/settings",
+        headers=csrf,
+        json={"connections": {"ollama_url": "http://127.0.0.1:11434"}},
+    )
+    assert ok.status_code == 200
+
 
 def test_cors_allows_vite_origin(client):
     test_client, _ = client
@@ -60,6 +145,7 @@ def test_cors_allows_vite_origin(client):
         "http://127.0.0.1:1420"
     )
 
+
 def test_cors_rejects_unknown_origin(client):
     test_client, _ = client
 
@@ -72,6 +158,20 @@ def test_cors_rejects_unknown_origin(client):
     )
 
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_state_change_rejects_untrusted_origin(client):
+    test_client, _ = client
+    test_client.get("/api/bootstrap", headers=auth())
+    csrf = bootstrap(client)
+
+    response = test_client.post(
+        "/api/settings",
+        headers={**csrf, "Origin": "https://untrusted.example"},
+        json={"connections": {"ollama_url": "http://127.0.0.1:11434"}},
+    )
+    assert response.status_code == 403
+
 
 def test_settings_create_managed_directories(client):
     test_client, _ = client
@@ -89,6 +189,7 @@ def test_settings_create_managed_directories(client):
 
     for key in keys:
         assert Path(storage[key]).is_dir()
+
 
 def test_sqlite_database_created(client):
     test_client, _ = client
@@ -119,6 +220,7 @@ def test_sqlite_database_created(client):
 
         assert version == 1
 
+
 def test_sqlite_reinitialization_preserves_version(client):
     test_client, main = client
 
@@ -141,6 +243,7 @@ def test_sqlite_reinitialization_preserves_version(client):
 
     assert version == 1
 
+
 def test_root_change_is_rejected(client):
     test_client, _ = client
 
@@ -153,6 +256,7 @@ def test_root_change_is_rejected(client):
     assert response.status_code == 400
     assert "fixed" in response.json()["detail"]
 
+
 def test_unknown_storage_key_is_rejected(client):
     test_client, _ = client
 
@@ -163,6 +267,7 @@ def test_unknown_storage_key_is_rejected(client):
     )
 
     assert response.status_code == 400
+
 
 def test_external_model_paths_can_be_empty(client):
     test_client, _ = client
@@ -182,6 +287,7 @@ def test_external_model_paths_can_be_empty(client):
     assert response.json()["storage"]["checkpoint"] == ""
     assert response.json()["storage"]["lora"] == ""
 
+
 def test_external_model_path_must_exist_when_set(client, tmp_path):
     test_client, _ = client
 
@@ -196,6 +302,7 @@ def test_external_model_path_must_exist_when_set(client, tmp_path):
     )
 
     assert response.status_code == 400
+
 
 def test_storage_validation_can_create_directory(client, tmp_path):
     test_client, _ = client
@@ -214,6 +321,7 @@ def test_storage_validation_can_create_directory(client, tmp_path):
     assert response.json()["exists"] is True
     assert response.json()["is_directory"] is True
     assert response.json()["writable"] is True
+
 
 def test_corrupt_settings_are_backed_up(client):
     test_client, main = client
@@ -236,6 +344,7 @@ def test_corrupt_settings_are_backed_up(client):
     assert len(backups) == 1
     assert backups[0].read_text(encoding="utf-8") == "{broken-json"
 
+
 def test_services_status_returns_when_services_offline(client):
     test_client, _ = client
 
@@ -247,3 +356,25 @@ def test_services_status_returns_when_services_offline(client):
     assert response.status_code == 200
     assert "ollama" in response.json()
     assert "comfyui" in response.json()
+
+
+def test_unknown_api_returns_json_not_html(client):
+    test_client, _ = client
+
+    response = test_client.get("/api/does-not-exist", headers=auth())
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
+
+
+def test_spa_fallback_serves_index_when_dist_present(client, tmp_path, monkeypatch):
+    test_client, main = client
+
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html>workbench</html>", encoding="utf-8")
+    monkeypatch.setattr(main, "FRONTEND_DIST", dist)
+
+    # SPA shell and assets are served without an API session token.
+    response = test_client.get("/some/deep/route")
+    assert response.status_code == 200
+    assert "workbench" in response.text
