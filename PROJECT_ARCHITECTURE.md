@@ -119,11 +119,20 @@
 - 上层可调用下层，下层不反向依赖前端或 Rust。
 - 规则、安全与状态判定集中在 Python 后端，不在前端、Rust 或 Prompt 文件中重新实现。
 
-## 7. M0 当前落地范围（TASK-002，2026-11-17）
+## 7. M0 当前落地范围
+
+### 7.1 TASK-002（2026-11-17，0.1.0-dev.1）
 
 本节只记录本次代码已落地与实测状态，不代表第 2 节规划模块已全部实现。
 
 - **已落地并在后端实测**：FastAPI 会话令牌校验、`/api/health`、`/api/settings` 读写、`/api/storage/validate`、`/api/services/status`（Ollama / ComfyUI 仅连通性检测）、管理目录初始化；后端绑定 `127.0.0.1`。
 - **已落地并在前端静态构建通过**：React 设置/状态界面、Vite + TypeScript 工程；前端经 Tauri 命令 `get_backend_config` 获取端口与令牌后访问后端。
 - **已落地代码、本机未编译验证**：Tauri 2 宿主（随机端口、UUID v4 令牌、拉起自己的 Python 子进程、退出时结束该子进程）。阻塞原因：本机缺 Rust 工具链与 MSVC C++ Build Tools。
-- **尚未落地**：第 2.3 节列出的 domain/workflow/rules/prompt/queue/drafts/history/loras/repositories 等业务模块、SQLite 数据层、显存管理、知识库与注入编辑 UI、工作流解析与出图闭环，均属后续阶段。
+
+### 7.2 TASK-002.1（2026-11-17，0.1.0-dev.2）
+
+- **SQLite 基础层已落地并在后端实测**：数据库文件位于 `storage.database/workbench.sqlite3`；初始表 `schema_version(version PK, applied_at)`、`app_metadata(key PK, value, updated_at)`，`schema_version` 当前为 1；重复初始化保留版本号。业务实体表（规则、草稿、历史、LoRA 等）属后续阶段。
+- **根目录与配置规则**：`storage.root` 由桌面宿主固定（数据根取 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench`，Rust 与 Python 默认根一致），客户端修改 root 返回 400；管理子目录、外部模型路径（checkpoint/lora，可留空）、连接地址（ollama_url/comfyui_url）按白名单校验；损坏 `settings.json` 先备份为 `settings.corrupt-<时间戳>-<hex>.json` 再重建默认配置。
+- **日志职责**：Rust sidecar 子进程 stdout/stderr 分流到数据根 `logs/sidecar-stdout.log`、`logs/sidecar-stderr.log`；会话令牌仅经 `WORKBENCH_SESSION_TOKEN` 环境变量传递，不写入日志；启动失败/超时错误附带 stderr 日志路径。
+- **健康检查**：宿主在 TCP 连通后再以 Bearer 令牌请求 `/api/health`，返回 200 且体含 `ok:true` 才判定就绪，不仅凭端口打开判定。
+- **尚未落地**：第 2.3 节列出的 domain/workflow/rules/prompt/queue/drafts/history/loras 等业务模块、业务实体表、显存管理、知识库与注入编辑 UI、工作流解析与出图闭环，均属后续阶段。

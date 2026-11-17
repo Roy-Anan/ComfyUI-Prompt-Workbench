@@ -187,3 +187,78 @@ button:disabled {
     padding: 24px 18px;
   }
 }
+
+/* TASK-002.1: path row / connection list / actions layout */
+.path-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.path-field,
+.connection-list label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.path-field input,
+.connection-list input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.path-field small {
+  color: var(--muted, #777);
+  overflow-wrap: anywhere;
+}
+
+.path-row button {
+  white-space: nowrap;
+}
+
+.connection-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.message {
+  overflow-wrap: anywhere;
+}
+
+input:read-only {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: #1c2735;
+}
+
+@media (max-width: 720px) {
+  .path-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .connection-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

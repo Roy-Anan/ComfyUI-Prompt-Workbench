@@ -5,16 +5,22 @@ import json
 import os
 import platform
 import secrets
+import shutil
+import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.responses import JSONResponse
 
 APP_NAME = "ComfyUI-Prompt-Workbench"
+APP_VERSION = "0.1.0-dev.2"
+
 SESSION_TOKEN = os.environ.get("WORKBENCH_SESSION_TOKEN", "")
 DATA_ROOT = Path(
     os.environ.get(
@@ -26,10 +32,28 @@ DATA_ROOT = Path(
     )
 ).expanduser()
 
+SETTINGS_FILE = DATA_ROOT / "settings.json"
+
+MANAGED_KEYS = {
+    "database", "knowledge", "prompts", "workflows", "drafts",
+    "history", "cache", "logs", "backups", "exports",
+}
+OPTIONAL_EXTERNAL_KEYS = {"checkpoint", "lora"}
+ALLOWED_STORAGE_KEYS = MANAGED_KEYS | OPTIONAL_EXTERNAL_KEYS | {"root"}
+ALLOWED_CONNECTION_KEYS = {"ollama_url", "comfyui_url"}
+
+ALLOWED_ORIGINS = {
+    "tauri://localhost",
+    "https://tauri.localhost",
+    "http://tauri.localhost",
+    "http://localhost:1420",
+    "http://127.0.0.1:1420",
+}
+
 def default_settings() -> dict[str, Any]:
     root = DATA_ROOT
     return {
-        "version": 1,
+        "version": 2,
         "storage": {
             "root": str(root),
             "database": str(root / "database"),
@@ -51,43 +75,160 @@ def default_settings() -> dict[str, Any]:
         },
     }
 
-SETTINGS_FILE = DATA_ROOT / "settings.json"
+def write_test(path: Path) -> None:
+    probe = path / f".workbench-write-test-{secrets.token_hex(8)}"
+    try:
+        probe.write_text("ok", encoding="utf-8")
+    finally:
+        try:
+            probe.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 def ensure_managed_directories(settings: dict[str, Any]) -> None:
-    storage = settings.get("storage", {})
-    for key, value in storage.items():
-        if key in {"checkpoint", "lora"}:
-            continue
-        if isinstance(value, str) and value.strip():
-            Path(value).expanduser().mkdir(parents=True, exist_ok=True)
+    for key in MANAGED_KEYS:
+        raw = settings["storage"].get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError(f"Managed storage path is empty: {key}")
+
+        path = Path(raw).expanduser()
+        path.mkdir(parents=True, exist_ok=True)
+
+        if not path.is_dir():
+            raise ValueError(f"Storage path is not a directory: {key}")
+
+        write_test(path)
+
+def initialize_database(settings: dict[str, Any]) -> str:
+    database_dir = Path(settings["storage"]["database"]).expanduser()
+    database_dir.mkdir(parents=True, exist_ok=True)
+
+    if not database_dir.is_dir():
+        raise ValueError("Database path is not a directory")
+
+    database_path = database_dir / "workbench.sqlite3"
+
+    with sqlite3.connect(database_path, timeout=10) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            )
+        """)
+
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS app_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+
+        row = connection.execute(
+            "SELECT MAX(version) FROM schema_version"
+        ).fetchone()
+
+        if row is None or row[0] is None:
+            connection.execute(
+                """
+                INSERT INTO schema_version(version, applied_at)
+                VALUES (?, ?)
+                """,
+                (1, datetime.now(timezone.utc).isoformat()),
+            )
+
+        connection.execute(
+            """
+            INSERT INTO app_metadata(key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            """,
+            (
+                "application",
+                APP_NAME,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+
+    return str(database_path)
+
+def save_settings_file(settings: dict[str, Any]) -> None:
+    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+
+    temp_file = SETTINGS_FILE.with_name(
+        f"{SETTINGS_FILE.name}.{secrets.token_hex(6)}.tmp"
+    )
+
+    try:
+        temp_file.write_text(
+            json.dumps(settings, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temp_file.replace(SETTINGS_FILE)
+    finally:
+        try:
+            temp_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+def backup_corrupt_settings() -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = SETTINGS_FILE.with_name(
+        f"settings.corrupt-{timestamp}-{secrets.token_hex(3)}.json"
+    )
+    shutil.copy2(SETTINGS_FILE, backup)
+    return backup
 
 def load_settings() -> dict[str, Any]:
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    settings = default_settings()
 
     if SETTINGS_FILE.exists():
         try:
             loaded = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-            defaults = default_settings()
-            defaults["storage"].update(loaded.get("storage", {}))
-            defaults["connections"].update(loaded.get("connections", {}))
-            loaded = defaults
-        except (OSError, json.JSONDecodeError, TypeError):
-            loaded = default_settings()
-    else:
-        loaded = default_settings()
 
-    ensure_managed_directories(loaded)
-    save_settings_file(loaded)
-    return loaded
+            if not isinstance(loaded, dict):
+                raise ValueError("Settings root must be an object")
 
-def save_settings_file(settings: dict[str, Any]) -> None:
-    DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    temp_file = SETTINGS_FILE.with_suffix(".json.tmp")
-    temp_file.write_text(
-        json.dumps(settings, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temp_file.replace(SETTINGS_FILE)
+            storage = loaded.get("storage", {})
+            connections = loaded.get("connections", {})
+
+            if not isinstance(storage, dict):
+                raise ValueError("Settings storage must be an object")
+
+            if not isinstance(connections, dict):
+                raise ValueError("Settings connections must be an object")
+
+            # Ignore unknown keys in an existing settings file.
+            for key in MANAGED_KEYS | OPTIONAL_EXTERNAL_KEYS:
+                if key in storage and isinstance(storage[key], str):
+                    settings["storage"][key] = storage[key]
+
+            for key in ALLOWED_CONNECTION_KEYS:
+                if key in connections and isinstance(connections[key], str):
+                    settings["connections"][key] = connections[key]
+
+            # The actual data root is controlled by the desktop host.
+            settings["storage"]["root"] = str(DATA_ROOT)
+
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            try:
+                backup_corrupt_settings()
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Settings are corrupt and backup failed: {exc}"
+                ) from exc
+
+            settings = default_settings()
+
+    ensure_managed_directories(settings)
+    initialize_database(settings)
+    save_settings_file(settings)
+    return settings
 
 class SettingsUpdate(BaseModel):
     storage: dict[str, str] = Field(default_factory=dict)
@@ -99,19 +240,14 @@ class StorageValidation(BaseModel):
 
 app = FastAPI(
     title=APP_NAME,
-    version="0.1.0-dev.1",
+    version=APP_VERSION,
     docs_url=None,
     redoc_url=None,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "tauri://localhost",
-        "https://tauri.localhost",
-        "http://tauri.localhost",
-        "http://localhost:1420",
-    ],
+    allow_origins=sorted(ALLOWED_ORIGINS),
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
@@ -119,6 +255,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def require_session_token(request, call_next):
+    # CORS preflight requests are handled by CORSMiddleware.
     if request.method == "OPTIONS":
         return await call_next(request)
 
@@ -126,8 +263,6 @@ async def require_session_token(request, call_next):
     expected = f"Bearer {SESSION_TOKEN}"
 
     if not SESSION_TOKEN or not hmac.compare_digest(supplied, expected):
-        from starlette.responses import JSONResponse
-
         return JSONResponse(
             status_code=401,
             content={"detail": "Invalid or missing local session token"},
@@ -140,50 +275,89 @@ def health():
     return {
         "ok": True,
         "app": APP_NAME,
-        "version": app.version,
+        "version": APP_VERSION,
         "python": platform.python_version(),
         "platform": platform.platform(),
     }
 
 @app.get("/api/settings")
 def get_settings():
-    return load_settings()
+    try:
+        return load_settings()
+    except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Settings initialization failed: {exc}",
+        ) from exc
 
 @app.post("/api/settings")
 def update_settings(payload: SettingsUpdate):
     current = load_settings()
 
-    allowed_storage = set(current["storage"].keys())
-    for key, value in payload.storage.items():
-        if key not in allowed_storage:
-            raise HTTPException(400, f"Unknown storage key: {key}")
-        if key in {"checkpoint", "lora"}:
-            # External model folders are optional and are not moved.
-            current["storage"][key] = value.strip()
-            continue
-        if not value.strip():
-            raise HTTPException(400, f"Storage path cannot be empty: {key}")
-        current["storage"][key] = str(Path(value).expanduser())
+    unknown_storage = set(payload.storage) - ALLOWED_STORAGE_KEYS
+    if unknown_storage:
+        raise HTTPException(
+            400, f"Unknown storage keys: {sorted(unknown_storage)}"
+        )
 
-    allowed_connections = {"ollama_url", "comfyui_url"}
+    if "root" in payload.storage:
+        raise HTTPException(
+            400,
+            "storage.root is fixed by the desktop host and cannot be changed",
+        )
+
+    unknown_connections = set(payload.connections) - ALLOWED_CONNECTION_KEYS
+    if unknown_connections:
+        raise HTTPException(
+            400,
+            f"Unknown connection keys: {sorted(unknown_connections)}",
+        )
+
+    candidate = json.loads(json.dumps(current))
+
+    for key, value in payload.storage.items():
+        value = value.strip()
+
+        if key in OPTIONAL_EXTERNAL_KEYS:
+            if value:
+                external_path = Path(value).expanduser()
+                if not external_path.exists() or not external_path.is_dir():
+                    raise HTTPException(
+                        400,
+                        f"External model directory does not exist: {key}",
+                    )
+            candidate["storage"][key] = value
+            continue
+
+        if not value:
+            raise HTTPException(400, f"Storage path cannot be empty: {key}")
+
+        candidate["storage"][key] = str(Path(value).expanduser())
+
     for key, value in payload.connections.items():
-        if key not in allowed_connections:
-            raise HTTPException(400, f"Unknown connection key: {key}")
+        value = value.strip()
+
         if not value.startswith(("http://", "https://")):
             raise HTTPException(400, f"Invalid URL: {key}")
-        current["connections"][key] = value.rstrip("/")
+
+        candidate["connections"][key] = value.rstrip("/")
 
     try:
-        ensure_managed_directories(current)
-        save_settings_file(current)
-    except OSError as exc:
-        raise HTTPException(400, f"Cannot create or save configured paths: {exc}") from exc
+        ensure_managed_directories(candidate)
+        initialize_database(candidate)
+        save_settings_file(candidate)
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(
+            400,
+            f"Cannot validate or save settings: {exc}",
+        ) from exc
 
-    return current
+    return candidate
 
 @app.post("/api/storage/validate")
 def validate_storage(payload: StorageValidation):
     raw = payload.path.strip()
+
     if not raw:
         raise HTTPException(400, "Path is empty")
 
@@ -198,9 +372,7 @@ def validate_storage(payload: StorageValidation):
         writable = False
 
         if exists and is_dir:
-            probe = path / f".workbench-write-test-{secrets.token_hex(6)}"
-            probe.write_text("ok", encoding="utf-8")
-            probe.unlink()
+            write_test(path)
             writable = True
 
         return {
@@ -209,8 +381,12 @@ def validate_storage(payload: StorageValidation):
             "is_directory": is_dir,
             "writable": writable,
         }
+
     except OSError as exc:
-        raise HTTPException(400, f"Path validation failed: {exc}") from exc
+        raise HTTPException(
+            400,
+            f"Path validation failed: {exc}",
+        ) from exc
 
 def probe_url(url: str, path: str) -> dict[str, Any]:
     target = url.rstrip("/") + path
@@ -224,6 +400,7 @@ def probe_url(url: str, path: str) -> dict[str, Any]:
                 "url": url,
                 "error": None,
             }
+
     except (URLError, TimeoutError, OSError) as exc:
         return {
             "online": False,
@@ -237,10 +414,13 @@ def services_status():
     settings = load_settings()
     connections = settings["connections"]
 
-    ollama = probe_url(connections["ollama_url"], "/api/tags")
-    comfyui = probe_url(connections["comfyui_url"], "/system_stats")
-
     return {
-        "ollama": ollama,
-        "comfyui": comfyui,
+        "ollama": probe_url(
+            connections["ollama_url"],
+            "/api/tags",
+        ),
+        "comfyui": probe_url(
+            connections["comfyui_url"],
+            "/system_stats",
+        ),
     }
