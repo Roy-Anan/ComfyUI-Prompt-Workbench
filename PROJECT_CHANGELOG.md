@@ -100,3 +100,19 @@
   - 固定 Python 3.12 环境并复核兼容性（本机当前为 3.13.18，无 3.12）。
   - WebView2 在 Tauri 壳内的可用性待实测。
   - 业务功能（编辑器、知识库、角色管理、工作流解析、显存调度、ComfyUI 启停、安装包等）按任务书边界本次未实现。
+
+### 0.1.0-dev.3 — 2026-11-17（TASK-002.2，分支 dev）
+
+- **新增功能**：无业务代码；完成只读 Windows 运行环境盘点、运行依赖与安装包方案整理、现状代码审查与证据归档。
+- **修改文件**：
+  - 新增 `docs/TASK_EVIDENCE/TASK-002.2/`（README、environment-report、runtime-dependency-report、installer-design-report、current-code-review、disk-space-report、known-issues、raw-outputs/）。
+  - 更新 `PROJECT_STATE.md`（追加 TASK-002.2 盘点记录）、`PROJECT_CHANGELOG.md`（本文件）。
+- **修复问题**：无（本任务不修改业务代码，不做重构）。
+- **测试情况**：
+  - 只读采集 OS/架构/管理员权限/磁盘/WebView2/Edge/VC++/Python/.venv/依赖清单/产物存在性；原始输出归档 `raw-outputs/`。
+  - 未安装 Rust、MSVC、Node.js、Python 3.12；未修改系统 PATH/注册表/环境变量/防火墙/杀毒设置；未启停 ComfyUI/Ollama。
+  - 未执行 `cargo check`、`tauri build`、PyInstaller 打包或桌面端到端运行。
+- **未完成事项**：
+  - 打包方案（PyInstaller sidecar、Tauri externalBin、NSIS、版本对齐、CSP、依赖拆分）由 ChatGPT 后续设计。
+  - 打包环境（Rust/MSVC）与干净 Win11 x64 安装验收待后续任务。
+  - 本任务不宣布 M0 桌面闭环通过，也不宣布正式 EXE 已完成。

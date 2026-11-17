@@ -1,0 +1,17 @@
+=== TASK-002.2 disk space (read-only) ===
+collected_at: 2026-11-17T21:59+08:00
+repo_path: D:\AI\ComfyUI-Prompt-Workbench-Git
+repo_drive: D:
+
+C: FreeGB=45.95 TotalGB=152.79 FreeMB=47055.1
+D: FreeGB=49.11 TotalGB=323.20 FreeMB=50288.5
+D UsedGB=274.1
+
+Command: Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3"
+Command: Get-PSDrive D
+Exit: 0
+
+Notes:
+- 仓库位于 D 盘，D 盘剩余约 49.11 GB。
+- C 盘剩余约 45.95 GB；用户默认数据目录位于 C 盘 %LOCALAPPDATA%。
+- 数值为采集时点快照，磁盘可用空间会随系统与其他软件变化。

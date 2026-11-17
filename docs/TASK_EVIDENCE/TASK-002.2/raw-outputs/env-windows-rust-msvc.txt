@@ -1,0 +1,37 @@
+=== OS ===
+
+Caption        : Microsoft Windows 11 家庭版 中文版
+Version        : 10.0.26200
+BuildNumber    : 26200
+OSArchitecture : 64 位
+Locale         : 0804
+
+
+=== Admin check ===
+IsAdmin=False
+User=ROY\15380
+=== Disks ===
+C: Free=46.0GB Total=152.8GB
+D: Free=49.1GB Total=323.2GB
+=== Rust ===
+rustc : NOT FOUND
+cargo : NOT FOUND
+rustup : NOT FOUND
+rustc --version:
+rustc not runnable
+cargo --version:
+cargo not runnable
+rustup --version:
+rustup not runnable
+where rustc:
+where cargo:
+exists C:\Users\15380\.cargo: False
+exists C:\Users\15380\.rustup: False
+=== MSVC / VS ===
+vswhere.exe exists: False
+cl.exe : NOT FOUND
+link.exe : NOT FOUND
+exists C:\Program Files\Microsoft Visual Studio: False
+exists C:\Program Files (x86)\Microsoft Visual Studio: False
+exists C:\Program Files (x86)\Microsoft Visual Studio\2022: False
+VC Redist: Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object {.DisplayName -like '*Visual C++*Redistributable*'} | Select DisplayName,DisplayVersion
