@@ -211,3 +211,37 @@
 | 数据库未重迁 | 通过 | 旧库保留，新库沿用既有数据，未重建/覆盖 |
 | 真机启动/访问/停止 | 通过 | 启动 200，健康检查实例一致，停止后端口释放 |
 | 真实出图端到端验收 | 未完成 | 不在本次边界内 |
+
+## 11. TASK-003.1 工作流导入/解析/Prompt 白名单写入记录（2026-11-17，**未验收 / 未提交**）
+
+### 11.1 当前状态
+
+- 代码已按交付落盘到工作区，**未提交、未推送 dev**；起始 dev `9a76bdbc0bd3ef71a0f389f1782d8a6d13297e59`，main `3084866aa85595133c7a1179b15ddd71e659d8f3` 未改。
+- 后端新增 API workflow 测试 6 项失败，真机闭环验收未执行；按口径不虚报通过。
+
+### 11.2 已落盘文件
+
+- 新增：`backend/workflow_service.py`、`backend/workflow_api.py`、`backend/test_workflow_service.py`、`frontend/src/WorkflowWorkbench.tsx`。
+- 修改：`backend/main.py`（路由接入、版本 `0.1.0-dev.5`）、`frontend/src/App.tsx`（页面导航与切换）、`frontend/src/styles.css`（工作流样式）。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1/`（README、`Doubao-Receipt.md` 原始回执、known-issues、pytest-output、frontend-build）。
+
+### 11.3 测试与构建
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| Python 编译检查 | 通过 | `py_compile` exit 0 |
+| Python pytest | **51 passed / 6 failed** | 57 collected；既有 test_main 32、test_scripts 16 全过；新增 3 passed / 6 failed |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+| API workflow 解析/识别 | 未通过 | 6 个 API 用例在格式识别阶段被拒（见 11.4 P1） |
+| 白名单写入 / 非白名单拒绝 / 指纹校验 | 未验证 | 导入阶段即失败，未走到写入链路 |
+| 重启后导入记录持久化 | 未验证 | 真机闭环未执行 |
+| UI workflow 浏览器只读 | 未验证 | 仅单元测试 `test_ui_workflow_is_parsed_but_not_writable` 通过 |
+| 真实出图端到端验收 | 未完成 | 不在本次边界内 |
+
+### 11.4 阻塞问题
+
+- **P1（阻塞）**：`workflow_service.py` 的 `detect_format` / `_api_nodes` 从 `workflow["nodes"]` 取 API 节点；测试样本为 ComfyUI 标准扁平结构（根下直接是 `"1"…"6"`），无 `nodes` 键，抛 `WorkflowError: 无法识别工作流格式…`。待 ChatGPT 侧确认口径：① 解析器适配扁平 API prompt；② 样本改为 `nodes` 包裹结构。详见证据目录 `known-issues.md`。
+
+### 11.5 证据归档规则（自本任务起固定）
+
+- 每项任务档案统一在 `docs/TASK_EVIDENCE/TASK-xxx/`；`Doubao-Receipt.md` 保留完整原始回执，其他文件存测试原始结果、截图、日志、环境信息与代码差异作为佐证；证据与代码一起提交 dev。规则全文见 `docs/MAINTENANCE_AND_AGENT_HANDOFF.md` 第 5.1 节。

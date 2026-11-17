@@ -213,3 +213,26 @@
   - Python 3.12 兼容性未单独验证（本机 3.13.18）。
   - Ollama / ComfyUI 在线真实调用与出图闭环待后续阶段验收。
   - 业务功能按边界本次未实现；不恢复 Tauri/Rust/EXE 路线。
+
+### 0.1.0-dev.5 — 2026-11-17（TASK-003.1，分支 dev，**未提交 / 未验收**）
+
+> 状态：代码已按交付落盘，但后端新增 API workflow 测试 6 项失败；按任务书要求未提交、未推送 dev，真机闭环验收未执行。本条目为工作区留痕，对应提交 SHA 待复测通过后补记。
+
+- **新增功能（代码已落盘，未验收）**：
+  - 工作流导入/解析/Prompt 白名单写入：`backend/workflow_service.py`（格式识别、节点解析、指纹、白名单、安全写入）、`backend/workflow_api.py`（`/api/workflows` 路由）、`backend/test_workflow_service.py`、`frontend/src/WorkflowWorkbench.tsx`。
+- **修改文件（工作区未提交）**：
+  - `backend/main.py`（接入 workflow_router、版本号 `0.1.0-dev.5`）。
+  - `frontend/src/App.tsx`（工作流页面导航与切换）。
+  - `frontend/src/styles.css`（工作流页面样式）。
+  - 证据目录：`docs/TASK_EVIDENCE/TASK-003.1/`（README、Doubao-Receipt、known-issues、pytest-output、frontend-build）。
+- **修复问题**：无（本次未改核心实现；落盘时一处 JSX 片段闭合偏差已按源码原文修正）。
+- **测试情况**：
+  - Python pytest：**51 passed，6 failed**（57 collected，Python 3.13.18 / pytest 8.4.2）；既有 `test_main.py` 32、`test_scripts.py` 16 全过；新增 `test_workflow_service.py` 3 passed / 6 failed。
+  - Python 编译检查：通过（`py_compile` exit 0）。
+  - 前端构建：通过（`tsc -b && vite build` exit 0，33 模块）。
+  - 真机浏览器验收：未执行（后端解析链路未通过，闭环无法走通）。
+- **未完成事项 / 阻塞**：
+  - P1（阻塞）：后端解析器从 `workflow["nodes"]` 取 API 节点，与测试样本的扁平 API prompt 结构口径不一致，6 个 API 用例在格式识别阶段被拒；待 ChatGPT 侧确认口径（解析器适配扁平结构 / 样本改为 nodes 包裹）后复测。
+  - 白名单写入、非白名单拒绝、指纹校验、重启持久化、UI workflow 浏览器只读验收均未走到，不能视为已验证。
+  - Python 3.12 兼容性未验证；Ollama / ComfyUI 在线真实调用与出图闭环不在本次边界。
+- **归档规则新增**：证据目录统一 `docs/TASK_EVIDENCE/TASK-xxx/`，含 `Doubao-Receipt.md` 原始回执与佐证材料，随代码提交 dev；规则已写入 `docs/MAINTENANCE_AND_AGENT_HANDOFF.md` 第 5.1 节。
