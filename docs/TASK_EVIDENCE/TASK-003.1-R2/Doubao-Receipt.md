@@ -176,14 +176,22 @@ dist/assets/index-C4-wWkSq.js   154.92 kB │ gzip: 50.28 kB
 ## 10. dev / main SHA 与推送结果
 
 - dev 起始：`bd36c7eae7fd5840c72e090b6ac58bd1c098a2bc`
-- dev 最终：（提交后回填）
+- dev 最终：`bddc82c35de536978dd54f9d03716b9bb99962a7`
 - main：`3084866aa85595133c7a1179b15ddd71e659d8f3`（本地 = origin/main，未修改）
 - 提交信息：`fix(workflow): support API prompt format and safe writes`
-- 推送结果：（提交后回填）
+- 提交身份：Roy-Anan `<1538072315@qq.com>`
+- 提交规模：18 files changed, 2203 insertions(+), 1 deletion(-)
+- 推送结果：成功，`bd36c7e..bddc82c  dev -> dev`（push exit 0）；回读本地 HEAD = origin/dev = `bddc82c`。
 
 ## 11. 工作区状态
 
-提交后工作区状态：（回填）。`userdata/`、`frontend/dist/` 未跟踪；未提交 ComfyUI 生成任务。
+提交后工作区干净：
+
+```text
+## dev...origin/dev
+```
+
+`userdata/`、`frontend/dist/` 未跟踪；未提交 ComfyUI 生成任务。所有本轮功能代码与 R2 证据已随 `bddc82c` 入库 dev。
 
 ## 12. 异常与处理
 
