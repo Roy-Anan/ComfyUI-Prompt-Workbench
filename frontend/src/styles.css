@@ -1,0 +1,189 @@
+:root {
+  font-family: Inter, "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  color: #e9edf5;
+  background: #10131a;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 760px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 80% 0%, #24334b 0, transparent 35%),
+    #10131a;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 36px 32px 28px;
+}
+
+.topbar,
+.section-heading,
+.footer,
+.status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.topbar {
+  margin-bottom: 28px;
+}
+
+.eyebrow {
+  color: #8ea9d5;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 8px 0;
+  font-size: 28px;
+}
+
+h2 {
+  margin: 0 0 7px;
+  font-size: 18px;
+}
+
+p,
+small,
+.muted {
+  color: #9ca8ba;
+}
+
+.topbar p,
+.section-heading p {
+  margin: 0;
+  font-size: 13px;
+}
+
+button {
+  border: 1px solid #506b97;
+  border-radius: 9px;
+  padding: 10px 16px;
+  color: white;
+  background: #29456f;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.panel {
+  border: 1px solid #2b3545;
+  border-radius: 13px;
+  background: rgb(25 31 42 / 92%);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.status-card {
+  min-height: 112px;
+}
+
+.card-title {
+  color: #9ca8ba;
+  font-size: 12px;
+  margin-bottom: 13px;
+}
+
+.status-line {
+  justify-content: flex-start;
+  margin-bottom: 8px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.dot.online {
+  background: #49c58a;
+  box-shadow: 0 0 10px #49c58a70;
+}
+
+.dot.offline {
+  background: #d18b68;
+}
+
+.status-card small {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.path-list {
+  display: grid;
+  gap: 13px;
+  margin-top: 20px;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 245px 1fr;
+  align-items: center;
+  gap: 18px;
+  font-size: 13px;
+  color: #c6d0df;
+}
+
+.field input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #39475b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #e9edf5;
+  background: #111722;
+  outline: none;
+}
+
+.field input:focus {
+  border-color: #779bd0;
+}
+
+.footer {
+  padding: 6px 2px 20px;
+  color: #9ca8ba;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .shell {
+    padding: 24px 18px;
+  }
+}

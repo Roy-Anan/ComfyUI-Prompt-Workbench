@@ -118,3 +118,12 @@
 - 前端 → api（后端）→ 领域服务 → repositories/adapters。
 - 上层可调用下层，下层不反向依赖前端或 Rust。
 - 规则、安全与状态判定集中在 Python 后端，不在前端、Rust 或 Prompt 文件中重新实现。
+
+## 7. M0 当前落地范围（TASK-002，2026-11-17）
+
+本节只记录本次代码已落地与实测状态，不代表第 2 节规划模块已全部实现。
+
+- **已落地并在后端实测**：FastAPI 会话令牌校验、`/api/health`、`/api/settings` 读写、`/api/storage/validate`、`/api/services/status`（Ollama / ComfyUI 仅连通性检测）、管理目录初始化；后端绑定 `127.0.0.1`。
+- **已落地并在前端静态构建通过**：React 设置/状态界面、Vite + TypeScript 工程；前端经 Tauri 命令 `get_backend_config` 获取端口与令牌后访问后端。
+- **已落地代码、本机未编译验证**：Tauri 2 宿主（随机端口、UUID v4 令牌、拉起自己的 Python 子进程、退出时结束该子进程）。阻塞原因：本机缺 Rust 工具链与 MSVC C++ Build Tools。
+- **尚未落地**：第 2.3 节列出的 domain/workflow/rules/prompt/queue/drafts/history/loras/repositories 等业务模块、SQLite 数据层、显存管理、知识库与注入编辑 UI、工作流解析与出图闭环，均属后续阶段。
