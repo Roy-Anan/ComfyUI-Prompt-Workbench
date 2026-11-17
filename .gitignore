@@ -20,8 +20,9 @@ legacy/src-tauri/gen/
 *.log
 *.tmp
 
-# Runtime PID file written by the launcher
+# Runtime PID file and structured identity record written by the launcher
 .workbench.pid
+.workbench-runtime.json
 
 # User runtime data (database, knowledge, prompts, drafts, history, logs,
 # backups, exports). Lives inside the Git repo but must never be committed.

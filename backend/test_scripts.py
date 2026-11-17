@@ -82,17 +82,162 @@ def test_stopper_rejects_identity_mismatch(monkeypatch):
     assert matches is False
 
 
+def _good_record(stopper, **overrides):
+    venv = str(stopper.VENV_PYTHON)
+    record = {
+        "app_id": stopper.APP_ID,
+        "instance_id": "test-instance-123",
+        "pid": 12345,
+        "creation_date": "2026-01-01T00:00:00.000000Z",
+        "executable_path": venv,
+        "working_directory": str(stopper.BACKEND_DIR),
+        "command_line": [
+            venv, "-m", "uvicorn", "main:app",
+            "--host", "127.0.0.1", "--port", "8000",
+        ],
+        "host": "127.0.0.1",
+        "port": 8000,
+    }
+    record.update(overrides)
+    return record
+
+
+def _good_info(stopper, **overrides):
+    venv = str(stopper.VENV_PYTHON).lower().replace("/", "\\")
+    info = {
+        "ExecutablePath": venv,
+        "CommandLine": f'"{venv}" -m uvicorn main:app --host 127.0.0.1 --port 8000',
+        "CreationDate": "2026-01-01T00:00:00.000000Z",
+        "WorkingDirectory": str(stopper.BACKEND_DIR),
+    }
+    info.update(overrides)
+    return info
+
+
+def _patch_health(monkeypatch, stopper, instance="test-instance-123"):
+    monkeypatch.setattr(stopper, "_health_instance", lambda host, port: instance)
+
+
 def test_stopper_matches_workbench_process(monkeypatch):
     stopper = _load("stopper", "workbench_stopper.py")
-    venv = str(stopper.VENV_PYTHON).lower().replace("/", "\\")
-
+    _patch_health(monkeypatch, stopper)
     monkeypatch.setattr(
         stopper, "_process_info",
-        lambda pid: {
-            "ExecutablePath": venv,
-            "CommandLine": f'"{venv}" -m uvicorn main:app --host 127.0.0.1 --port 8000',
-            "CreationDate": "20260101000000.000000+000",
-        },
+        lambda pid: _good_info(stopper),
     )
-    matches, _ = stopper.identify_workbench(12345)
+    matches, _ = stopper.identify_workbench(12345, _good_record(stopper))
     assert matches is True
+
+
+def test_stopper_rejects_missing_record(monkeypatch):
+    stopper = _load("stopper", "workbench_stopper.py")
+    monkeypatch.setattr(stopper, "_process_info", lambda pid: _good_info(stopper))
+    matches, reason = stopper.identify_workbench(12345, None)
+    assert matches is False
+    assert "运行记录" in reason
+
+
+def test_stopper_rejects_creation_date_mismatch(monkeypatch):
+    stopper = _load("stopper", "workbench_stopper.py")
+    _patch_health(monkeypatch, stopper)
+    monkeypatch.setattr(
+        stopper, "_process_info",
+        lambda pid: _good_info(
+            stopper, CreationDate="2026-02-02T22:22:22.000000Z"
+        ),
+    )
+    record = _good_record(stopper)
+    matches, reason = stopper.identify_workbench(12345, record)
+    assert matches is False
+    assert "启动时间" in reason
+
+
+def test_stopper_rejects_executable_mismatch(monkeypatch):
+    stopper = _load("stopper", "workbench_stopper.py")
+    _patch_health(monkeypatch, stopper)
+    monkeypatch.setattr(
+        stopper, "_process_info",
+        lambda pid: _good_info(stopper, ExecutablePath="C:/OtherApp/python.exe"),
+    )
+    matches, reason = stopper.identify_workbench(12345, _good_record(stopper))
+    assert matches is False
+    assert "可执行路径" in reason
+
+
+def test_stopper_rejects_command_line_mismatch(monkeypatch):
+    stopper = _load("stopper", "workbench_stopper.py")
+    _patch_health(monkeypatch, stopper)
+    venv = str(stopper.VENV_PYTHON).lower().replace("/", "\\")
+    monkeypatch.setattr(
+        stopper, "_process_info",
+        lambda pid: _good_info(
+            stopper,
+            CommandLine=f'"{venv}" -m http.server 9999',
+        ),
+    )
+    matches, reason = stopper.identify_workbench(12345, _good_record(stopper))
+    assert matches is False
+    assert "命令行" in reason
+
+
+def test_stopper_rejects_instance_mismatch(monkeypatch):
+    stopper = _load("stopper", "workbench_stopper.py")
+    _patch_health(monkeypatch, stopper, instance="other-instance")
+    monkeypatch.setattr(stopper, "_process_info", lambda pid: _good_info(stopper))
+    record = _good_record(stopper)
+    matches, reason = stopper.identify_workbench(12345, record)
+    assert matches is False
+    assert "实例标识" in reason
+
+
+def test_stopper_rejects_unreachable_health(monkeypatch):
+    stopper = _load("stopper", "workbench_stopper.py")
+    monkeypatch.setattr(stopper, "_health_instance", lambda host, port: None)
+    monkeypatch.setattr(stopper, "_process_info", lambda pid: _good_info(stopper))
+    matches, reason = stopper.identify_workbench(12345, _good_record(stopper))
+    assert matches is False
+    assert "实例标识" in reason
+
+
+def test_launcher_runtime_record_roundtrip(monkeypatch, tmp_path):
+    launcher = _load("launcher", "workbench_launcher.py")
+    monkeypatch.setattr(launcher, "PID_FILE", tmp_path / ".workbench.pid")
+    monkeypatch.setattr(
+        launcher, "RUNTIME_RECORD_FILE", tmp_path / ".workbench-runtime.json"
+    )
+    monkeypatch.setattr(launcher, "_process_creation_date", lambda pid: "2026-01-01T00:00:00.000000Z")
+
+    class _Proc:
+        pid = 4321
+
+    launcher.write_runtime_record(_Proc(), "instance-abc")
+    record = launcher.read_runtime_record()
+    assert record is not None
+    assert record["pid"] == 4321
+    assert record["instance_id"] == "instance-abc"
+    assert record["app_id"] == launcher.APP_ID
+    assert launcher.PID_FILE.is_file()
+
+    launcher.clear_runtime_record()
+    assert launcher.read_runtime_record() is None
+    assert not launcher.PID_FILE.exists()
+
+
+def test_launcher_corrupt_record_reads_none(monkeypatch, tmp_path):
+    launcher = _load("launcher", "workbench_launcher.py")
+    monkeypatch.setattr(
+        launcher, "RUNTIME_RECORD_FILE", tmp_path / ".workbench-runtime.json"
+    )
+    launcher.RUNTIME_RECORD_FILE.write_text("{broken", encoding="utf-8")
+    assert launcher.read_runtime_record() is None
+
+
+def test_stopper_rejects_missing_instance_env(monkeypatch):
+    stopper = _load("stopper", "workbench_stopper.py")
+    monkeypatch.setattr(
+        stopper, "_process_info",
+        lambda pid: _good_info(stopper, EnvironmentVariables={}),
+    )
+    matches, reason = stopper.identify_workbench(12345, _good_record(stopper))
+    assert matches is False
+    assert "实例标识" in reason

@@ -28,6 +28,10 @@ APP_VERSION = "0.1.0-dev.4"
 # through an environment variable; it is never baked into the frontend build.
 BOOTSTRAP_TOKEN = os.environ.get("WORKBENCH_SESSION_TOKEN", "")
 
+# Per-launch instance identity, injected by the launcher and echoed by the
+# health endpoint so the stopper can verify it matches the structured record.
+INSTANCE_ID = os.environ.get("WORKBENCH_INSTANCE_ID", "")
+
 # Unified data root: <repo>/userdata by default; overridable via env var.
 DATA_ROOT = datadir.default_data_root()
 SETTINGS_FILE = datadir.settings_path(DATA_ROOT)
@@ -189,6 +193,8 @@ def load_settings() -> dict[str, Any]:
             raise ValueError("Settings storage must be an object")
         if not isinstance(connections, dict):
             raise ValueError("Settings connections must be an object")
+        if "_legacy_extra" in loaded and isinstance(loaded["_legacy_extra"], dict):
+            settings["_legacy_extra"] = loaded["_legacy_extra"]
 
         # Preserve only external ComfyUI paths; managed paths are rebuilt
         # against the current data root so a legacy AppData path is not kept.
@@ -368,6 +374,7 @@ def health():
         "ok": True,
         "app": APP_NAME,
         "app_id": APP_NAME,
+        "instance_id": INSTANCE_ID,
         "version": APP_VERSION,
         "python": platform.python_version(),
         "platform": platform.platform(),

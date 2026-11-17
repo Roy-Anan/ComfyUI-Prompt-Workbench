@@ -1,0 +1,36 @@
+TASK-002.3.2 旧设置迁移前后关键字段对照
+
+说明：路径中的 Windows 用户名已以占位符表示；旧目录 %LOCALAPPDATA%\ComfyUI-Prompt-Workbench
+在本机原样保留，未删除；本次只迁移设置文件，未重新迁移数据库。
+
+旧设置（%LOCALAPPDATA%\ComfyUI-Prompt-Workbench\settings.json，version 2）
+- connections.ollama_url : http://127.0.0.1:11434
+- connections.comfyui_url: http://127.0.0.1:8188
+- storage.checkpoint     : ""
+- storage.lora           : ""
+- storage 内 11 个管理子目录路径：全部指向旧 AppData 根（迁移后由新 userdata 重建，不保留旧内部路径）
+
+新设置（<repo>\userdata\settings\settings.json，version 2）
+- connections.ollama_url : http://127.0.0.1:11434（保留）
+- connections.comfyui_url: http://127.0.0.1:8188（保留）
+- storage.checkpoint     : ""（保留）
+- storage.lora           : ""（保留）
+- storage 管理子目录路径：全部指向 <repo>\userdata（新根，不再引用旧 AppData 内部目录）
+
+本机实际合并情况
+- 新设置在本次启动前已存在，迁移走安全合并路径：未覆盖已有用户值；
+  连接地址与外部路径与旧值一致，无冲突记录。
+- 旧 settings.json 保留在旧 AppData 目录，未删除。
+
+隔离复现（临时根，旧设置存在、新设置不存在）
+- 动作：migrated；迁移前备份：backups\legacy-settings-<timestamp>.json
+- 保留：ollama_url / comfyui_url / checkpoint / lora
+- 未知字段：安全保留在 _legacy_extra，未静默丢弃
+- 管理路径：按新根重建
+
+隔离复现（新设置已存在且与旧值冲突）
+- 动作：merged；冲突时优先保留新设置中已有用户值，冲突项记入报告 conflicts。
+
+数据库
+- 旧库 %LOCALAPPDATA%\...\database\workbench.sqlite3：保留，未重迁。
+- 新库 <repo>\userdata\database\workbench.sqlite3：沿用既有数据，未重建/覆盖。

@@ -29,6 +29,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 VENV_PYTHON = REPO_ROOT / ".venv" / "Scripts" / "python.exe"
 BACKEND_DIR = REPO_ROOT / "backend"
 PID_FILE = REPO_ROOT / ".workbench.pid"
+# Structured runtime record; the plain PID file is kept as a fallback, but the
+# stopper verifies identity against this record rather than the PID alone.
+RUNTIME_RECORD_FILE = REPO_ROOT / ".workbench-runtime.json"
 HOST = os.environ.get("WORKBENCH_HOST", "127.0.0.1")
 PORT = int(os.environ.get("WORKBENCH_PORT", "8000"))
 HEALTH_PATH = "/api/health"
@@ -98,6 +101,70 @@ def read_pid() -> int | None:
         return None
 
 
+def _process_creation_date(pid: int) -> str | None:
+    """Read the Win32 CreationDate as an ISO8601 instant, comparable on both sides."""
+    ps = (
+        "Get-CimInstance Win32_Process -Filter "
+        f'"ProcessId={pid}" | '
+        "ForEach-Object { $_.CreationDate.ToString(\"yyyy-MM-ddTHH:mm:ss.ffffffZ\") }"
+    )
+    try:
+        output = subprocess.check_output(
+            ["powershell", "-NoProfile", "-Command", ps],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    value = output.strip()
+    return value or None
+
+
+def write_runtime_record(proc: subprocess.Popen, instance_id: str) -> None:
+    """Persist a structured identity record for the tracked backend process."""
+    record = {
+        "app_id": APP_ID,
+        "instance_id": instance_id,
+        "pid": proc.pid,
+        "creation_date": _process_creation_date(proc.pid),
+        "executable_path": str(VENV_PYTHON),
+        "working_directory": str(BACKEND_DIR),
+        "command_line": [
+            str(VENV_PYTHON),
+            "-m",
+            "uvicorn",
+            "main:app",
+            "--host",
+            HOST,
+            "--port",
+            str(PORT),
+        ],
+        "host": HOST,
+        "port": PORT,
+    }
+    PID_FILE.write_text(str(proc.pid), encoding="utf-8")
+    RUNTIME_RECORD_FILE.write_text(
+        json.dumps(record, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def read_runtime_record() -> dict | None:
+    """Read the structured record; None when missing or corrupt."""
+    if not RUNTIME_RECORD_FILE.exists():
+        return None
+    try:
+        data = json.loads(RUNTIME_RECORD_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def clear_runtime_record() -> None:
+    PID_FILE.unlink(missing_ok=True)
+    RUNTIME_RECORD_FILE.unlink(missing_ok=True)
+
+
 def pid_alive(pid: int) -> bool:
     try:
         import ctypes
@@ -161,35 +228,41 @@ def main() -> int:
     if not env.get("WORKBENCH_SESSION_TOKEN"):
         env["WORKBENCH_SESSION_TOKEN"] = secrets.token_urlsafe(32)
 
+    # Per-launch random instance identity, recorded so the stopper can tell
+    # this backend apart from a PID reused by another program.
+    instance_id = secrets.token_urlsafe(16)
+    env["WORKBENCH_INSTANCE_ID"] = instance_id
+
     print(f"[工作台] 正在启动本地服务：http://{HOST}:{PORT}")
 
     # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP so the backend keeps running
-    # after this launcher returns; the PID file records the tracked root.
+    # after this launcher returns; the structured record tracks the root.
     creation_flags = 0x00000008 | 0x00000200
+    cmd = [
+        str(VENV_PYTHON),
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--host",
+        HOST,
+        "--port",
+        str(PORT),
+    ]
     proc = subprocess.Popen(
-        [
-            str(VENV_PYTHON),
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--host",
-            HOST,
-            "--port",
-            str(PORT),
-        ],
+        cmd,
         cwd=str(BACKEND_DIR),
         env=env,
         creationflags=creation_flags,
         close_fds=True,
     )
 
-    PID_FILE.write_text(str(proc.pid), encoding="utf-8")
+    write_runtime_record(proc, instance_id)
 
     ready = False
     for _ in range(30):
         if proc.poll() is not None:
             print("[工作台] 服务进程已退出，启动失败。请查看上方错误信息。")
-            PID_FILE.unlink(missing_ok=True)
+            clear_runtime_record()
             return 1
         if health_identifies_workbench(HOST, PORT):
             ready = True

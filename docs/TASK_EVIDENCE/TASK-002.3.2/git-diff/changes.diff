@@ -1,0 +1,860 @@
+diff --git a/.gitignore b/.gitignore
+index 55d12c5..5a01c8c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -20,8 +20,9 @@ legacy/src-tauri/gen/
+ *.log
+ *.tmp
+ 
+-# Runtime PID file written by the launcher
++# Runtime PID file and structured identity record written by the launcher
+ .workbench.pid
++.workbench-runtime.json
+ 
+ # User runtime data (database, knowledge, prompts, drafts, history, logs,
+ # backups, exports). Lives inside the Git repo but must never be committed.
+diff --git a/backend/datadir.py b/backend/datadir.py
+index 893bc8f..8b2b318 100644
+--- a/backend/datadir.py
++++ b/backend/datadir.py
+@@ -240,12 +240,14 @@ def prepare_root(root: Path) -> dict[str, Any]:
+     """Create managed directories and run legacy migration.
+ 
+     Returns the migration report. Managed directories are created regardless of
+-    whether migration ran.
++    whether migration ran. The legacy data-file/DB migration and the settings
++    migration are separate channels; the database is never re-migrated here.
+     """
+     root.mkdir(parents=True, exist_ok=True)
+     for path in managed_subdirs(root).values():
+         path.mkdir(parents=True, exist_ok=True)
+     report = migrate_if_needed(root)
++    report["settings_migration"] = migrate_legacy_settings(root)
+     return report
+ 
+ 
+@@ -306,3 +308,164 @@ def save_settings_file(root: Path, settings: dict[str, Any]) -> None:
+         tmp.replace(file_path)
+     finally:
+         tmp.unlink(missing_ok=True)
++
++
++# ---- Legacy settings migration (settings.json only; database is not touched) ----
++
++LEGACY_SETTINGS_REL = Path("settings.json")
++
++# Connection keys carried over verbatim from the old settings.
++LEGACY_CONNECTION_KEYS = ("ollama_url", "comfyui_url")
++
++
++def legacy_settings_path() -> Path:
++    """Old root-level settings.json under the legacy AppData root."""
++    return legacy_data_root() / LEGACY_SETTINGS_REL
++
++
++def _backup_legacy_settings(old_file: Path, backup_dir: Path) -> Path:
++    backup_dir.mkdir(parents=True, exist_ok=True)
++    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
++    backup = backup_dir / f"legacy-settings-{stamp}.json"
++    shutil.copy2(old_file, backup)
++    return backup
++
++
++def _merge_legacy_settings(
++    legacy: dict[str, Any],
++    current: dict[str, Any],
++    root: Path,
++) -> tuple[dict[str, Any], dict[str, Any]]:
++    """Map legacy settings onto the current schema without overwriting kept values.
++
++    Managed storage paths are rebuilt against ``root``; external ComfyUI paths
++    and connection addresses are preserved. When a key already exists in the
++    current settings, its existing user value wins and the conflict is recorded.
++    Unknown safe-to-keep keys are carried under a reserved ``_legacy_extra``
++    section so they are not silently dropped.
++    """
++    merged = {
++        "version": legacy.get("version", current.get("version", 2)),
++        "storage": dict(current.get("storage", {})),
++        "connections": dict(current.get("connections", {})),
++    }
++
++    conflicts: list[str] = []
++    unknown: dict[str, Any] = {}
++
++    old_storage = legacy.get("storage")
++    if isinstance(old_storage, dict):
++        for key in OPTIONAL_EXTERNAL_KEYS:
++            if key in old_storage and isinstance(old_storage[key], str):
++                if key in merged["storage"] and merged["storage"][key]:
++                    if merged["storage"][key] != old_storage[key]:
++                        conflicts.append(f"storage.{key}（保留当前值）")
++                else:
++                    merged["storage"][key] = old_storage[key]
++
++    old_connections = legacy.get("connections")
++    if isinstance(old_connections, dict):
++        for key in LEGACY_CONNECTION_KEYS:
++            if key in old_connections and isinstance(old_connections[key], str):
++                if key in merged["connections"] and merged["connections"][key]:
++                    if merged["connections"][key] != old_connections[key]:
++                        conflicts.append(f"connections.{key}（保留当前值）")
++                else:
++                    merged["connections"][key] = old_connections[key]
++
++    # Preserve legacy top-level keys that are not part of the current schema,
++    # except managed storage paths which must never point back at AppData.
++    known_top = {"version", "storage", "connections"}
++    for key, value in legacy.items():
++        if key in known_top:
++            continue
++        unknown[key] = value
++
++    # Preserve any legacy storage key that is neither managed nor external.
++    if isinstance(old_storage, dict):
++        for key, value in old_storage.items():
++            if key in MANAGED_KEYS or key in OPTIONAL_EXTERNAL_KEYS:
++                continue
++            unknown.setdefault("storage", {})[key] = value
++
++    preserved: list[str] = []
++    if unknown:
++        merged["_legacy_extra"] = unknown
++        preserved = sorted(unknown.keys())
++
++    report = {"conflicts": conflicts, "preserved_unknown": preserved}
++    return merged, report
++
++
++def migrate_legacy_settings(root: Path) -> dict[str, Any]:
++    """Migrate the legacy root-level settings.json into the new settings file.
++
++    This handles settings only; the database is not re-migrated and existing
++    userdata data is never rebuilt or overwritten. The old AppData file is kept.
++    """
++    old_file = legacy_settings_path()
++    report: dict[str, Any] = {
++        "legacy_settings_exists": old_file.exists(),
++        "action": "none",
++        "details": "",
++        "backup": None,
++        "fields": {},
++        "conflicts": [],
++        "unknown_preserved": [],
++    }
++
++    if not old_file.exists():
++        report["details"] = "Legacy settings.json not found; nothing to migrate."
++        return report
++
++    try:
++        legacy = json.loads(old_file.read_text(encoding="utf-8"))
++    except (OSError, ValueError, UnicodeDecodeError) as exc:
++        report["action"] = "failed-corrupt"
++        report["details"] = f"Legacy settings unreadable; left untouched: {exc}"
++        return report
++
++    if not isinstance(legacy, dict):
++        report["action"] = "failed-invalid"
++        report["details"] = "Legacy settings root is not an object; left untouched."
++        return report
++
++    backup = _backup_legacy_settings(old_file, root / "backups")
++    report["backup"] = str(backup.relative_to(root))
++
++    try:
++        current = load_settings_file(root)
++    except (OSError, ValueError, TypeError, json.JSONDecodeError):
++        # A corrupt current settings file is left for main.py's own backup /
++        # reset path; do not overwrite it from the legacy file here.
++        report["action"] = "skipped-corrupt-current"
++        report["details"] = "Current settings are corrupt; left untouched for backup/reset."
++        return report
++
++    if current is None:
++        current = default_settings(root)
++        report["action"] = "migrated"
++        report["details"] = "No current settings; built defaults from legacy values."
++    else:
++        report["action"] = "merged"
++        report["details"] = "Current settings exist; merged without overwriting."
++
++    merged, merge_report = _merge_legacy_settings(legacy, current, root)
++    merged = rewrite_settings_paths(merged, root)
++    save_settings_file(root, merged)
++
++    old_conn = legacy.get("connections", {}) if isinstance(legacy, dict) else {}
++    old_storage = legacy.get("storage", {}) if isinstance(legacy, dict) else {}
++    report["fields"] = {
++        "ollama_url": merged["connections"].get("ollama_url", ""),
++        "comfyui_url": merged["connections"].get("comfyui_url", ""),
++        "checkpoint": merged["storage"].get("checkpoint", ""),
++        "lora": merged["storage"].get("lora", ""),
++        "legacy_ollama_url": old_conn.get("ollama_url", ""),
++        "legacy_comfyui_url": old_conn.get("comfyui_url", ""),
++        "legacy_checkpoint": old_storage.get("checkpoint", ""),
++        "legacy_lora": old_storage.get("lora", ""),
++    }
++    report["conflicts"] = merge_report["conflicts"]
++    report["unknown_preserved"] = merge_report["preserved_unknown"]
++    return report
+diff --git a/backend/main.py b/backend/main.py
+index 9f83f6a..f9c65d4 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -28,6 +28,10 @@ APP_VERSION = "0.1.0-dev.4"
+ # through an environment variable; it is never baked into the frontend build.
+ BOOTSTRAP_TOKEN = os.environ.get("WORKBENCH_SESSION_TOKEN", "")
+ 
++# Per-launch instance identity, injected by the launcher and echoed by the
++# health endpoint so the stopper can verify it matches the structured record.
++INSTANCE_ID = os.environ.get("WORKBENCH_INSTANCE_ID", "")
++
+ # Unified data root: <repo>/userdata by default; overridable via env var.
+ DATA_ROOT = datadir.default_data_root()
+ SETTINGS_FILE = datadir.settings_path(DATA_ROOT)
+@@ -189,6 +193,8 @@ def load_settings() -> dict[str, Any]:
+             raise ValueError("Settings storage must be an object")
+         if not isinstance(connections, dict):
+             raise ValueError("Settings connections must be an object")
++        if "_legacy_extra" in loaded and isinstance(loaded["_legacy_extra"], dict):
++            settings["_legacy_extra"] = loaded["_legacy_extra"]
+ 
+         # Preserve only external ComfyUI paths; managed paths are rebuilt
+         # against the current data root so a legacy AppData path is not kept.
+@@ -368,6 +374,7 @@ def health():
+         "ok": True,
+         "app": APP_NAME,
+         "app_id": APP_NAME,
++        "instance_id": INSTANCE_ID,
+         "version": APP_VERSION,
+         "python": platform.python_version(),
+         "platform": platform.platform(),
+diff --git a/backend/test_main.py b/backend/test_main.py
+index ee24dc9..6c39895 100644
+--- a/backend/test_main.py
++++ b/backend/test_main.py
+@@ -1,3 +1,4 @@
++import json
+ import sqlite3
+ import sys
+ from pathlib import Path
+@@ -485,6 +486,107 @@ def test_migration_absent_legacy_root_initializes_new(tmp_path, monkeypatch):
+     assert target.is_dir()
+ 
+ 
++# ---- Legacy settings migration -------------------------------------------
++
++def _legacy_settings(legacy_root: Path, body: str) -> None:
++    legacy_root.mkdir(parents=True, exist_ok=True)
++    (legacy_root / "settings.json").write_text(body, encoding="utf-8")
++
++
++def test_legacy_settings_migrate_preserves_connections_and_external_paths(
++    tmp_path, monkeypatch
++):
++    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
++    _legacy_settings(
++        legacy,
++        json.dumps({
++            "version": 2,
++            "storage": {
++                "root": str(legacy),
++                "checkpoint": "D:/models/ckpt",
++                "lora": "D:/models/lora",
++            },
++            "connections": {
++                "ollama_url": "http://127.0.0.1:11434",
++                "comfyui_url": "http://127.0.0.1:8188",
++            },
++            "theme": "dark",
++        }),
++    )
++
++    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
++    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(tmp_path / "userdata"))
++    sys.modules.pop("datadir", None)
++    import datadir
++
++    target = datadir.default_data_root()
++    report = datadir.prepare_root(target)
++    settings_report = report["settings_migration"]
++
++    assert settings_report["action"] == "migrated"
++    assert settings_report["backup"]
++    saved = datadir.load_settings_file(target)
++    assert saved["connections"]["ollama_url"] == "http://127.0.0.1:11434"
++    assert saved["connections"]["comfyui_url"] == "http://127.0.0.1:8188"
++    assert saved["storage"]["checkpoint"] == "D:/models/ckpt"
++    assert saved["storage"]["lora"] == "D:/models/lora"
++    # Managed paths point at the new root, not AppData.
++    assert str(target) in saved["storage"]["database"]
++    assert str(legacy) not in saved["storage"]["database"]
++    # Unknown safe key preserved, not dropped.
++    assert saved["_legacy_extra"]["theme"] == "dark"
++    # Old file kept.
++    assert (legacy / "settings.json").is_file()
++
++
++def test_legacy_settings_merge_keeps_existing_user_values(tmp_path, monkeypatch):
++    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
++    _legacy_settings(
++        legacy,
++        json.dumps({
++            "version": 2,
++            "connections": {"ollama_url": "http://10.0.0.5:11434"},
++            "storage": {"checkpoint": "D:/old/ckpt"},
++        }),
++    )
++
++    target = tmp_path / "userdata"
++    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
++    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(target))
++    sys.modules.pop("datadir", None)
++    import datadir
++
++    # Pre-existing user settings win on conflict.
++    existing = datadir.default_settings(target)
++    existing["connections"]["ollama_url"] = "http://127.0.0.1:11434"
++    existing["storage"]["checkpoint"] = "D:/user/ckpt"
++    datadir.save_settings_file(target, existing)
++
++    report = datadir.prepare_root(target)
++    settings_report = report["settings_migration"]
++    saved = datadir.load_settings_file(target)
++
++    assert saved["connections"]["ollama_url"] == "http://127.0.0.1:11434"
++    assert saved["storage"]["checkpoint"] == "D:/user/ckpt"
++    assert any("ollama_url" in c for c in settings_report["conflicts"])
++    assert any("checkpoint" in c for c in settings_report["conflicts"])
++
++
++def test_legacy_settings_corrupt_is_left_touch(tmp_path, monkeypatch):
++    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
++    _legacy_settings(legacy, "{broken-json")
++
++    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
++    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(tmp_path / "userdata"))
++    sys.modules.pop("datadir", None)
++    import datadir
++
++    target = datadir.default_data_root()
++    report = datadir.prepare_root(target)
++    assert report["settings_migration"]["action"] == "failed-corrupt"
++    assert (legacy / "settings.json").is_file()
++
++
+ # ---- Static path security -------------------------------------------------
+ 
+ def test_static_path_traversal_is_rejected(client, tmp_path, monkeypatch):
+diff --git a/backend/test_scripts.py b/backend/test_scripts.py
+index a066dd4..f2a2dce 100644
+--- a/backend/test_scripts.py
++++ b/backend/test_scripts.py
+@@ -82,17 +82,162 @@ def test_stopper_rejects_identity_mismatch(monkeypatch):
+     assert matches is False
+ 
+ 
++def _good_record(stopper, **overrides):
++    venv = str(stopper.VENV_PYTHON)
++    record = {
++        "app_id": stopper.APP_ID,
++        "instance_id": "test-instance-123",
++        "pid": 12345,
++        "creation_date": "2026-01-01T00:00:00.000000Z",
++        "executable_path": venv,
++        "working_directory": str(stopper.BACKEND_DIR),
++        "command_line": [
++            venv, "-m", "uvicorn", "main:app",
++            "--host", "127.0.0.1", "--port", "8000",
++        ],
++        "host": "127.0.0.1",
++        "port": 8000,
++    }
++    record.update(overrides)
++    return record
++
++
++def _good_info(stopper, **overrides):
++    venv = str(stopper.VENV_PYTHON).lower().replace("/", "\\")
++    info = {
++        "ExecutablePath": venv,
++        "CommandLine": f'"{venv}" -m uvicorn main:app --host 127.0.0.1 --port 8000',
++        "CreationDate": "2026-01-01T00:00:00.000000Z",
++        "WorkingDirectory": str(stopper.BACKEND_DIR),
++    }
++    info.update(overrides)
++    return info
++
++
++def _patch_health(monkeypatch, stopper, instance="test-instance-123"):
++    monkeypatch.setattr(stopper, "_health_instance", lambda host, port: instance)
++
++
+ def test_stopper_matches_workbench_process(monkeypatch):
+     stopper = _load("stopper", "workbench_stopper.py")
++    _patch_health(monkeypatch, stopper)
++    monkeypatch.setattr(
++        stopper, "_process_info",
++        lambda pid: _good_info(stopper),
++    )
++    matches, _ = stopper.identify_workbench(12345, _good_record(stopper))
++    assert matches is True
++
++
++def test_stopper_rejects_missing_record(monkeypatch):
++    stopper = _load("stopper", "workbench_stopper.py")
++    monkeypatch.setattr(stopper, "_process_info", lambda pid: _good_info(stopper))
++    matches, reason = stopper.identify_workbench(12345, None)
++    assert matches is False
++    assert "运行记录" in reason
++
++
++def test_stopper_rejects_creation_date_mismatch(monkeypatch):
++    stopper = _load("stopper", "workbench_stopper.py")
++    _patch_health(monkeypatch, stopper)
++    monkeypatch.setattr(
++        stopper, "_process_info",
++        lambda pid: _good_info(
++            stopper, CreationDate="2026-02-02T22:22:22.000000Z"
++        ),
++    )
++    record = _good_record(stopper)
++    matches, reason = stopper.identify_workbench(12345, record)
++    assert matches is False
++    assert "启动时间" in reason
++
++
++def test_stopper_rejects_executable_mismatch(monkeypatch):
++    stopper = _load("stopper", "workbench_stopper.py")
++    _patch_health(monkeypatch, stopper)
++    monkeypatch.setattr(
++        stopper, "_process_info",
++        lambda pid: _good_info(stopper, ExecutablePath="C:/OtherApp/python.exe"),
++    )
++    matches, reason = stopper.identify_workbench(12345, _good_record(stopper))
++    assert matches is False
++    assert "可执行路径" in reason
++
++
++def test_stopper_rejects_command_line_mismatch(monkeypatch):
++    stopper = _load("stopper", "workbench_stopper.py")
++    _patch_health(monkeypatch, stopper)
+     venv = str(stopper.VENV_PYTHON).lower().replace("/", "\\")
++    monkeypatch.setattr(
++        stopper, "_process_info",
++        lambda pid: _good_info(
++            stopper,
++            CommandLine=f'"{venv}" -m http.server 9999',
++        ),
++    )
++    matches, reason = stopper.identify_workbench(12345, _good_record(stopper))
++    assert matches is False
++    assert "命令行" in reason
++
++
++def test_stopper_rejects_instance_mismatch(monkeypatch):
++    stopper = _load("stopper", "workbench_stopper.py")
++    _patch_health(monkeypatch, stopper, instance="other-instance")
++    monkeypatch.setattr(stopper, "_process_info", lambda pid: _good_info(stopper))
++    record = _good_record(stopper)
++    matches, reason = stopper.identify_workbench(12345, record)
++    assert matches is False
++    assert "实例标识" in reason
++
+ 
++def test_stopper_rejects_unreachable_health(monkeypatch):
++    stopper = _load("stopper", "workbench_stopper.py")
++    monkeypatch.setattr(stopper, "_health_instance", lambda host, port: None)
++    monkeypatch.setattr(stopper, "_process_info", lambda pid: _good_info(stopper))
++    matches, reason = stopper.identify_workbench(12345, _good_record(stopper))
++    assert matches is False
++    assert "实例标识" in reason
++
++
++def test_launcher_runtime_record_roundtrip(monkeypatch, tmp_path):
++    launcher = _load("launcher", "workbench_launcher.py")
++    monkeypatch.setattr(launcher, "PID_FILE", tmp_path / ".workbench.pid")
++    monkeypatch.setattr(
++        launcher, "RUNTIME_RECORD_FILE", tmp_path / ".workbench-runtime.json"
++    )
++    monkeypatch.setattr(launcher, "_process_creation_date", lambda pid: "2026-01-01T00:00:00.000000Z")
++
++    class _Proc:
++        pid = 4321
++
++    launcher.write_runtime_record(_Proc(), "instance-abc")
++    record = launcher.read_runtime_record()
++    assert record is not None
++    assert record["pid"] == 4321
++    assert record["instance_id"] == "instance-abc"
++    assert record["app_id"] == launcher.APP_ID
++    assert launcher.PID_FILE.is_file()
++
++    launcher.clear_runtime_record()
++    assert launcher.read_runtime_record() is None
++    assert not launcher.PID_FILE.exists()
++
++
++def test_launcher_corrupt_record_reads_none(monkeypatch, tmp_path):
++    launcher = _load("launcher", "workbench_launcher.py")
++    monkeypatch.setattr(
++        launcher, "RUNTIME_RECORD_FILE", tmp_path / ".workbench-runtime.json"
++    )
++    launcher.RUNTIME_RECORD_FILE.write_text("{broken", encoding="utf-8")
++    assert launcher.read_runtime_record() is None
++
++
++def test_stopper_rejects_missing_instance_env(monkeypatch):
++    stopper = _load("stopper", "workbench_stopper.py")
+     monkeypatch.setattr(
+         stopper, "_process_info",
+-        lambda pid: {
+-            "ExecutablePath": venv,
+-            "CommandLine": f'"{venv}" -m uvicorn main:app --host 127.0.0.1 --port 8000',
+-            "CreationDate": "20260101000000.000000+000",
+-        },
++        lambda pid: _good_info(stopper, EnvironmentVariables={}),
+     )
+-    matches, _ = stopper.identify_workbench(12345)
+-    assert matches is True
++    matches, reason = stopper.identify_workbench(12345, _good_record(stopper))
++    assert matches is False
++    assert "实例标识" in reason
+diff --git a/scripts/workbench_launcher.py b/scripts/workbench_launcher.py
+index dd530f9..4e1c7a4 100644
+--- a/scripts/workbench_launcher.py
++++ b/scripts/workbench_launcher.py
+@@ -29,6 +29,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
+ VENV_PYTHON = REPO_ROOT / ".venv" / "Scripts" / "python.exe"
+ BACKEND_DIR = REPO_ROOT / "backend"
+ PID_FILE = REPO_ROOT / ".workbench.pid"
++# Structured runtime record; the plain PID file is kept as a fallback, but the
++# stopper verifies identity against this record rather than the PID alone.
++RUNTIME_RECORD_FILE = REPO_ROOT / ".workbench-runtime.json"
+ HOST = os.environ.get("WORKBENCH_HOST", "127.0.0.1")
+ PORT = int(os.environ.get("WORKBENCH_PORT", "8000"))
+ HEALTH_PATH = "/api/health"
+@@ -98,6 +101,70 @@ def read_pid() -> int | None:
+         return None
+ 
+ 
++def _process_creation_date(pid: int) -> str | None:
++    """Read the Win32 CreationDate as an ISO8601 instant, comparable on both sides."""
++    ps = (
++        "Get-CimInstance Win32_Process -Filter "
++        f'"ProcessId={pid}" | '
++        "ForEach-Object { $_.CreationDate.ToString(\"yyyy-MM-ddTHH:mm:ss.ffffffZ\") }"
++    )
++    try:
++        output = subprocess.check_output(
++            ["powershell", "-NoProfile", "-Command", ps],
++            text=True,
++            stderr=subprocess.DEVNULL,
++        )
++    except (OSError, subprocess.CalledProcessError):
++        return None
++    value = output.strip()
++    return value or None
++
++
++def write_runtime_record(proc: subprocess.Popen, instance_id: str) -> None:
++    """Persist a structured identity record for the tracked backend process."""
++    record = {
++        "app_id": APP_ID,
++        "instance_id": instance_id,
++        "pid": proc.pid,
++        "creation_date": _process_creation_date(proc.pid),
++        "executable_path": str(VENV_PYTHON),
++        "working_directory": str(BACKEND_DIR),
++        "command_line": [
++            str(VENV_PYTHON),
++            "-m",
++            "uvicorn",
++            "main:app",
++            "--host",
++            HOST,
++            "--port",
++            str(PORT),
++        ],
++        "host": HOST,
++        "port": PORT,
++    }
++    PID_FILE.write_text(str(proc.pid), encoding="utf-8")
++    RUNTIME_RECORD_FILE.write_text(
++        json.dumps(record, ensure_ascii=False, indent=2),
++        encoding="utf-8",
++    )
++
++
++def read_runtime_record() -> dict | None:
++    """Read the structured record; None when missing or corrupt."""
++    if not RUNTIME_RECORD_FILE.exists():
++        return None
++    try:
++        data = json.loads(RUNTIME_RECORD_FILE.read_text(encoding="utf-8"))
++    except (OSError, ValueError, UnicodeDecodeError):
++        return None
++    return data if isinstance(data, dict) else None
++
++
++def clear_runtime_record() -> None:
++    PID_FILE.unlink(missing_ok=True)
++    RUNTIME_RECORD_FILE.unlink(missing_ok=True)
++
++
+ def pid_alive(pid: int) -> bool:
+     try:
+         import ctypes
+@@ -161,35 +228,41 @@ def main() -> int:
+     if not env.get("WORKBENCH_SESSION_TOKEN"):
+         env["WORKBENCH_SESSION_TOKEN"] = secrets.token_urlsafe(32)
+ 
++    # Per-launch random instance identity, recorded so the stopper can tell
++    # this backend apart from a PID reused by another program.
++    instance_id = secrets.token_urlsafe(16)
++    env["WORKBENCH_INSTANCE_ID"] = instance_id
++
+     print(f"[工作台] 正在启动本地服务：http://{HOST}:{PORT}")
+ 
+     # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP so the backend keeps running
+-    # after this launcher returns; the PID file records the tracked root.
++    # after this launcher returns; the structured record tracks the root.
+     creation_flags = 0x00000008 | 0x00000200
++    cmd = [
++        str(VENV_PYTHON),
++        "-m",
++        "uvicorn",
++        "main:app",
++        "--host",
++        HOST,
++        "--port",
++        str(PORT),
++    ]
+     proc = subprocess.Popen(
+-        [
+-            str(VENV_PYTHON),
+-            "-m",
+-            "uvicorn",
+-            "main:app",
+-            "--host",
+-            HOST,
+-            "--port",
+-            str(PORT),
+-        ],
++        cmd,
+         cwd=str(BACKEND_DIR),
+         env=env,
+         creationflags=creation_flags,
+         close_fds=True,
+     )
+ 
+-    PID_FILE.write_text(str(proc.pid), encoding="utf-8")
++    write_runtime_record(proc, instance_id)
+ 
+     ready = False
+     for _ in range(30):
+         if proc.poll() is not None:
+             print("[工作台] 服务进程已退出，启动失败。请查看上方错误信息。")
+-            PID_FILE.unlink(missing_ok=True)
++            clear_runtime_record()
+             return 1
+         if health_identifies_workbench(HOST, PORT):
+             ready = True
+diff --git a/scripts/workbench_stopper.py b/scripts/workbench_stopper.py
+index 5dc93a9..1f5d522 100644
+--- a/scripts/workbench_stopper.py
++++ b/scripts/workbench_stopper.py
+@@ -23,8 +23,10 @@ from pathlib import Path
+ 
+ REPO_ROOT = Path(__file__).resolve().parent.parent
+ PID_FILE = REPO_ROOT / ".workbench.pid"
++RUNTIME_RECORD_FILE = REPO_ROOT / ".workbench-runtime.json"
+ VENV_PYTHON = REPO_ROOT / ".venv" / "Scripts" / "python.exe"
+ BACKEND_DIR = REPO_ROOT / "backend"
++APP_ID = "ComfyUI-Prompt-Workbench"
+ APP_MARKER = "uvicorn"  # Command-line marker for the tracked backend process.
+ 
+ kernel32 = ctypes.windll.kernel32
+@@ -49,7 +51,9 @@ def _process_info(pid: int) -> dict[str, str] | None:
+     ps = (
+         "Get-CimInstance Win32_Process -Filter "
+         f'"ProcessId={pid}" | '
+-        "Select-Object ProcessId,ExecutablePath,CommandLine,CreationDate | "
++        "Select-Object ProcessId,ExecutablePath,CommandLine,"
++        "@{n='CreationDate';e={$_.CreationDate.ToString(\"yyyy-MM-ddTHH:mm:ss.ffffffZ\")}},"
++        "WorkingDirectory | "
+         "ConvertTo-Json -Compress"
+     )
+     try:
+@@ -79,12 +83,50 @@ def _normalized(path: str | None) -> str:
+     return str(Path(path)).lower().replace("/", "\\")
+ 
+ 
+-def identify_workbench(pid: int) -> tuple[bool, str]:
++def read_runtime_record() -> dict | None:
++    """Read the structured launcher record; None when missing/corrupt."""
++    if not RUNTIME_RECORD_FILE.exists():
++        return None
++    try:
++        data = json.loads(RUNTIME_RECORD_FILE.read_text(encoding="utf-8"))
++    except (OSError, ValueError, UnicodeDecodeError):
++        return None
++    return data if isinstance(data, dict) else None
++
++
++def _creation_date_equal(a: str | None, b: str | None) -> bool:
++    """Compare CreationDate instants; a missing side fails closed."""
++    if not a or not b:
++        return False
++    return a.strip() == b.strip()
++
++
++def _health_instance(host: str | None, port: int | None) -> str | None:
++    """Read the running backend's instance id from its loopback health probe."""
++    if not host or not port:
++        return None
++    try:
++        import http.client
++
++        conn = http.client.HTTPConnection(str(host), int(port), timeout=1.0)
++        conn.request("GET", "/api/health")
++        response = conn.getresponse()
++        body = response.read()
++        conn.close()
++        payload = json.loads(body.decode("utf-8"))
++    except (OSError, http.client.HTTPException, ValueError, UnicodeDecodeError):
++        return None
++    value = payload.get("instance_id")
++    return value if isinstance(value, str) and value else None
++
++
++def identify_workbench(pid: int, record: dict | None = None) -> tuple[bool, str]:
+     """Confirm the PID belongs to this workbench.
+ 
+-    Checks: executable lives under the project venv; command line references
+-    the backend uvicorn app; working directory / command line point at the
+-    project backend. Any missing critical attribute fails closed.
++    The PID alone is never trusted. We compare the live process against the
++    structured launcher record on executable path, working directory, command
++    line, recorded instance id and process creation time. Any missing critical
++    attribute or mismatch fails closed: the process is left alone.
+     """
+     info = _process_info(pid)
+     if info is None:
+@@ -92,6 +134,7 @@ def identify_workbench(pid: int) -> tuple[bool, str]:
+ 
+     exe = _normalized(info.get("ExecutablePath"))
+     cmd = (info.get("CommandLine") or "").lower()
++    creation = info.get("CreationDate")
+     venv = _normalized(str(VENV_PYTHON))
+ 
+     if not exe:
+@@ -102,6 +145,49 @@ def identify_workbench(pid: int) -> tuple[bool, str]:
+         return False, "命令行不是本工作台的 uvicorn 后端"
+     if BACKEND_DIR.name not in cmd and str(REPO_ROOT).lower() not in cmd:
+         return False, "命令行未指向项目后端目录"
++
++    # Structured record is required for the stricter identity comparison.
++    if not record:
++        return False, "缺少结构化运行记录，身份无法确认"
++
++    if record.get("app_id") != APP_ID:
++        return False, "记录中的应用标识与本工作台不匹配"
++
++    record_instance = record.get("instance_id")
++    if not record_instance:
++        return False, "记录缺少本次启动实例标识，身份无法确认"
++
++    live_instance = _health_instance(record.get("host"), record.get("port"))
++    if not live_instance:
++        return False, "无法读取活动进程实例标识，身份无法确认"
++    if live_instance != record_instance:
++        return False, "实例标识与本次启动记录不一致"
++
++    record_pid = record.get("pid")
++    if record_pid is not None and int(record_pid) != pid:
++        return False, f"记录 PID（{record_pid}）与当前 PID（{pid}）不一致"
++
++    record_exe = _normalized(record.get("executable_path"))
++    if record_exe and record_exe != exe:
++        return False, f"可执行路径与记录不符：{exe} != {record_exe}"
++
++    record_cwd = _normalized(record.get("working_directory"))
++    live_cwd = _normalized(info.get("WorkingDirectory"))
++    if record_cwd and live_cwd and record_cwd != live_cwd:
++        return False, f"工作目录与记录不符：{live_cwd} != {record_cwd}"
++
++    record_cmd = record.get("command_line")
++    if isinstance(record_cmd, list):
++        record_parts = [_normalized(part) for part in record_cmd if part]
++    else:
++        record_parts = [_normalized(record_cmd)] if record_cmd else []
++    live_parts = [part for part in cmd.split() if part]
++    if record_parts and not all(any(part in live for live in live_parts) for part in record_parts):
++        return False, "命令行参数与记录不符"
++
++    if not _creation_date_equal(record.get("creation_date"), creation):
++        return False, "进程启动时间与记录不一致（PID 可能已被复用）"
++
+     return True, "身份匹配"
+ 
+ 
+@@ -153,23 +239,40 @@ def terminate(pid: int) -> bool:
+     return bool(ok)
+ 
+ 
++def clear_runtime_record() -> None:
++    PID_FILE.unlink(missing_ok=True)
++    RUNTIME_RECORD_FILE.unlink(missing_ok=True)
++
++
+ def main() -> int:
+-    if not PID_FILE.exists():
+-        print("[工作台] 未找到运行记录，工作台可能已经停止。")
+-        return 0
++    record = read_runtime_record()
++
++    if record is None:
++        # No structured record: either already stopped, or the record is
++        # corrupt. Either way fail closed — do not kill a PID we cannot verify.
++        if RUNTIME_RECORD_FILE.exists():
++            print("[工作台] 运行记录损坏，未执行结束操作，请人工检查。")
++            return 1
++        if not PID_FILE.exists():
++            print("[工作台] 未找到运行记录，工作台可能已经停止。")
++            return 0
++        # Only a legacy plain PID file remains; without identity evidence we
++        # do not terminate.
++        print("[工作台] 缺少结构化运行记录，未执行结束操作，请人工检查。")
++        return 1
+ 
+     try:
+-        root_pid = int(PID_FILE.read_text(encoding="utf-8").strip())
+-    except (OSError, ValueError):
+-        print("[工作台] 运行记录损坏，未执行结束操作。")
++        root_pid = int(record.get("pid"))
++    except (TypeError, ValueError):
++        print("[工作台] 运行记录中的 PID 无效，未执行结束操作。")
+         return 1
+ 
+     if not pid_alive(root_pid):
+         print(f"[工作台] 记录中的进程 {root_pid} 已退出，清理运行记录。")
+-        PID_FILE.unlink(missing_ok=True)
++        clear_runtime_record()
+         return 0
+ 
+-    matches, reason = identify_workbench(root_pid)
++    matches, reason = identify_workbench(root_pid, record)
+     if not matches:
+         print(
+             f"[工作台] 进程 {root_pid} 身份与本工作台不匹配（{reason}）。"
+@@ -193,7 +296,7 @@ def main() -> int:
+         print(f"[工作台] 进程 {root_pid} 仍在运行，请手动确认。")
+         return 1
+ 
+-    PID_FILE.unlink(missing_ok=True)
++    clear_runtime_record()
+     print(f"[工作台] 已停止工作台进程 {root_pid}（含其子进程），未影响其他服务。")
+     return 0
+ 

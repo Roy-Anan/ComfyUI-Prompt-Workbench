@@ -185,3 +185,31 @@
   - Python 3.12 兼容性未单独验证（本机 3.13.18）。
   - Ollama / ComfyUI 在线真实调用与出图闭环待后续阶段验收。
   - 业务功能按边界本次未实现；不恢复 Tauri/Rust/EXE 路线。
+
+### 0.1.0-dev.5 — 2026-11-17（TASK-002.3.2，分支 dev）
+
+- **新增功能**：
+  - 结构化运行记录：启动器保存 PID、ISO8601 启动时间、可执行路径、工作目录、命令行、随机实例标识；停止器逐项比对身份，记录损坏/缺失或任一不匹配 fail-closed，不杀进程。
+  - 实例标识经本机 /api/health 回传比对；正常停止后清理运行记录与 PID 文件。
+  - 旧设置单独迁移通道：保留连接地址、Checkpoint/LoRA 路径及其他偏好；新设置已存在时安全合并、冲突保留已有用户值；迁移前备份；未知字段保留在 _legacy_extra；管理路径按新 userdata 重建。
+- **修改文件**：
+  - scripts/workbench_launcher.py、scripts/workbench_stopper.py。
+  - ackend/datadir.py（旧设置读取/备份/映射/安全合并）。
+  - ackend/main.py（实例标识注入与健康检查回传、_legacy_extra 保留）。
+  - ackend/test_scripts.py、ackend/test_main.py（身份不匹配/时间/路径/命令行/记录损坏/实例标识/设置迁移/合并/备份用例）。
+  - .gitignore（忽略 .workbench-runtime.json）。
+  - 控制文档：PROJECT_STATE.md、PROJECT_CHANGELOG.md（本文件）。
+  - 证据目录：docs/TASK_EVIDENCE/TASK-002.3.2/。
+  - 未改动 legacy-materials/、既有 8 份基线文档与用户数据；未重迁数据库，未改 main。
+- **修复问题**：
+  - 停止器仅凭 PID 存在，存在 PID 被复用后误杀其他程序的风险。
+  - 旧版 AppData settings.json 未被新版加载，旧配置可能丢失。
+- **测试情况**：
+  - Python pytest：通过，48 passed（Python 3.13.18 / pytest 8.4.2，1 条 StarletteDeprecationWarning）。
+  - 本次改动不涉及前端源码，未重复执行 tsc/vite 构建。
+  - 真机：启动就绪（PID 7908），健康检查实例标识与记录一致，身份核验通过；正常停止后进程树回收、8000 端口释放、记录清理。
+  - 隔离复现：旧设置迁移、备份、字段保留与冲突合并不覆盖均通过；旧库保留未重迁。
+- **未完成事项**：
+  - Python 3.12 兼容性未单独验证（本机 3.13.18）。
+  - Ollama / ComfyUI 在线真实调用与出图闭环待后续阶段验收。
+  - 业务功能按边界本次未实现；不恢复 Tauri/Rust/EXE 路线。

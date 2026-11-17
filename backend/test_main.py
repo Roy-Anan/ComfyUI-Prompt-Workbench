@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -483,6 +484,107 @@ def test_migration_absent_legacy_root_initializes_new(tmp_path, monkeypatch):
     report = datadir.prepare_root(target)
     assert report["action"] == "none"
     assert target.is_dir()
+
+
+# ---- Legacy settings migration -------------------------------------------
+
+def _legacy_settings(legacy_root: Path, body: str) -> None:
+    legacy_root.mkdir(parents=True, exist_ok=True)
+    (legacy_root / "settings.json").write_text(body, encoding="utf-8")
+
+
+def test_legacy_settings_migrate_preserves_connections_and_external_paths(
+    tmp_path, monkeypatch
+):
+    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
+    _legacy_settings(
+        legacy,
+        json.dumps({
+            "version": 2,
+            "storage": {
+                "root": str(legacy),
+                "checkpoint": "D:/models/ckpt",
+                "lora": "D:/models/lora",
+            },
+            "connections": {
+                "ollama_url": "http://127.0.0.1:11434",
+                "comfyui_url": "http://127.0.0.1:8188",
+            },
+            "theme": "dark",
+        }),
+    )
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(tmp_path / "userdata"))
+    sys.modules.pop("datadir", None)
+    import datadir
+
+    target = datadir.default_data_root()
+    report = datadir.prepare_root(target)
+    settings_report = report["settings_migration"]
+
+    assert settings_report["action"] == "migrated"
+    assert settings_report["backup"]
+    saved = datadir.load_settings_file(target)
+    assert saved["connections"]["ollama_url"] == "http://127.0.0.1:11434"
+    assert saved["connections"]["comfyui_url"] == "http://127.0.0.1:8188"
+    assert saved["storage"]["checkpoint"] == "D:/models/ckpt"
+    assert saved["storage"]["lora"] == "D:/models/lora"
+    # Managed paths point at the new root, not AppData.
+    assert str(target) in saved["storage"]["database"]
+    assert str(legacy) not in saved["storage"]["database"]
+    # Unknown safe key preserved, not dropped.
+    assert saved["_legacy_extra"]["theme"] == "dark"
+    # Old file kept.
+    assert (legacy / "settings.json").is_file()
+
+
+def test_legacy_settings_merge_keeps_existing_user_values(tmp_path, monkeypatch):
+    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
+    _legacy_settings(
+        legacy,
+        json.dumps({
+            "version": 2,
+            "connections": {"ollama_url": "http://10.0.0.5:11434"},
+            "storage": {"checkpoint": "D:/old/ckpt"},
+        }),
+    )
+
+    target = tmp_path / "userdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(target))
+    sys.modules.pop("datadir", None)
+    import datadir
+
+    # Pre-existing user settings win on conflict.
+    existing = datadir.default_settings(target)
+    existing["connections"]["ollama_url"] = "http://127.0.0.1:11434"
+    existing["storage"]["checkpoint"] = "D:/user/ckpt"
+    datadir.save_settings_file(target, existing)
+
+    report = datadir.prepare_root(target)
+    settings_report = report["settings_migration"]
+    saved = datadir.load_settings_file(target)
+
+    assert saved["connections"]["ollama_url"] == "http://127.0.0.1:11434"
+    assert saved["storage"]["checkpoint"] == "D:/user/ckpt"
+    assert any("ollama_url" in c for c in settings_report["conflicts"])
+    assert any("checkpoint" in c for c in settings_report["conflicts"])
+
+
+def test_legacy_settings_corrupt_is_left_touch(tmp_path, monkeypatch):
+    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
+    _legacy_settings(legacy, "{broken-json")
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(tmp_path / "userdata"))
+    sys.modules.pop("datadir", None)
+    import datadir
+
+    target = datadir.default_data_root()
+    report = datadir.prepare_root(target)
+    assert report["settings_migration"]["action"] == "failed-corrupt"
+    assert (legacy / "settings.json").is_file()
 
 
 # ---- Static path security -------------------------------------------------

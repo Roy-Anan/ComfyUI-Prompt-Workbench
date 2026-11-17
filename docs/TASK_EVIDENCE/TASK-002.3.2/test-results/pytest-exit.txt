@@ -1,0 +1,6 @@
+命令: .venv\Scripts\python.exe -m pytest -v
+工作目录: <repo>\backend
+结果: 48 passed, 1 warning in 6.61s
+退出码: 0
+说明: 1 条 StarletteDeprecationWarning（httpx/TestClient 弃用提示），非失败。
+前端构建: 本次改动不涉及前端源码，按任务书第六节第 4 条未重复执行 tsc/vite 构建。

@@ -1,0 +1,41 @@
+TASK-002.3.2 真机进程生命周期记录（Windows 11，本机 .venv Python 3.13.18）
+
+启动（scripts/workbench_launcher.py，WORKBENCH_OPEN_BROWSER=0）
+- 输出：[工作台] 正在启动本地服务：http://127.0.0.1:8000
+- 输出：[工作台] 服务已就绪（PID 7908）。
+- 退出码：0
+
+结构化运行记录（.workbench-runtime.json，已被 .gitignore 忽略）
+- app_id: ComfyUI-Prompt-Workbench
+- instance_id: KLVBSSCSBHv31szQXPujig
+- pid: 7908
+- creation_date: 2026-11-17T23:24:03.691086Z（ISO8601）
+- executable_path: <repo>\.venv\Scripts\python.exe
+- working_directory: <repo>\backend
+- command_line: .venv python -m uvicorn main:app --host 127.0.0.1 --port 8000
+
+健康检查 /api/health（未认证身份探测）
+- ok: true
+- app / app_id: ComfyUI-Prompt-Workbench
+- instance_id: KLVBSSCSBHv31szQXPujig（与运行记录一致）
+- version: 0.1.0-dev.4
+- python: 3.13.18
+
+停止器身份核验（identify_workbench，隔离探测脚本）
+- LIVE ExecutablePath: <repo>\.venv\Scripts\python.exe
+- LIVE CommandLine: .venv python -m uvicorn main:app --host 127.0.0.1 --port 8000
+- LIVE CreationDate: 2026-11-17T23:24:03.691086Z（与记录一致）
+- 结果: MATCH True | 身份匹配
+
+正常停止（scripts/workbench_stopper.py）
+- 输出：[工作台] 已停止工作台进程 7908（含其子进程），未影响其他服务。
+- 退出码：0
+- 8000 端口：释放（无监听）
+- .workbench-runtime.json：已清理（不存在）
+- .workbench.pid：已清理（不存在）
+
+fail-closed 记录
+- 过渡阶段曾存在旧格式（中文/Date()/）时间记录，停止器比对失败，
+  拒绝终止并保留现场；未误杀任何进程。该过渡测试进程树已在核对身份后手动回收。
+- 进程树限制：仅回收本工作台根进程及其后代；未按 Python/uvicorn 名称批量结束，
+  未触碰 Ollama、ComfyUI 或其他 Python 服务。
