@@ -80,23 +80,52 @@ TASK-003.1 功能代码已在本机落盘，后端 6 项测试失败、尚未提
  3 files changed, 152 insertions(+), 1 deletion(-)
 ```
 
-本次实际提交文件列表：见第 8 节回填（仅证据归档：快照目录 + R1 回执）。
+本次实际提交文件列表（12 个，3439 行新增，仅证据归档）：
+
+```text
+ docs/TASK_EVIDENCE/TASK-003.1-R1/Doubao-Receipt.md
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/App.tsx
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/MANIFEST.md
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/README.md
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/WorkflowWorkbench.tsx
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/datadir.py
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/main.py
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/requirements.txt
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/styles.css
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/test_workflow_service.py
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/workflow_api.py
+ docs/TASK_EVIDENCE/TASK-003.1/local-source-snapshot/workflow_service.py
+```
 
 ## 7. 提交 SHA 与推送结果
 
-- 提交 SHA：（提交后回填）
+- 提交 SHA：`73b71a958302ca08b28f2b77b94ba546e03fe2f3`
 - 提交信息：`docs(evidence): archive TASK-003.1 local source snapshot`
-- 推送结果：（推送后回填）
+- 提交身份：Roy-Anan `<1538072315@qq.com>`
+- 推送结果：成功，`4066c9b..73b71a9  dev -> dev`（push exit 0）；回读本地 HEAD 与 origin/dev 一致于 `73b71a9`。
 
 ## 8. dev 与 main SHA
 
 - dev 起始：`4066c9b48af527a1b7a87f4d0c207686ffc19ffd`
-- dev 最终：（提交后回填）
-- main：`3084866aa85595133c7a1179b15ddd71e659d8f3`（未修改）
+- dev 最终：`73b71a958302ca08b28f2b77b94ba546e03fe2f3`
+- main：`3084866aa85595133c7a1179b15ddd71e659d8f3`（本地 / origin/main 一致，未修改）
 
 ## 9. 工作区状态
 
-提交后工作区状态：（回填）。功能源码仍保留在本地工作区未入库，等待 ChatGPT 审查后提供正式修正版。
+提交后工作区（未入库功能源码，保留在本地）：
+
+```text
+## dev...origin/dev
+ M backend/main.py
+ M frontend/src/App.tsx
+ M frontend/src/styles.css
+?? backend/test_workflow_service.py
+?? backend/workflow_api.py
+?? backend/workflow_service.py
+?? frontend/src/WorkflowWorkbench.tsx
+```
+
+功能源码仍保留在本地工作区未入库，等待 ChatGPT 审查后提供正式修正版。`userdata/`、`frontend/dist/` 未被跟踪。
 
 ## 10. 完整执行过程与异常
 
