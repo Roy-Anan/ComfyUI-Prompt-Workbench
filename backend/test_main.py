@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -800,6 +801,43 @@ def test_legacy_settings_corrupt_is_left_touch(tmp_path, monkeypatch):
     report = datadir.prepare_root(target)
     assert report["settings_migration"]["action"] == "failed-corrupt"
     assert (legacy / "settings.json").is_file()
+
+
+def test_concurrent_settings_load_does_not_race_legacy_rewrite(tmp_path, monkeypatch):
+    """Concurrent first-load requests must not replace settings.json at once.
+
+    The first-load fan-out calls load_settings() from several worker threads.
+    Preparation (including the one-time legacy settings rewrite) runs once per
+    process under a lock; without it, concurrent ``tmp.replace`` calls hit a
+    Windows PermissionError and surface as a 500.
+    """
+    legacy = tmp_path / "AppData" / "Local" / "ComfyUI-Prompt-Workbench"
+    _legacy_settings(
+        legacy,
+        json.dumps({
+            "version": 2,
+            "connections": {"ollama_url": "http://127.0.0.1:11434"},
+        }),
+    )
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    monkeypatch.setenv("WORKBENCH_DATA_ROOT", str(tmp_path / "userdata"))
+    sys.modules.pop("datadir", None)
+    sys.modules.pop("main", None)
+    import datadir  # noqa: F401  (reloaded alongside main below)
+    import main
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: main.load_settings(), range(16)))
+
+    assert len(results) == 16
+    for settings in results:
+        assert settings["connections"]["ollama_url"] == "http://127.0.0.1:11434"
+
+    target = main.DATA_ROOT
+    saved = datadir.load_settings_file(target)
+    assert saved["connections"]["ollama_url"] == "http://127.0.0.1:11434"
+    assert main._root_prepared is True
 
 
 # ---- Static path security -------------------------------------------------

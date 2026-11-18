@@ -1553,3 +1553,38 @@
 
 - 安全口径不变：不按名称批量结束 Python；白名单 / CSRF / 回环绑定未改。
 - 后端 224 passed。证据：`docs/TASK_EVIDENCE/TASK-003.1-R61/`。
+
+## 72. TASK-003.1-R62 R60/R61 阶段真机验收；R63 首载并发 500 修复（2026-11-18）
+
+### 72.1 验收与定位
+
+- R60 三视图（列表 / 网格 / 时间轴）与 R61 启停修复真机走查；基线 health `0.1.0-dev.5` /
+  Python 3.13.18，Ollama、ComfyUI 在线，diagnostics counts `rules=0, history=0, tasks=0,
+  model_identities=16, workflows=22, profiles=13`，`database_error=None`。
+- 走查定位首载并发偶发 500：浏览器 `Promise.all` 并发六端点，任一 reject 整体 catch；
+  串行直连全 200，线程池并发复现 settings / rules / services/status 500。
+- traceback 坐实：`load_settings()` 每次调用都跑 `prepare_root()`，legacy AppData
+  `settings.json` 保留存在时重复 merge 并 `save_settings_file` 重写 userdata 设置；并发线程
+  同时 `os.replace` 同一文件，Windows 文件锁冲突 `PermissionError [WinError 5]` → 500。
+  非 SQLite 锁、非旧 JS 缓存。
+
+### 72.2 修复（R63）
+
+- `backend/main.py`：数据根准备（建目录 + 一次性 legacy 迁移）改为进程内一次性执行，新增
+  `_root_prepared` 标志与 `threading.Lock`，锁内双检，仅首个调用跑 `prepare_root()`；后续
+  请求跳过迁移直接读设置，`MIGRATION_REPORT` 保留首次结果。
+- 新增并发回归测试：legacy 设置存在时 8 线程 ×16 次并发 `load_settings()` 全部成功、设置可读。
+
+### 72.3 真机闭环与回归
+
+- 修复后并发 6 线程 ×3 轮六端点全 200；加重 10 线程 ×6 轮 ×18 请求无 500 / 无错误。
+- 浏览器：设置页首载即已连接（Python 3.13.18，Ollama / ComfyUI 在线）；历史页干净空态，
+  三视图在位禁用、导出禁用、刷新可用；工作流页正常。stopper 按身份回收实例（PID 15528），
+  端口关闭、记录清理；Ollama / ComfyUI 未触碰。
+- 后端 **225 passed, 1 warning**（224 基线 + 并发回归 1）；前端无改动，构建绿，产物哈希沿用 R60。
+
+### 72.4 边界与 backlog
+
+- 历史库为空，时间轴分组真机渲染留待有记录阶段收口；本次仅验证三视图按钮与空态禁用态。
+- 本次只修设置迁移路径并发写；SQLite 与其他文件并发读写锁仍属既有 backlog，未扩范围。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R62/`。

@@ -7,6 +7,7 @@ import platform
 import secrets
 import shutil
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,13 @@ ALLOWED_CONNECTION_KEYS = {"ollama_url", "comfyui_url"}
 
 # Migration report for the current process; populated on first settings load.
 MIGRATION_REPORT: dict[str, Any] = {}
+
+# The data-root preparation (managed dirs + one-time legacy migration) runs
+# once per process. A lock serializes the first concurrent requests so the
+# legacy settings file is rewritten by a single caller instead of several
+# threads replacing settings.json at the same time on Windows.
+_root_prepared = False
+_root_lock = threading.Lock()
 
 # Local-only origins allowed by CORS. The production Web runtime is same-origin
 # (FastAPI serves both API and frontend), so no broad LAN/public origin is added.
@@ -180,10 +188,17 @@ def backup_corrupt_settings() -> Path:
 
 
 def load_settings() -> dict[str, Any]:
-    global MIGRATION_REPORT
+    global MIGRATION_REPORT, _root_prepared
 
     # Prepare managed directories and migrate any legacy data once per process.
-    MIGRATION_REPORT = datadir.prepare_root(DATA_ROOT)
+    # The lock keeps the first concurrent callers from racing the legacy
+    # settings rewrite; later calls skip preparation entirely.
+    if not _root_prepared:
+        with _root_lock:
+            if not _root_prepared:
+                MIGRATION_REPORT = datadir.prepare_root(DATA_ROOT)
+                _root_prepared = True
+
     settings = default_settings()
 
     try:
