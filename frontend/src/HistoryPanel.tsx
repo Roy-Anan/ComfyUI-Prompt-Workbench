@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiGet } from "./api";
+import { apiGet, apiPost } from "./api";
 
 type HistoryView = "list" | "grid" | "timeline";
 
@@ -76,6 +76,17 @@ function summarize(text: string | null, limit = 80): string {
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
+function recordHasPrompt(record: HistoryRecord): boolean {
+  return Boolean(record.positive_prompt?.trim() || record.negative_prompt?.trim());
+}
+
+function autoDraftName(record: HistoryRecord): string {
+  const date = record.created_at.slice(5, 10) || "历史";
+  const source = (record.positive_prompt || record.negative_prompt || "").trim();
+  const summary = source.length > 30 ? `${source.slice(0, 30)}…` : source;
+  return `${date} ${summary}`.trim().slice(0, 120);
+}
+
 function groupByDay(records: HistoryRecord[]): { day: string; items: HistoryRecord[] }[] {
   const sorted = [...records].sort((a, b) =>
     a.created_at < b.created_at ? 1 : -1,
@@ -114,6 +125,15 @@ export default function HistoryPanel() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [view, setView] = useState<HistoryView>(readStoredView);
+  const [draftingId, setDraftingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [draftMessage, setDraftMessage] = useState<{
+    id: string;
+    kind: "ok" | "err";
+    text: string;
+  } | null>(null);
 
   function switchView(next: HistoryView) {
     setView(next);
@@ -138,6 +158,63 @@ export default function HistoryPanel() {
   useEffect(() => {
     void load();
   }, []);
+
+  function startDraft(record: HistoryRecord) {
+    setDraftingId(record.prompt_id);
+    setDraftName(autoDraftName(record));
+    setDraftMessage(null);
+  }
+
+  function cancelDraft() {
+    setDraftingId(null);
+    setDraftName("");
+    setDraftMessage(null);
+  }
+
+  async function saveAsDraft(record: HistoryRecord) {
+    const name = draftName.trim();
+    if (!name) {
+      setDraftMessage({ id: record.prompt_id, kind: "err", text: "请填写草稿名称。" });
+      return;
+    }
+    if (!recordHasPrompt(record)) {
+      setDraftMessage({
+        id: record.prompt_id,
+        kind: "err",
+        text: "这条历史没有可保存的 Prompt。",
+      });
+      return;
+    }
+    setDraftBusy(true);
+    setDraftMessage(null);
+    try {
+      const note = `来自历史 ${record.prompt_id} · ${formatTime(record.created_at)}`;
+      await apiPost(`/api/workflows/${record.workflow_id}/drafts`, {
+        name,
+        positive: record.positive_prompt ?? "",
+        negative: record.negative_prompt ?? "",
+        note,
+      });
+      setSavedIds((prev) =>
+        prev.includes(record.prompt_id) ? prev : [...prev, record.prompt_id],
+      );
+      setDraftingId(null);
+      setDraftName("");
+      setDraftMessage({
+        id: record.prompt_id,
+        kind: "ok",
+        text: "已存为草稿（未写入工作副本）。",
+      });
+    } catch (err) {
+      setDraftMessage({
+        id: record.prompt_id,
+        kind: "err",
+        text: `保存草稿失败：${String(err)}`,
+      });
+    } finally {
+      setDraftBusy(false);
+    }
+  }
 
   const workflowOptions = Array.from(
     new Set((items || []).map((record) => record.workflow_id)),
@@ -254,6 +331,52 @@ export default function HistoryPanel() {
                 </div>
               </div>
             )}
+            <div className="rule-row">
+              <div className="rule-row-main">
+                {savedIds.includes(record.prompt_id) ? (
+                  <small className="workflow-meta">已存为草稿</small>
+                ) : !recordHasPrompt(record) ? (
+                  <small className="muted">无 Prompt，无法存为草稿</small>
+                ) : draftingId === record.prompt_id ? (
+                  <div className="actions">
+                    <input
+                      type="text"
+                      placeholder="草稿名称"
+                      value={draftName}
+                      disabled={draftBusy}
+                      onChange={(event) => setDraftName(event.target.value)}
+                    />
+                    <button
+                      onClick={() => void saveAsDraft(record)}
+                      disabled={draftBusy}
+                    >
+                      确认保存
+                    </button>
+                    <button onClick={cancelDraft} disabled={draftBusy}>
+                      取消
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => startDraft(record)}
+                    disabled={draftBusy}
+                  >
+                    存为草稿
+                  </button>
+                )}
+                {draftMessage && draftMessage.id === record.prompt_id && (
+                  <small
+                    className={
+                      draftMessage.kind === "ok"
+                        ? "workflow-meta"
+                        : "workflow-warning"
+                    }
+                  >
+                    {draftMessage.text}
+                  </small>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
