@@ -21,6 +21,8 @@ from pydantic import BaseModel, Field
 import datadir
 import model_catalog
 import model_identity
+import rule_engine
+import rule_store
 from workflow_api import router as workflow_router
 
 APP_NAME = "ComfyUI-Prompt-Workbench"
@@ -111,6 +113,7 @@ def initialize_database(settings: dict[str, Any]) -> str:
         connection.execute("PRAGMA foreign_keys = ON")
 
         model_identity.ensure_schema(connection)
+        rule_store.ensure_schema(connection)
 
         connection.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
@@ -591,6 +594,37 @@ def models_catalog():
             )
 
     return catalog
+
+
+@app.get("/api/rules")
+def list_rules(level: str | None = None, scope_key: str | None = None):
+    """List stored rules, optionally filtered by level and scope."""
+    settings = load_settings()
+    database_path = Path(settings["storage"]["database"]).expanduser() / "workbench.sqlite3"
+    with model_identity.connect(database_path) as connection:
+        rule_store.ensure_schema(connection)
+        return {"items": rule_store.list_rules(connection, level=level, scope_key=scope_key)}
+
+
+@app.get("/api/rules/resolve")
+def resolve_rules(level: str, scope_key: str | None = None, keys: str = ""):
+    """Resolve requested rule keys for one context via programmatic inheritance.
+
+    Only the requested ``keys`` (comma separated) are evaluated; unrelated
+    stored rules are never returned. Conflicts and unknowns are reported rather
+    than guessed.
+    """
+    requested = [key.strip() for key in keys.split(",") if key.strip()]
+    if not requested:
+        raise HTTPException(400, "At least one rule key is required")
+    if level not in rule_engine.LEVEL_ORDER:
+        raise HTTPException(400, f"Unknown rule level: {level}")
+
+    settings = load_settings()
+    database_path = Path(settings["storage"]["database"]).expanduser() / "workbench.sqlite3"
+    with model_identity.connect(database_path) as connection:
+        rule_store.ensure_schema(connection)
+        return rule_store.resolve_stored(connection, level, scope_key, requested)
 
 
 # ---- Static frontend hosting (local Web runtime) ---------------------------

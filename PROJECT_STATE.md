@@ -466,3 +466,30 @@
 - 多模型与实际启用 LoRA 规则组合、冲突人工裁决界面、动态检索、云端研究资料导入审核未实现。
 - 哈希按需触发；VAE/CLIP 目录未纳入索引；目录不递归；并发写锁未加。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R9/`。
+
+## 20. TASK-003.1-R10 M3 第五切片：规则 SQLite 持久化与检索接口骨架（2026-11-18）
+
+### 20.1 当前状态
+
+- 新增 `backend/rule_store.py`：SQLite `workbench_rule` 表（level/scope_key/rule_key 唯一，value 以 JSON 存标量/列表/对象）；`upsert_rule`/`lookup_rule`/`list_rules`/`delete_rule`/`load_records`/`resolve_stored`；写入前交 `RuleRecord.validate()` 校验；装载为引擎记录后走三级继承解析。
+- `main.py` 初始化规则表；新增只读接口 `GET /api/rules`（按 level/scope_key 过滤）与 `GET /api/rules/resolve`（按 level/scope_key/keys 解析，只解析请求键，冲突/未知如实上报，非法层级与空键返回 400）。
+- `client` fixture 抽到 `backend/conftest.py` 供跨测试文件复用。后端测试增至 **98 passed**；前端构建 exit 0（本轮无前端改动）。
+
+### 20.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 规则增查删与 JSON 往返 | 通过 | 单元测试：upsert 覆盖同三元组、列表值往返、按层级/作用域过滤、删除 |
+| 非法记录入库前拒绝 | 通过 | 单元测试：非法层级抛 RuleError，未写库 |
+| 存储规则接入引擎继承 | 通过 | 单元测试：三级记录解析 checkpoint=32、未知字段 unknown |
+| 检索接口 | 通过 | 接口测试：`/api/rules` 清单、`/api/rules/resolve` 继承解析、空键/坏层级 400 |
+| 真机冒烟 | 通过 | `samples/smoke-rules.json`：空清单 200；空规则未知字段全 unknown；坏层级/空键 400 |
+| Python pytest | 通过 | **98 passed, 1 warning in 4.48s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 20.3 边界与 backlog
+
+- 本轮只做持久化与只读检索；规则写入/导入接口、旧 profiles 文本结构化入库、前端规则管理界面未实现。
+- 多模型与启用 LoRA 规则组合、冲突人工裁决界面、动态检索、LLM 上下文组装、版本/差异回退未实现。
+- 哈希按需触发；VAE/CLIP 目录未纳入身份库索引；目录不递归；并发写锁未加；stopper 身份校验缺陷未修。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R10/`。

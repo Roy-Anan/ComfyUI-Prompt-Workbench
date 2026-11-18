@@ -1,0 +1,12 @@
+{
+  "health": {"status": 200, "app_id": "ComfyUI-Prompt-Workbench"},
+  "bootstrap": {"status": 200, "csrf": true},
+  "rules_list": {"status": 200, "items": []},
+  "resolve_empty": {
+    "status": 200,
+    "unknown": ["steps", "cfg"],
+    "conflicts": []
+  },
+  "bad_level": {"status": 400, "detail": "Unknown rule level: avatar"},
+  "empty_keys": {"status": 400, "detail": "At least one rule key is required"}
+}
