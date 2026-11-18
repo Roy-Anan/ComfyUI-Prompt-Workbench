@@ -672,6 +672,38 @@ def test_draft_create_read_update_delete_roundtrip(client):
     assert after == []
 
 
+def test_draft_update_preserves_name_and_note(client):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+
+    create = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"name": "保留名", "positive": "p1", "negative": "n1", "note": "保留备注"},
+    )
+    assert create.status_code == 200
+    draft_id = create.json()["id"]
+
+    # 前端更新场景：沿用原名称与备注，只覆盖正/负向 Prompt。
+    updated = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={
+            "draft_id": draft_id,
+            "name": "保留名",
+            "positive": "p2",
+            "negative": "",
+            "note": "保留备注",
+        },
+    )
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["name"] == "保留名"
+    assert body["note"] == "保留备注"
+    assert body["positive"] == "p2"
+    assert body["negative"] == ""
+
+
 def test_draft_rejects_empty_prompt_duplicate_name_and_missing(client):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())

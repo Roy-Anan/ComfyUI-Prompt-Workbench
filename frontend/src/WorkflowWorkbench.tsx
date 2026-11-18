@@ -244,6 +244,8 @@ export default function WorkflowWorkbench() {
   const [draftNote, setDraftNote] = useState("");
   const [draftBusy, setDraftBusy] = useState(false);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
+  const [updatingDraftId, setUpdatingDraftId] = useState<string | null>(null);
+  const [draftKeyword, setDraftKeyword] = useState("");
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -307,6 +309,8 @@ export default function WorkflowWorkbench() {
       setDraftName("");
       setDraftNote("");
       setDeletingDraftId(null);
+      setUpdatingDraftId(null);
+      setDraftKeyword("");
       setConfirmStamp(null);
       void loadTasks(false);
       void loadVersions(id);
@@ -354,6 +358,8 @@ export default function WorkflowWorkbench() {
       setDraftName("");
       setDraftNote("");
       setDeletingDraftId(null);
+      setUpdatingDraftId(null);
+      setDraftKeyword("");
       await refreshList();
       setMessage(`导入成功：${result.filename}`);
     } catch (error) {
@@ -623,6 +629,40 @@ export default function WorkflowWorkbench() {
       setDraftBusy(false);
     }
   }
+
+  async function updateDraft(draft: DraftEntry) {
+    if (!workflowId) return;
+    if (!positiveText.trim() && !negativeText.trim()) {
+      setMessage("正向与负向均为空，无法更新草稿。");
+      return;
+    }
+    setDraftBusy(true);
+    try {
+      await apiPost(`/api/workflows/${workflowId}/drafts`, {
+        draft_id: draft.id,
+        name: draft.name,
+        positive: positiveText,
+        negative: negativeText,
+        note: draft.note,
+      });
+      setUpdatingDraftId(null);
+      await loadDrafts(workflowId);
+      setMessage("草稿已更新（未写入工作副本）。");
+    } catch (error) {
+      setMessage(`更新草稿失败：${String(error)}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  const draftKeywordTerm = draftKeyword.trim().toLowerCase();
+  const filteredDrafts = drafts.filter((draft) => {
+    if (!draftKeywordTerm) return true;
+    const haystack = [draft.name, draft.note, draft.positive, draft.negative]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(draftKeywordTerm);
+  });
   const [restoringStamp, setRestoringStamp] = useState<string | null>(null);
   const [confirmStamp, setConfirmStamp] = useState<string | null>(null);
 
@@ -1161,7 +1201,8 @@ export default function WorkflowWorkbench() {
             <div className="panel">
               <h3>草稿箱</h3>
               <p className="muted">
-                手动保存的 Prompt 组合；保存不写入工作副本，载入编辑框后仍需确认写入。
+                手动保存的 Prompt 组合；保存与更新都不写入工作副本，载入编辑框后仍需确认写入。
+                更新用当前编辑框内容覆盖该草稿，保留其名称与备注。
               </p>
               <div className="actions">
                 <input
@@ -1185,11 +1226,24 @@ export default function WorkflowWorkbench() {
                   保存当前为草稿
                 </button>
               </div>
+              {drafts.length > 0 && (
+                <div className="actions">
+                  <input
+                    type="text"
+                    placeholder="按名称 / 备注 / Prompt 过滤草稿"
+                    value={draftKeyword}
+                    disabled={draftBusy || busy}
+                    onChange={(event) => setDraftKeyword(event.target.value)}
+                  />
+                </div>
+              )}
               {drafts.length === 0 ? (
                 <p className="muted">还没有保存的草稿。</p>
+              ) : filteredDrafts.length === 0 ? (
+                <p className="muted">没有匹配的草稿。</p>
               ) : (
                 <div className="workflow-node-list">
-                  {drafts.map((draft) => (
+                  {filteredDrafts.map((draft) => (
                     <div className="workflow-node-row" key={draft.id}>
                       <div>
                         <strong>{draft.name}</strong>
@@ -1206,6 +1260,29 @@ export default function WorkflowWorkbench() {
                         >
                           载入到编辑框
                         </button>
+                        {updatingDraftId === draft.id ? (
+                          <>
+                            <button
+                              onClick={() => void updateDraft(draft)}
+                              disabled={draftBusy || busy}
+                            >
+                              确认更新？
+                            </button>
+                            <button
+                              onClick={() => setUpdatingDraftId(null)}
+                              disabled={draftBusy || busy}
+                            >
+                              取消
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => setUpdatingDraftId(draft.id)}
+                            disabled={draftBusy || busy}
+                          >
+                            更新
+                          </button>
+                        )}
                         {deletingDraftId === draft.id ? (
                           <>
                             <button
