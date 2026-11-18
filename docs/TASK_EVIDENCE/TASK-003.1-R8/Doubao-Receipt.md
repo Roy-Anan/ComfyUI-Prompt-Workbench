@@ -19,5 +19,5 @@ ComfyUI Prompt Workbench，M3 第三切片：同 SHA256 多路径身份归并（
 ## 提交信息
 
 - 分支：`dev`
-- 提交：见提交后回填（本地 commit 与 origin/dev 推送记录）。
+- 提交：`e59c57d5245108fec8dd3f3ddd137d591dac6b9b`（本地 commit，已推送 origin/dev，连接器核对远端 dev 最新即此提交）。
 - 基线：`4e71bbc`（R7）。
