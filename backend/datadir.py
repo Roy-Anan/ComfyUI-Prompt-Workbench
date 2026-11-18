@@ -56,7 +56,7 @@ MANAGED_KEYS = (
 
 # Optional external ComfyUI directories; recorded as paths only, never copied
 # into the workbench data root.
-OPTIONAL_EXTERNAL_KEYS = ("checkpoint", "lora")
+OPTIONAL_EXTERNAL_KEYS = ("checkpoint", "lora", "clip", "vae")
 
 SETTINGS_REL = Path("settings") / "settings.json"
 DATABASE_REL = Path("database") / "workbench.sqlite3"
@@ -276,6 +276,8 @@ def default_settings(root: Path) -> dict[str, Any]:
             **{key: str(path) for key, path in managed_subdirs(root).items()},
             "checkpoint": "",
             "lora": "",
+            "clip": "",
+            "vae": "",
         },
         "connections": {
             "ollama_url": "http://127.0.0.1:11434",

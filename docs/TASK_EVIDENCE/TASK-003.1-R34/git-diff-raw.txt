@@ -1,0 +1,260 @@
+diff --git a/backend/datadir.py b/backend/datadir.py
+index 8b2b318..7c4b655 100644
+--- a/backend/datadir.py
++++ b/backend/datadir.py
+@@ -56,7 +56,7 @@ MANAGED_KEYS = (
+ 
+ # Optional external ComfyUI directories; recorded as paths only, never copied
+ # into the workbench data root.
+-OPTIONAL_EXTERNAL_KEYS = ("checkpoint", "lora")
++OPTIONAL_EXTERNAL_KEYS = ("checkpoint", "lora", "clip", "vae")
+ 
+ SETTINGS_REL = Path("settings") / "settings.json"
+ DATABASE_REL = Path("database") / "workbench.sqlite3"
+@@ -276,6 +276,8 @@ def default_settings(root: Path) -> dict[str, Any]:
+             **{key: str(path) for key, path in managed_subdirs(root).items()},
+             "checkpoint": "",
+             "lora": "",
++            "clip": "",
++            "vae": "",
+         },
+         "connections": {
+             "ollama_url": "http://127.0.0.1:11434",
+diff --git a/backend/main.py b/backend/main.py
+index 96493a9..111b32a 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -581,6 +581,8 @@ def models_catalog():
+         comfyui_url=connections["comfyui_url"],
+         checkpoint_dir=storage.get("checkpoint", ""),
+         lora_dir=storage.get("lora", ""),
++        clip_dir=storage.get("clip", ""),
++        vae_dir=storage.get("vae", ""),
+     )
+ 
+     database_path = Path(storage["database"]).expanduser() / "workbench.sqlite3"
+diff --git a/backend/model_catalog.py b/backend/model_catalog.py
+index 5f915e7..238a1ce 100644
+--- a/backend/model_catalog.py
++++ b/backend/model_catalog.py
+@@ -100,12 +100,13 @@ def _index_directory(directory: str) -> set[str]:
+ 
+ 
+ def _annotate(names: list[str], directory: str) -> list[dict[str, Any]]:
+-    indexed = _index_directory(directory)
+-    if indexed:
++    configured = bool(directory) and Path(directory).expanduser().is_dir()
++    if configured:
++        indexed = _index_directory(directory)
+         return [
+             {"name": name, "on_disk": name in indexed} for name in names
+         ]
+-    # No directory configured: existence is unknown, not false.
++    # No usable directory configured: existence is unknown, not false.
+     return [{"name": name, "on_disk": None} for name in names]
+ 
+ 
+@@ -113,13 +114,20 @@ def fetch_catalog(
+     comfyui_url: str,
+     checkpoint_dir: str = "",
+     lora_dir: str = "",
++    clip_dir: str = "",
++    vae_dir: str = "",
+     timeout: float = 4.0,
+ ) -> dict[str, Any]:
+-    """Fetch checkpoint / LoRA names from ComfyUI and annotate on-disk status.
++    """Fetch model names from ComfyUI and annotate on-disk status.
+ 
+-    Returns a report with ``online``, ``checkpoints`` and ``loras``. When
+-    ComfyUI is unreachable, ``online`` is False and lists are empty; the
+-    caller surfaces the error separately.
++    Checkpoint / LoRA / CLIP / VAE names are checked against an optional
++    configured local directory; an unconfigured directory leaves ``on_disk``
++    unknown (``None``) rather than reporting the file as missing. No weights
++    are copied and no digest is computed here.
++
++    Returns a report with ``online``, ``checkpoints``, ``clips``, ``vaes`` and
++    ``loras``. When ComfyUI is unreachable, ``online`` is False and lists are
++    empty; the caller surfaces the error separately.
+     """
+     base = comfyui_url.rstrip("/")
+     try:
+@@ -142,7 +150,7 @@ def fetch_catalog(
+         "online": True,
+         "error": None,
+         "checkpoints": _annotate(checkpoints, checkpoint_dir),
+-        "clips": [{"name": name, "on_disk": None} for name in clips],
+-        "vaes": [{"name": name, "on_disk": None} for name in vaes],
++        "clips": _annotate(clips, clip_dir),
++        "vaes": _annotate(vaes, vae_dir),
+         "loras": _annotate(loras, lora_dir),
+     }
+diff --git a/backend/test_main.py b/backend/test_main.py
+index 4ae2487..7f1b61b 100644
+--- a/backend/test_main.py
++++ b/backend/test_main.py
+@@ -268,6 +268,8 @@ def test_external_model_paths_can_be_empty(client):
+             "storage": {
+                 "checkpoint": "",
+                 "lora": "",
++                "clip": "",
++                "vae": "",
+             }
+         },
+     )
+@@ -275,6 +277,8 @@ def test_external_model_paths_can_be_empty(client):
+     assert response.status_code == 200
+     assert response.json()["storage"]["checkpoint"] == ""
+     assert response.json()["storage"]["lora"] == ""
++    assert response.json()["storage"]["clip"] == ""
++    assert response.json()["storage"]["vae"] == ""
+ 
+ 
+ def test_external_model_path_must_exist_when_set(client, tmp_path):
+diff --git a/backend/test_model_catalog.py b/backend/test_model_catalog.py
+index e68c219..ff6b540 100644
+--- a/backend/test_model_catalog.py
++++ b/backend/test_model_catalog.py
+@@ -102,6 +102,45 @@ def test_catalog_marks_on_disk_only_when_directory_configured(tmp_path):
+     assert unknown[0]["on_disk"] is None
+ 
+ 
++def test_catalog_annotates_clip_and_vae_against_configured_dir(tmp_path, monkeypatch):
++    sys.modules.pop("model_catalog", None)
++    import model_catalog
++
++    clip_dir = tmp_path / "clip"
++    clip_dir.mkdir()
++    (clip_dir / "t5xxl.safetensors").write_bytes(b"clip")
++    vae_dir = tmp_path / "vae"
++    vae_dir.mkdir()
++
++    object_info = {
++        "CLIPLoader": {
++            "input": {"required": {"clip_name": [["t5xxl.safetensors", "clip-missing.safetensors"], {}]}}
++        },
++        "VAELoader": {
++            "input": {"required": {"vae_name": [["vae-missing.pt"], {}]}}
++        },
++    }
++    monkeypatch.setattr(model_catalog, "_http_get_json", lambda url, timeout: object_info)
++
++    report = model_catalog.fetch_catalog(
++        "http://127.0.0.1:8188",
++        clip_dir=str(clip_dir),
++        vae_dir=str(vae_dir),
++        timeout=1.0,
++    )
++    clips = {item["name"]: item["on_disk"] for item in report["clips"]}
++    vaes = {item["name"]: item["on_disk"] for item in report["vaes"]}
++    assert clips["t5xxl.safetensors"] is True
++    assert clips["clip-missing.safetensors"] is False
++    # Configured but empty directory -> VAE listed as not found, not unknown.
++    assert vaes["vae-missing.pt"] is False
++
++    # Unconfigured directories leave existence unknown (None).
++    unknown = model_catalog.fetch_catalog("http://127.0.0.1:8188", timeout=1.0)
++    assert unknown["clips"][0]["on_disk"] is None
++    assert unknown["vaes"][0]["on_disk"] is None
++
++
+ def test_catalog_unreachable_comfyui_reports_offline():
+     sys.modules.pop("model_catalog", None)
+     import model_catalog
+@@ -129,7 +168,14 @@ def test_catalog_endpoint_requires_session(client):
+ def test_catalog_endpoint_returns_injected_catalog(client, monkeypatch):
+     test_client, main = client
+ 
+-    def fake_catalog(comfyui_url, checkpoint_dir="", lora_dir="", timeout=4.0):
++    def fake_catalog(
++        comfyui_url,
++        checkpoint_dir="",
++        lora_dir="",
++        clip_dir="",
++        vae_dir="",
++        timeout=4.0,
++    ):
+         return {
+             "online": True,
+             "error": None,
+@@ -173,7 +219,14 @@ def test_catalog_endpoint_attaches_identity_for_configured_dir(
+         },
+     )
+ 
+-    def fake_catalog(comfyui_url, checkpoint_dir="", lora_dir="", timeout=4.0):
++    def fake_catalog(
++        comfyui_url,
++        checkpoint_dir="",
++        lora_dir="",
++        clip_dir="",
++        vae_dir="",
++        timeout=4.0,
++    ):
+         return {
+             "online": True,
+             "error": None,
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 44c55d5..c754301 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -146,8 +146,18 @@ const storageLabels: Record<string, string> = {
+   exports: "导入导出",
+   checkpoint: "Checkpoint 模型目录（只读扫描）",
+   lora: "LoRA 模型目录（只读扫描）",
++  clip: "CLIP 模型目录（只读扫描）",
++  vae: "VAE 模型目录（只读扫描）",
+ };
+ 
++// Optional external ComfyUI model directories: read-only scanned, never
++// created by the workbench and never copied into the data root.
++const EXTERNAL_STORAGE_KEYS = ["checkpoint", "lora", "clip", "vae"];
++
++function isExternalStorageKey(key: string): boolean {
++  return EXTERNAL_STORAGE_KEYS.includes(key);
++}
++
+ function diskLabel(onDisk: boolean | null): string {
+   if (onDisk === null) return "目录未配置";
+   return onDisk ? "本机存在" : "本机未找到";
+@@ -284,7 +294,7 @@ export default function App() {
+         "/api/storage/validate",
+         {
+           path,
+-          create: key !== "checkpoint" && key !== "lora",
++          create: !isExternalStorageKey(key),
+         },
+       );
+ 
+@@ -490,8 +500,7 @@ export default function App() {
+             {Object.entries(settings.storage).map(
+               ([key, value]) => {
+                 const fixed = key === "root";
+-                const optional =
+-                  key === "checkpoint" || key === "lora";
++                const optional = isExternalStorageKey(key);
+ 
+                 return (
+                   <div className="path-row" key={key}>
+@@ -579,6 +588,22 @@ export default function App() {
+                   )}
+                 </ul>
+               </div>
++              <div className="catalog-col">
++                <div className="catalog-title">
++                  CLIP（{catalog.clips.length}）
++                </div>
++                <ul className="catalog-list">
++                  {catalog.clips.map((entry) => (
++                    <li key={entry.name}>
++                      <span>{entry.name}</span>
++                      <small>{diskLabel(entry.on_disk)}</small>
++                    </li>
++                  ))}
++                  {catalog.clips.length === 0 && (
++                    <li className="catalog-empty">ComfyUI 未列出 CLIP</li>
++                  )}
++                </ul>
++              </div>
+               <div className="catalog-col">
+                 <div className="catalog-title">
+                   VAE（{catalog.vaes.length}）

@@ -100,12 +100,13 @@ def _index_directory(directory: str) -> set[str]:
 
 
 def _annotate(names: list[str], directory: str) -> list[dict[str, Any]]:
-    indexed = _index_directory(directory)
-    if indexed:
+    configured = bool(directory) and Path(directory).expanduser().is_dir()
+    if configured:
+        indexed = _index_directory(directory)
         return [
             {"name": name, "on_disk": name in indexed} for name in names
         ]
-    # No directory configured: existence is unknown, not false.
+    # No usable directory configured: existence is unknown, not false.
     return [{"name": name, "on_disk": None} for name in names]
 
 
@@ -113,13 +114,20 @@ def fetch_catalog(
     comfyui_url: str,
     checkpoint_dir: str = "",
     lora_dir: str = "",
+    clip_dir: str = "",
+    vae_dir: str = "",
     timeout: float = 4.0,
 ) -> dict[str, Any]:
-    """Fetch checkpoint / LoRA names from ComfyUI and annotate on-disk status.
+    """Fetch model names from ComfyUI and annotate on-disk status.
 
-    Returns a report with ``online``, ``checkpoints`` and ``loras``. When
-    ComfyUI is unreachable, ``online`` is False and lists are empty; the
-    caller surfaces the error separately.
+    Checkpoint / LoRA / CLIP / VAE names are checked against an optional
+    configured local directory; an unconfigured directory leaves ``on_disk``
+    unknown (``None``) rather than reporting the file as missing. No weights
+    are copied and no digest is computed here.
+
+    Returns a report with ``online``, ``checkpoints``, ``clips``, ``vaes`` and
+    ``loras``. When ComfyUI is unreachable, ``online`` is False and lists are
+    empty; the caller surfaces the error separately.
     """
     base = comfyui_url.rstrip("/")
     try:
@@ -142,7 +150,7 @@ def fetch_catalog(
         "online": True,
         "error": None,
         "checkpoints": _annotate(checkpoints, checkpoint_dir),
-        "clips": [{"name": name, "on_disk": None} for name in clips],
-        "vaes": [{"name": name, "on_disk": None} for name in vaes],
+        "clips": _annotate(clips, clip_dir),
+        "vaes": _annotate(vaes, vae_dir),
         "loras": _annotate(loras, lora_dir),
     }

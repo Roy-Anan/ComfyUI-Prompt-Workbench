@@ -1069,3 +1069,28 @@
 
 - 示例套/推荐套优先级语义未拍板；sets 判定留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R33/`。
+
+## 44. TASK-003.1-R34 M3 第二十九切片：VAE/CLIP 目录只读核对链路（2026-11-18）
+
+### 44.1 当前状态
+
+- catalog 的 CLIP/VAE 名称接入与 Checkpoint/LoRA 同一套只读目录存在性核对；配置目录才逐项判命中/未找到，未配置目录 `on_disk=None`（未知，不报未找到）。
+- `datadir` 外部目录白名单扩为 `checkpoint/lora/clip/vae`，默认 storage 补两个空串键；前端存储标签与清单网格补 CLIP 列。
+- 不进身份哈希库、不拷贝权重、不算摘要；`_annotate` 修正空的已配置目录不再被误判为未知。
+- 后端测试 **169 passed**；前端 `tsc -b && vite build` exit 0。
+
+### 44.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| CLIP/VAE 目录核对链路接入 | 通过 | `fetch_catalog` 补 `clip_dir`/`vae_dir`；单测覆盖命中/未找到/未知 |
+| 未配置目录 on_disk=None 不回归 | 通过 | 真机 Checkpoint 13 / LoRA 3 / VAE 3 全部 `None`；`samples/catalog-payload.json` |
+| 前端 CLIP 列与外部目录标签 | 通过 | `screenshots/catalog-four-columns.png` |
+| Python pytest | 通过 | **169 passed, 1 warning in 6.34s** |
+| TypeScript / Vite 构建 | 通过 | exit 0；`index-DJeMbr87.js 165.64 kB`，CSS 8.09 kB |
+
+### 44.3 边界与 backlog
+
+- CLIP/VAE 未进身份哈希索引；无大小/摘要/校验标注，不参与身份归并。
+- 目录索引不递归子文件夹；真机未配置 CLIP/VAE 目录，命中分支由临时目录单测覆盖。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R34/`。

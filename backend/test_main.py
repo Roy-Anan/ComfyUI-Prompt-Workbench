@@ -268,6 +268,8 @@ def test_external_model_paths_can_be_empty(client):
             "storage": {
                 "checkpoint": "",
                 "lora": "",
+                "clip": "",
+                "vae": "",
             }
         },
     )
@@ -275,6 +277,8 @@ def test_external_model_paths_can_be_empty(client):
     assert response.status_code == 200
     assert response.json()["storage"]["checkpoint"] == ""
     assert response.json()["storage"]["lora"] == ""
+    assert response.json()["storage"]["clip"] == ""
+    assert response.json()["storage"]["vae"] == ""
 
 
 def test_external_model_path_must_exist_when_set(client, tmp_path):

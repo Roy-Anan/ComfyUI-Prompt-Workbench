@@ -581,6 +581,8 @@ def models_catalog():
         comfyui_url=connections["comfyui_url"],
         checkpoint_dir=storage.get("checkpoint", ""),
         lora_dir=storage.get("lora", ""),
+        clip_dir=storage.get("clip", ""),
+        vae_dir=storage.get("vae", ""),
     )
 
     database_path = Path(storage["database"]).expanduser() / "workbench.sqlite3"

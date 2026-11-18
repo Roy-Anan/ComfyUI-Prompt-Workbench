@@ -146,7 +146,17 @@ const storageLabels: Record<string, string> = {
   exports: "导入导出",
   checkpoint: "Checkpoint 模型目录（只读扫描）",
   lora: "LoRA 模型目录（只读扫描）",
+  clip: "CLIP 模型目录（只读扫描）",
+  vae: "VAE 模型目录（只读扫描）",
 };
+
+// Optional external ComfyUI model directories: read-only scanned, never
+// created by the workbench and never copied into the data root.
+const EXTERNAL_STORAGE_KEYS = ["checkpoint", "lora", "clip", "vae"];
+
+function isExternalStorageKey(key: string): boolean {
+  return EXTERNAL_STORAGE_KEYS.includes(key);
+}
 
 function diskLabel(onDisk: boolean | null): string {
   if (onDisk === null) return "目录未配置";
@@ -284,7 +294,7 @@ export default function App() {
         "/api/storage/validate",
         {
           path,
-          create: key !== "checkpoint" && key !== "lora",
+          create: !isExternalStorageKey(key),
         },
       );
 
@@ -490,8 +500,7 @@ export default function App() {
             {Object.entries(settings.storage).map(
               ([key, value]) => {
                 const fixed = key === "root";
-                const optional =
-                  key === "checkpoint" || key === "lora";
+                const optional = isExternalStorageKey(key);
 
                 return (
                   <div className="path-row" key={key}>
@@ -576,6 +585,22 @@ export default function App() {
                   ))}
                   {catalog.loras.length === 0 && (
                     <li className="catalog-empty">ComfyUI 未列出 LoRA</li>
+                  )}
+                </ul>
+              </div>
+              <div className="catalog-col">
+                <div className="catalog-title">
+                  CLIP（{catalog.clips.length}）
+                </div>
+                <ul className="catalog-list">
+                  {catalog.clips.map((entry) => (
+                    <li key={entry.name}>
+                      <span>{entry.name}</span>
+                      <small>{diskLabel(entry.on_disk)}</small>
+                    </li>
+                  ))}
+                  {catalog.clips.length === 0 && (
+                    <li className="catalog-empty">ComfyUI 未列出 CLIP</li>
                   )}
                 </ul>
               </div>

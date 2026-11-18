@@ -102,6 +102,45 @@ def test_catalog_marks_on_disk_only_when_directory_configured(tmp_path):
     assert unknown[0]["on_disk"] is None
 
 
+def test_catalog_annotates_clip_and_vae_against_configured_dir(tmp_path, monkeypatch):
+    sys.modules.pop("model_catalog", None)
+    import model_catalog
+
+    clip_dir = tmp_path / "clip"
+    clip_dir.mkdir()
+    (clip_dir / "t5xxl.safetensors").write_bytes(b"clip")
+    vae_dir = tmp_path / "vae"
+    vae_dir.mkdir()
+
+    object_info = {
+        "CLIPLoader": {
+            "input": {"required": {"clip_name": [["t5xxl.safetensors", "clip-missing.safetensors"], {}]}}
+        },
+        "VAELoader": {
+            "input": {"required": {"vae_name": [["vae-missing.pt"], {}]}}
+        },
+    }
+    monkeypatch.setattr(model_catalog, "_http_get_json", lambda url, timeout: object_info)
+
+    report = model_catalog.fetch_catalog(
+        "http://127.0.0.1:8188",
+        clip_dir=str(clip_dir),
+        vae_dir=str(vae_dir),
+        timeout=1.0,
+    )
+    clips = {item["name"]: item["on_disk"] for item in report["clips"]}
+    vaes = {item["name"]: item["on_disk"] for item in report["vaes"]}
+    assert clips["t5xxl.safetensors"] is True
+    assert clips["clip-missing.safetensors"] is False
+    # Configured but empty directory -> VAE listed as not found, not unknown.
+    assert vaes["vae-missing.pt"] is False
+
+    # Unconfigured directories leave existence unknown (None).
+    unknown = model_catalog.fetch_catalog("http://127.0.0.1:8188", timeout=1.0)
+    assert unknown["clips"][0]["on_disk"] is None
+    assert unknown["vaes"][0]["on_disk"] is None
+
+
 def test_catalog_unreachable_comfyui_reports_offline():
     sys.modules.pop("model_catalog", None)
     import model_catalog
@@ -129,7 +168,14 @@ def test_catalog_endpoint_requires_session(client):
 def test_catalog_endpoint_returns_injected_catalog(client, monkeypatch):
     test_client, main = client
 
-    def fake_catalog(comfyui_url, checkpoint_dir="", lora_dir="", timeout=4.0):
+    def fake_catalog(
+        comfyui_url,
+        checkpoint_dir="",
+        lora_dir="",
+        clip_dir="",
+        vae_dir="",
+        timeout=4.0,
+    ):
         return {
             "online": True,
             "error": None,
@@ -173,7 +219,14 @@ def test_catalog_endpoint_attaches_identity_for_configured_dir(
         },
     )
 
-    def fake_catalog(comfyui_url, checkpoint_dir="", lora_dir="", timeout=4.0):
+    def fake_catalog(
+        comfyui_url,
+        checkpoint_dir="",
+        lora_dir="",
+        clip_dir="",
+        vae_dir="",
+        timeout=4.0,
+    ):
         return {
             "online": True,
             "error": None,

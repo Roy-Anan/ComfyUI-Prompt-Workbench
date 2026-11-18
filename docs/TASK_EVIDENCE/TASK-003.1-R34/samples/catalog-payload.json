@@ -1,0 +1,253 @@
+{
+  "online": true,
+  "error": null,
+  "checkpoints": [
+    {
+      "name": "CyberRealisticPony_V18.0_F16.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 6938041288,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "GhostMix_v2.0.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 2400065384,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "HuslyoRealismSDXL_v3.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 6938043264,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "Juggernaut-XI-byRunDiffusion.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 7105350536,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "RH_Illustrious_2.5D_V1.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 6938046754,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "anything-v5.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 2132626102,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "autismmixSDXL_autismmixPony.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 6938041146,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "huslyorealismxl_v2DMD.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 6938050002,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "intorealismUltra_v80.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 6938040706,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "juggernautXL_ragnarokBy.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 7105350162,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "majicMIX realistic v7.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 2132625894,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "ponyDiffusionV6XL_v6.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 6938041050,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "waiIllustriousSDXL_v170.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 6938040682,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    }
+  ],
+  "clips": [],
+  "vaes": [
+    {
+      "name": "animevae.pt",
+      "on_disk": null
+    },
+    {
+      "name": "pixel_space",
+      "on_disk": null
+    },
+    {
+      "name": "vae-ft-mse-840000-ema-pruned.safetensors",
+      "on_disk": null
+    }
+  ],
+  "loras": [
+    {
+      "name": "ip-adapter-faceid-plusv2_sd15_lora.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 51059544,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    },
+    {
+      "name": "suyuexi.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 37866968,
+        "sha256": "fedeb940e7725e869fc51b7fe2c1d776ee9c460b6598810ec82b8f0f7fb69b1d",
+        "hashed": true,
+        "identity_key": "lora:fedeb940e7725e869fc51b7fe2c1d776ee9c460b6598810ec82b8f0f7fb69b1d",
+        "copy_count": 1,
+        "copies": [
+          {
+            "relative_name": "suyuexi.safetensors",
+            "absolute_path": "D:\\AI\\Qiuye\\ComfyUI-aki-v3.2\\ComfyUI\\models\\loras\\suyuexi.safetensors",
+            "on_disk": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "suyuexifull_c1-st6000.safetensors",
+      "on_disk": null,
+      "identity": {
+        "known": true,
+        "on_disk": true,
+        "size_bytes": 85422836,
+        "sha256": null,
+        "hashed": false,
+        "identity_key": null,
+        "copy_count": 0,
+        "copies": []
+      }
+    }
+  ]
+}
