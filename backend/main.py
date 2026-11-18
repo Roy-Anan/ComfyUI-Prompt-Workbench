@@ -650,6 +650,63 @@ def fetch_comfyui_status(url: str) -> dict[str, Any]:
     }
 
 
+def _get_json(url: str, path: str) -> tuple[dict[str, Any] | None, str | None]:
+    """GET a JSON body; ``(data, error)`` with data ``None`` on failure."""
+    target = url.rstrip("/") + path
+    request = UrlRequest(target)
+    request.add_header("User-Agent", APP_NAME)
+    try:
+        with urlopen(request, timeout=2.5) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        return json.loads(raw), None
+    except (URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        return None, str(exc)
+
+
+def _queue_ids(items: Any) -> list[str]:
+    ids: list[str] = []
+    if not isinstance(items, list):
+        return ids
+    for item in items:
+        if isinstance(item, list) and item and isinstance(item[0], str):
+            ids.append(item[0])
+    return ids
+
+
+def fetch_comfyui_queue(url: str) -> dict[str, Any]:
+    """Read-only ComfyUI queue and history prompt identifiers.
+
+    Only prompt ids are projected; no task is submitted, cancelled, or
+    reordered. Unreachable or malformed responses report empty lists with an
+    error and no fabricated ids.
+    """
+    queue_data, queue_error = _get_json(url, "/queue")
+    history_data, history_error = _get_json(url, "/history")
+
+    if queue_data is None:
+        return {
+            "online": False,
+            "error": queue_error,
+            "running": [],
+            "pending": [],
+            "history": [],
+        }
+
+    running = _queue_ids(queue_data.get("queue_running"))
+    pending = _queue_ids(queue_data.get("queue_pending"))
+    history_ids: list[str] = []
+    if isinstance(history_data, dict):
+        history_ids = [key for key in history_data.keys() if isinstance(key, str)]
+
+    return {
+        "online": True,
+        "error": history_error if history_data is None else None,
+        "running": running,
+        "pending": pending,
+        "history": history_ids,
+    }
+
+
 @app.get("/api/services/status")
 def services_status():
     settings = load_settings()
@@ -677,6 +734,12 @@ def ollama_models():
 def comfyui_status():
     settings = load_settings()
     return fetch_comfyui_status(settings["connections"]["comfyui_url"])
+
+
+@app.get("/api/comfyui/queue")
+def comfyui_queue():
+    settings = load_settings()
+    return fetch_comfyui_queue(settings["connections"]["comfyui_url"])
 
 
 @app.get("/api/models/catalog")

@@ -492,6 +492,75 @@ def test_fetch_comfyui_status_parses_devices_conservatively(client, monkeypatch)
     assert result["devices"][1]["vram_free"] is None
 
 
+def test_comfyui_queue_passes_through(client, monkeypatch):
+    test_client, main = client
+    snapshot = {
+        "online": True,
+        "error": None,
+        "running": ["p-running"],
+        "pending": ["p-pending"],
+        "history": ["p-history"],
+    }
+
+    monkeypatch.setattr(main, "fetch_comfyui_queue", lambda url: snapshot)
+
+    body = test_client.get("/api/comfyui/queue", headers=auth()).json()
+    assert body == snapshot
+
+
+def test_comfyui_queue_passes_through_offline(client, monkeypatch):
+    test_client, main = client
+
+    def fake_fetch(url):
+        return {
+            "online": False,
+            "error": "connection refused",
+            "running": [],
+            "pending": [],
+            "history": [],
+        }
+
+    monkeypatch.setattr(main, "fetch_comfyui_queue", fake_fetch)
+
+    body = test_client.get("/api/comfyui/queue", headers=auth()).json()
+    assert body["online"] is False
+    assert body["running"] == []
+    assert body["history"] == []
+    assert body["error"] == "connection refused"
+
+
+def test_fetch_comfyui_queue_is_conservative_on_unreachable_host(client):
+    _, main = client
+    result = main.fetch_comfyui_queue("http://127.0.0.1:1")
+    assert result["online"] is False
+    assert result["running"] == []
+    assert result["pending"] == []
+    assert result["history"] == []
+    assert result["error"] is not None
+
+
+def test_fetch_comfyui_queue_parses_ids_conservatively(client, monkeypatch):
+    _, main = client
+    queue_payload = {
+        "queue_running": [["p-running", 1, {}, {}, {}]],
+        "queue_pending": [["p-pending", 2, {}, {}, {}], "not-a-list"],
+    }
+    history_payload = {"p-history": {"outputs": {}}}
+
+    def fake_get_json(url, path):
+        if path == "/queue":
+            return queue_payload, None
+        return history_payload, None
+
+    monkeypatch.setattr(main, "_get_json", fake_get_json)
+
+    result = main.fetch_comfyui_queue("http://127.0.0.1:8188")
+    assert result["online"] is True
+    assert result["running"] == ["p-running"]
+    assert result["pending"] == ["p-pending"]
+    assert result["history"] == ["p-history"]
+
+
 def test_unknown_api_returns_json_not_html(client):
     test_client, _ = client
 
