@@ -1,0 +1,44 @@
+{
+  "context_level": "checkpoint",
+  "context_scope": "pony.safetensors",
+  "fields": {
+    "steps": {
+      "status": "resolved",
+      "key": "steps",
+      "value": 32,
+      "source_level": "checkpoint",
+      "source": {
+        "level": "checkpoint",
+        "scope_key": "pony.safetensors",
+        "provenance": "author",
+        "confidence": "authoritative",
+        "version": "1",
+        "note": ""
+      }
+    },
+    "cfg": {
+      "status": "resolved",
+      "key": "cfg",
+      "value": 7,
+      "source_level": "global",
+      "source": {
+        "level": "global",
+        "scope_key": null,
+        "provenance": "community",
+        "confidence": "unverified",
+        "version": "1",
+        "note": ""
+      }
+    },
+    "clip_skip": {
+      "status": "unknown",
+      "key": "clip_skip",
+      "value": null,
+      "source_level": null
+    }
+  },
+  "conflicts": [],
+  "unknown": [
+    "clip_skip"
+  ]
+}

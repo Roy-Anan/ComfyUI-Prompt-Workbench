@@ -438,3 +438,31 @@
 - 规则继承、规则来源/可信度/版本/回退、规则组合与冲突检测、动态检索、云端资料导入审核仍属后续 M3 切片。
 - 哈希按需触发，尚无全量/定时策略与前端触发入口；VAE/CLIP 目录未纳入索引；目录不递归；并发写锁未加。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R8/`。
+
+## 19. TASK-003.1-R9 M3 第四切片：规则记录结构、三级继承与冲突/未知判定骨架（2026-11-18）
+
+### 19.1 当前状态
+
+- 新增 `backend/rule_engine.py` 纯解析层：`RuleRecord` 含层级（checkpoint/architecture/global）、作用域键、规则键、值、来源（provenance）、可信度（confidence）、版本与备注；`resolve_field` 按程序确定的优先级 checkpoint > architecture > global 逐级查找；同层值不一致标记 `conflict` 不替选；无覆盖字段标记 `unknown` 不造默认；`resolve_context` 批量解析并汇总冲突/未知；`summarize_rules` 按层级盘点。
+- 本轮为纯函数层：不读文件系统、不调 ComfyUI/Ollama、不回写工作流；规则存储/导入、动态检索与 LLM 上下文组装留后续切片。
+- 后端测试增至 **88 passed**；前端构建 exit 0（本轮无前端改动）。
+
+### 19.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 三级继承优先级 | 通过 | 单元测试：checkpoint 覆盖 architecture/global；architecture 回落 global |
+| 不跨上下文泄漏 | 通过 | 单元测试：checkpoint 规则不进入 architecture 上下文 |
+| 同层冲突不替选 | 通过 | 单元测试：同层两值冲突返回 `conflict`、value=None、双来源 |
+| 未知不造默认 | 通过 | 单元测试：无覆盖字段 `unknown`、source_level=None |
+| 来源/可信度/版本保留 | 通过 | 解析结果回挂 source（level/scope/provenance/confidence/version/note） |
+| 解析样本 | 通过 | `samples/rule-resolution.json`：steps=32（checkpoint）、cfg=7（global）、clip_skip=unknown |
+| Python pytest | 通过 | **88 passed, 1 warning in 4.26s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 19.3 边界与 backlog
+
+- 规则尚无持久化存储与资料导入；旧 `legacy-materials/profiles` 文本档案未结构化入库。
+- 多模型与实际启用 LoRA 规则组合、冲突人工裁决界面、动态检索、云端研究资料导入审核未实现。
+- 哈希按需触发；VAE/CLIP 目录未纳入索引；目录不递归；并发写锁未加。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R9/`。
