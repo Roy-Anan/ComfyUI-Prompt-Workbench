@@ -1523,3 +1523,33 @@
 - 留后项（多草稿、创作模式、sets 优先级、备份恢复等）口径未决，未在本切片实现。
 - 未改动启停脚本与后端 / 前端行为。
 - 后端 224 passed，前端构建绿。证据：`docs/TASK_EVIDENCE/TASK-003.1-R59/`。
+
+## 70. TASK-003.1-R60 历史时间轴分组视图（2026-11-18）
+
+### 70.1 落地内容
+
+- 纯前端。生成历史新增「时间轴」视图，按 `created_at` 日期分组，日期与组内记录倒序；
+  与列表 / 网格并列切换，复用既有筛选、详情展开与本地视图偏好记忆；0 条时按钮禁用。
+- 不新增后端端点，不改快照与图片存在性口径。
+
+### 70.2 边界与 backlog
+
+- 历史库为空，分组真机渲染留待有记录的阶段收口走查；缩略图、反向创建草稿留后。
+- 后端 224 passed，前端 `tsc -b && vite build` 绿。证据：`docs/TASK_EVIDENCE/TASK-003.1-R60/`。
+
+## 71. TASK-003.1-R61 启停脚本 PowerShell 路径与身份校验修复（2026-11-18）
+
+### 71.1 落地内容
+
+- 根因：子进程 PATH 中无裸 `powershell`，CIM 身份查询 FileNotFoundError 导致 stopper
+  fail-closed 无法回收；叠加记录 `creation_date=null` 被当作不匹配拒绝。
+- 两脚本新增 `_powershell_exe()`（pwsh → powershell → 5.1 全路径）；CreationDate 仅两侧
+  都有值时比对，记录缺失不拒绝；PID 复用防护由 per-launch 随机 `instance_id` + health
+  探针比对承担；launcher 读取启动时间加重试。
+- 真机闭环：旧 null 记录实例（PID 864 / 子 27880）与新实例（PID 25040）均由 stopper
+  身份匹配回收，端口关闭、记录清理；DB 三表归零，Ollama/ComfyUI 未触碰。
+
+### 71.2 边界与 backlog
+
+- 安全口径不变：不按名称批量结束 Python；白名单 / CSRF / 回环绑定未改。
+- 后端 224 passed。证据：`docs/TASK_EVIDENCE/TASK-003.1-R61/`。

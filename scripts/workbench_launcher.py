@@ -19,6 +19,7 @@ import ipaddress
 import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -101,23 +102,46 @@ def read_pid() -> int | None:
         return None
 
 
+def _powershell_exe() -> str:
+    """Resolve a usable PowerShell launcher (pwsh 7, powershell, legacy 5.1 path)."""
+    found = shutil.which("pwsh") or shutil.which("powershell")
+    if found:
+        return found
+    return os.path.join(
+        os.environ.get("WINDIR", r"C:\Windows"),
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe",
+    )
+
+
 def _process_creation_date(pid: int) -> str | None:
-    """Read the Win32 CreationDate as an ISO8601 instant, comparable on both sides."""
+    """Read the Win32 CreationDate as an ISO8601 instant, comparable on both sides.
+
+    Right after Popen the new process may not yet report its CreationDate, so
+    retry briefly before giving up; a persistent None is tolerated by the
+    stopper (identity still rests on the per-launch instance id).
+    """
     ps = (
         "Get-CimInstance Win32_Process -Filter "
         f'"ProcessId={pid}" | '
         "ForEach-Object { $_.CreationDate.ToString(\"yyyy-MM-ddTHH:mm:ss.ffffffZ\") }"
     )
-    try:
-        output = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command", ps],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    value = output.strip()
-    return value or None
+    for _ in range(5):
+        try:
+            output = subprocess.check_output(
+                [_powershell_exe(), "-NoProfile", "-Command", ps],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            return None
+        value = output.strip()
+        if value:
+            return value
+        time.sleep(0.2)
+    return None
 
 
 def write_runtime_record(proc: subprocess.Popen, instance_id: str) -> None:

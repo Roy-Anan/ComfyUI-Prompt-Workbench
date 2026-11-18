@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import ctypes
 import json
+import os
+import shutil
 import subprocess
 import sys
 import time
@@ -30,6 +32,26 @@ APP_ID = "ComfyUI-Prompt-Workbench"
 APP_MARKER = "uvicorn"  # Command-line marker for the tracked backend process.
 
 kernel32 = ctypes.windll.kernel32
+
+
+def _powershell_exe() -> str:
+    """Resolve a usable PowerShell launcher.
+
+    A bare ``powershell`` may be absent from the child process PATH (the venv
+    or a trimmed PATH can drop Windows PowerShell 5.1), which previously made
+    every CIM identity lookup fail closed. Prefer pwsh 7, then powershell,
+    then the legacy 5.1 full path under Windows.
+    """
+    found = shutil.which("pwsh") or shutil.which("powershell")
+    if found:
+        return found
+    return os.path.join(
+        os.environ.get("WINDIR", r"C:\Windows"),
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe",
+    )
 
 
 def pid_alive(pid: int) -> bool:
@@ -58,7 +80,7 @@ def _process_info(pid: int) -> dict[str, str] | None:
     )
     try:
         output = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command", ps],
+            [_powershell_exe(), "-NoProfile", "-Command", ps],
             text=True,
             stderr=subprocess.DEVNULL,
         )
@@ -185,7 +207,13 @@ def identify_workbench(pid: int, record: dict | None = None) -> tuple[bool, str]
     if record_parts and not all(any(part in live for live in live_parts) for part in record_parts):
         return False, "命令行参数与记录不符"
 
-    if not _creation_date_equal(record.get("creation_date"), creation):
+    # Creation time is an auxiliary PID-reuse signal. The stronger reuse
+    # guard is the per-launch random instance id compared against the live
+    # health probe above. When the recorded creation time is missing (older
+    # records, or it was not yet readable right after launch), do not fail on
+    # it; both sides are compared only when present on both.
+    record_creation = record.get("creation_date")
+    if record_creation and creation and not _creation_date_equal(record_creation, creation):
         return False, "进程启动时间与记录不一致（PID 可能已被复用）"
 
     return True, "身份匹配"
@@ -196,7 +224,7 @@ def child_pids(parent_pid: int) -> list[int]:
     try:
         output = subprocess.check_output(
             [
-                "powershell",
+                _powershell_exe(),
                 "-NoProfile",
                 "-Command",
                 "Get-CimInstance Win32_Process -Filter "

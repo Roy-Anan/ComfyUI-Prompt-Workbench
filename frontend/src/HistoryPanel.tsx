@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { apiGet } from "./api";
 
-type HistoryView = "list" | "grid";
+type HistoryView = "list" | "grid" | "timeline";
+
+const VIEW_OPTIONS: { key: HistoryView; label: string }[] = [
+  { key: "list", label: "列表" },
+  { key: "grid", label: "网格" },
+  { key: "timeline", label: "时间轴" },
+];
 
 function readStoredView(): HistoryView {
   try {
     const value = localStorage.getItem("workbench.historyView");
-    if (value === "list" || value === "grid") return value;
+    if (value === "list" || value === "grid" || value === "timeline") return value;
   } catch {
     // 本地存储不可用时回落到列表视图。
   }
@@ -68,6 +74,25 @@ function existenceLabel(image: HistoryImage): string {
 function summarize(text: string | null, limit = 80): string {
   if (!text) return "—";
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+function groupByDay(records: HistoryRecord[]): { day: string; items: HistoryRecord[] }[] {
+  const sorted = [...records].sort((a, b) =>
+    a.created_at < b.created_at ? 1 : -1,
+  );
+  const groups: { day: string; items: HistoryRecord[] }[] = [];
+  const index = new Map<string, number>();
+  for (const record of sorted) {
+    const day = record.created_at.slice(0, 10) || "未知日期";
+    const existing = index.get(day);
+    if (existing === undefined) {
+      index.set(day, groups.length);
+      groups.push({ day, items: [record] });
+    } else {
+      groups[existing].items.push(record);
+    }
+  }
+  return groups;
 }
 
 const STATUS_OPTIONS = [
@@ -243,12 +268,16 @@ export default function HistoryPanel() {
           <p>提交时刻固化的 Prompt 与模型快照；图片只记录文件名与存在性，不复制原图。</p>
         </div>
         <div className="actions">
-          <button
-            onClick={() => switchView(view === "list" ? "grid" : "list")}
-            disabled={filtered.length === 0}
-          >
-            {view === "list" ? "网格视图" : "列表视图"}
-          </button>
+          {VIEW_OPTIONS.map((option) => (
+            <button
+              key={option.key}
+              onClick={() => switchView(option.key)}
+              disabled={filtered.length === 0}
+              className={view === option.key ? "active" : ""}
+            >
+              {option.label}视图
+            </button>
+          ))}
           <button onClick={exportHistory} disabled={filtered.length === 0}>
             导出 JSON
           </button>
@@ -326,6 +355,17 @@ export default function HistoryPanel() {
         <p className="catalog-empty">暂无生成历史。</p>
       ) : filtered.length === 0 ? (
         <p className="catalog-empty">没有符合筛选条件的历史记录。</p>
+      ) : view === "timeline" ? (
+        <div className="history-timeline">
+          {groupByDay(filtered).map((group) => (
+            <div className="timeline-group" key={group.day}>
+              <div className="timeline-date">{group.day}</div>
+              <div className="rule-list">
+                {group.items.map(renderRecord)}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className={view === "grid" ? "history-grid" : "rule-list"}>
           {filtered.map(renderRecord)}
