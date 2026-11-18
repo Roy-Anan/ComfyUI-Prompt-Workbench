@@ -19,8 +19,8 @@ M3 第二十七切片：前端星号 markdown 残留清理。工作流识别结�
 
 ## Git
 
-- 功能提交：见下方回填。
-- 回执提交：见下方回填。
+- 功能提交：`84419db0b1ceb7399b4e5af59e2467a0a42063e8`（本地 dev，已推送 origin/dev）。
+- 远端核对：连接器 `list_commits(dev)` 最新提交即 `84419db`，消息「feat(workbench): M3 第二十七切片 前端星号 markdown 残留清理」，作者 Roy-Anan / 1538072315@qq.com。
 - main 分支未改动。
 
 ## 边界
