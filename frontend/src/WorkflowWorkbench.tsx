@@ -141,6 +141,7 @@ type DraftEntry = {
   note: string;
   favored?: boolean;
   tags?: string[];
+  trashed?: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -372,6 +373,8 @@ export default function WorkflowWorkbench() {
   const [updatingDraftId, setUpdatingDraftId] = useState<string | null>(null);
   const [copyingDraftId, setCopyingDraftId] = useState<string | null>(null);
   const [copyTargetId, setCopyTargetId] = useState("");
+  const [showTrashed, setShowTrashed] = useState(false);
+  const [purgingDraftId, setPurgingDraftId] = useState<string | null>(null);
   const [draftKeyword, setDraftKeyword] = useState("");
   const [favoredOnly, setFavoredOnly] = useState(readStoredFavoredOnly);
   async function refreshList() {
@@ -442,6 +445,8 @@ export default function WorkflowWorkbench() {
       setUpdatingDraftId(null);
       setCopyingDraftId(null);
       setCopyTargetId("");
+      setShowTrashed(false);
+      setPurgingDraftId(null);
       setDraftKeyword("");
       setFavoredOnly(false);
       persistFavoredOnly(false);
@@ -452,7 +457,7 @@ export default function WorkflowWorkbench() {
       setPasteText("");
       void loadTasks(false);
       void loadVersions(id);
-      void loadDrafts(id);
+      void loadDrafts(id, false);
       setMessage(`已打开：${result.manifest.filename}`);
     } catch (error) {
       setMessage(`打开失败：${String(error)}`);
@@ -501,6 +506,8 @@ export default function WorkflowWorkbench() {
       setUpdatingDraftId(null);
       setCopyingDraftId(null);
       setCopyTargetId("");
+      setShowTrashed(false);
+      setPurgingDraftId(null);
       setDraftKeyword("");
       setFavoredOnly(false);
       persistFavoredOnly(false);
@@ -759,10 +766,10 @@ export default function WorkflowWorkbench() {
     }
   }
 
-  async function loadDrafts(id: string) {
+  async function loadDrafts(id: string, trashed: boolean) {
     try {
       const result = await apiGet<{ items: DraftEntry[] }>(
-        `/api/workflows/${id}/drafts`,
+        `/api/workflows/${id}/drafts?include_trashed=${trashed}`,
       );
       setDrafts(result.items);
     } catch {
@@ -793,7 +800,7 @@ export default function WorkflowWorkbench() {
       setDraftName("");
       setDraftNote("");
       setDraftTags("");
-      await loadDrafts(workflowId);
+      await loadDrafts(workflowId, showTrashed);
       setMessage("草稿已保存（未写入工作副本）。");
     } catch (error) {
       setMessage(`保存草稿失败：${String(error)}`);
@@ -817,10 +824,39 @@ export default function WorkflowWorkbench() {
     try {
       await apiDelete(`/api/workflows/${workflowId}/drafts/${draftId}`, {});
       setDeletingDraftId(null);
-      await loadDrafts(workflowId);
-      setMessage("草稿已删除。");
+      await loadDrafts(workflowId, showTrashed);
+      setMessage("草稿已移入回收站，可在回收站恢复。");
     } catch (error) {
       setMessage(`删除草稿失败：${String(error)}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function restoreDraft(draft: DraftEntry) {
+    if (!workflowId) return;
+    setDraftBusy(true);
+    try {
+      await apiPost(`/api/workflows/${workflowId}/drafts/${draft.id}/restore`, {});
+      await loadDrafts(workflowId, showTrashed);
+      setMessage(`草稿「${draft.name}」已恢复到草稿箱。`);
+    } catch (error) {
+      setMessage(`恢复草稿失败：${String(error)}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function purgeDraft(draftId: string) {
+    if (!workflowId) return;
+    setDraftBusy(true);
+    try {
+      await apiPost(`/api/workflows/${workflowId}/drafts/${draftId}/purge`, {});
+      setPurgingDraftId(null);
+      await loadDrafts(workflowId, true);
+      setMessage("草稿已彻底删除，不可恢复。");
+    } catch (error) {
+      setMessage(`彻底删除失败：${String(error)}`);
     } finally {
       setDraftBusy(false);
     }
@@ -831,7 +867,7 @@ export default function WorkflowWorkbench() {
     setDraftBusy(true);
     try {
       await apiPost(`/api/workflows/${workflowId}/drafts/${draft.id}/favorite`, {});
-      await loadDrafts(workflowId);
+      await loadDrafts(workflowId, showTrashed);
       setMessage(draft.favored ? `已取消收藏草稿「${draft.name}」。` : `已收藏草稿「${draft.name}」。`);
     } catch (error) {
       setMessage(`切换收藏失败：${String(error)}`);
@@ -862,7 +898,7 @@ export default function WorkflowWorkbench() {
         tags: parseDraftTags(draftTags),
       });
       setUpdatingDraftId(null);
-      await loadDrafts(workflowId);
+      await loadDrafts(workflowId, showTrashed);
       setMessage("草稿已更新（未写入工作副本）。");
     } catch (error) {
       setMessage(`更新草稿失败：${String(error)}`);
@@ -888,6 +924,8 @@ export default function WorkflowWorkbench() {
       const target = items.find((workflow) => workflow.id === copyTargetId);
       setCopyingDraftId(null);
       setCopyTargetId("");
+      setShowTrashed(false);
+      setPurgingDraftId(null);
       setMessage(`已复制草稿「${draft.name}」到「${target?.filename || copyTargetId}」。`);
     } catch (error) {
       setMessage(`复制草稿失败：${String(error)}`);
@@ -1617,13 +1655,26 @@ export default function WorkflowWorkbench() {
                     <input
                       type="checkbox"
                       checked={favoredOnly}
-                      disabled={draftBusy || busy}
+                      disabled={draftBusy || busy || showTrashed}
                       onChange={(event) => {
                         setFavoredOnly(event.target.checked);
                         persistFavoredOnly(event.target.checked);
                       }}
                     />
                     仅看收藏
+                  </label>
+                  <label className="workflow-meta">
+                    <input
+                      type="checkbox"
+                      checked={showTrashed}
+                      disabled={draftBusy || busy}
+                      onChange={(event) => {
+                        const next = event.target.checked;
+                        setShowTrashed(next);
+                        if (workflowId) void loadDrafts(workflowId, next);
+                      }}
+                    />
+                    回收站
                   </label>
                 </div>
               )}
@@ -1637,7 +1688,10 @@ export default function WorkflowWorkbench() {
                     <div className="workflow-node-row" key={draft.id}>
                       <div>
                         <strong>{draft.name}</strong>
-                        {draft.favored && (
+                        {showTrashed && (
+                          <small className="workflow-meta">已删除</small>
+                        )}
+                        {draft.favored && !showTrashed && (
                           <small className="workflow-meta">已收藏</small>
                         )}
                         <small>正向：{clipText(draft.positive)}</small>
@@ -1652,6 +1706,8 @@ export default function WorkflowWorkbench() {
                         )}
                       </div>
                       <div className="actions">
+                        {!showTrashed && (
+                        <>
                         <button
                           onClick={() => adoptDraft(draft)}
                           disabled={draftBusy || busy}
@@ -1734,7 +1790,7 @@ export default function WorkflowWorkbench() {
                               onClick={() => void deleteDraft(draft.id)}
                               disabled={draftBusy || busy}
                             >
-                              确认删除？
+                              确认移入回收站？
                             </button>
                             <button
                               onClick={() => setDeletingDraftId(null)}
@@ -1748,8 +1804,43 @@ export default function WorkflowWorkbench() {
                             onClick={() => setDeletingDraftId(draft.id)}
                             disabled={draftBusy || busy}
                           >
-                            删除
+                            移入回收站
                           </button>
+                        )}
+                        </>
+                        )}
+                        {showTrashed && (
+                        <>
+                          <button
+                            onClick={() => void restoreDraft(draft)}
+                            disabled={draftBusy || busy}
+                          >
+                            恢复
+                          </button>
+                          {purgingDraftId === draft.id ? (
+                            <>
+                              <button
+                                onClick={() => void purgeDraft(draft.id)}
+                                disabled={draftBusy || busy}
+                              >
+                                确认彻底删除？
+                              </button>
+                              <button
+                                onClick={() => setPurgingDraftId(null)}
+                                disabled={draftBusy || busy}
+                              >
+                                取消
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setPurgingDraftId(draft.id)}
+                              disabled={draftBusy || busy}
+                            >
+                              彻底删除
+                            </button>
+                          )}
+                        </>
                         )}
                       </div>
                     </div>

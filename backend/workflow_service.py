@@ -1075,11 +1075,16 @@ class WorkflowStore:
             raise WorkflowError("草稿记录结构无效")
         return record
 
-    def list_drafts(self, workflow_id: str) -> list[dict[str, Any]]:
+    def list_drafts(
+        self,
+        workflow_id: str,
+        include_trashed: bool = False,
+    ) -> list[dict[str, Any]]:
         """List named drafts for one workflow, newest update first.
 
         Corrupt draft files are skipped conservatively; the list exposes the
-        whitelist Prompt texts and note, not the working copy.
+        whitelist Prompt texts and note, not the working copy. Soft-deleted
+        drafts are hidden unless ``include_trashed`` is set.
         """
         drafts_dir = self._drafts_dir(workflow_id)
         entries: list[dict[str, Any]] = []
@@ -1090,6 +1095,9 @@ class WorkflowStore:
                 record = self._read_draft_file(file)
             except WorkflowError:
                 continue
+            trashed = bool(record.get("trashed") or False)
+            if trashed and not include_trashed:
+                continue
             entries.append(
                 {
                     "id": record.get("id") or file.stem,
@@ -1099,6 +1107,7 @@ class WorkflowStore:
                     "negative": record.get("negative") or "",
                     "favored": bool(record.get("favored") or False),
                     "tags": _clean_tags(record.get("tags")),
+                    "trashed": trashed,
                     "created_at": record.get("created_at"),
                     "updated_at": record.get("updated_at"),
                 }
@@ -1173,6 +1182,7 @@ class WorkflowStore:
                 "note": clean_note,
                 "tags": clean_tags,
                 "favored": False,
+                "trashed": False,
                 "created_at": _now(),
                 "updated_at": _now(),
             }
@@ -1192,12 +1202,39 @@ class WorkflowStore:
         return self._read_draft_file(path)
 
     def delete_draft(self, workflow_id: str, draft_id: str) -> dict[str, Any]:
+        """Soft-delete: move the draft to the recycle bin; recoverable via restore_draft.
+
+        The record file is kept on disk; generation history and images are
+        untouched.
+        """
+        drafts_dir = self._drafts_dir(workflow_id)
+        path = self._draft_path(drafts_dir, draft_id)
+        if not path.is_file():
+            raise WorkflowError("指定的草稿不存在")
+        record = self._read_draft_file(path)
+        record["trashed"] = True
+        _atomic_json(path, record)
+        return {"ok": True, "id": draft_id, "trashed": True}
+
+    def restore_draft(self, workflow_id: str, draft_id: str) -> dict[str, Any]:
+        """Recover a soft-deleted draft back into the active draft box."""
+        drafts_dir = self._drafts_dir(workflow_id)
+        path = self._draft_path(drafts_dir, draft_id)
+        if not path.is_file():
+            raise WorkflowError("指定的草稿不存在")
+        record = self._read_draft_file(path)
+        record["trashed"] = False
+        _atomic_json(path, record)
+        return record
+
+    def purge_draft(self, workflow_id: str, draft_id: str) -> dict[str, Any]:
+        """Permanently remove a draft from the recycle bin. Irreversible."""
         drafts_dir = self._drafts_dir(workflow_id)
         path = self._draft_path(drafts_dir, draft_id)
         if not path.is_file():
             raise WorkflowError("指定的草稿不存在")
         path.unlink()
-        return {"ok": True, "id": draft_id}
+        return {"ok": True, "id": draft_id, "purged": True}
 
     def toggle_favored(self, workflow_id: str, draft_id: str) -> dict[str, Any]:
         """Flip the favored flag on one draft.

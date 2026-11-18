@@ -252,10 +252,10 @@ def restore_version(workflow_id: str, stamp: str):
 
 
 @router.get("/{workflow_id}/drafts")
-def list_drafts(workflow_id: str):
+def list_drafts(workflow_id: str, include_trashed: bool = False):
     """List the named drafts saved for this workflow, newest update first."""
     try:
-        return {"items": store().list_drafts(workflow_id)}
+        return {"items": store().list_drafts(workflow_id, include_trashed)}
     except (WorkflowError, FileNotFoundError, OSError) as exc:
         _raise_api_error(exc)
 
@@ -288,9 +288,27 @@ def get_draft(workflow_id: str, draft_id: str):
 
 @router.delete("/{workflow_id}/drafts/{draft_id}")
 def delete_draft(workflow_id: str, draft_id: str):
-    """Delete one named draft. Generation history and images are untouched."""
+    """Soft-delete one named draft into the recycle bin. History and images untouched."""
     try:
         return store().delete_draft(workflow_id, draft_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
+@router.post("/{workflow_id}/drafts/{draft_id}/restore")
+def restore_draft(workflow_id: str, draft_id: str):
+    """Recover a soft-deleted draft back into the active draft box."""
+    try:
+        return store().restore_draft(workflow_id, draft_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
+@router.post("/{workflow_id}/drafts/{draft_id}/purge")
+def purge_draft(workflow_id: str, draft_id: str):
+    """Permanently remove a draft from the recycle bin. Irreversible."""
+    try:
+        return store().purge_draft(workflow_id, draft_id)
     except (WorkflowError, FileNotFoundError, OSError) as exc:
         _raise_api_error(exc)
 

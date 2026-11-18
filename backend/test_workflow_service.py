@@ -755,7 +755,7 @@ def test_draft_update_rejects_duplicate_name_and_missing(tmp_path):
         store.get_draft(workflow_id, "11111111-1111-4111-8111-111111111111")
 
 
-def test_draft_delete_and_isolation_between_workflows(tmp_path):
+def test_draft_recycle_bin_and_isolation_between_workflows(tmp_path):
     store = WorkflowStore(tmp_path / "workflows")
     first = store.import_workflow("a.json", sample_api_workflow())
     second = store.import_workflow("b.json", sample_api_workflow())
@@ -766,11 +766,26 @@ def test_draft_delete_and_isolation_between_workflows(tmp_path):
     # Drafts are scoped to their own workflow.
     assert store.list_drafts(second["id"]) == []
 
+    # Soft delete: hidden by default, but still listed in the recycle bin.
     store.delete_draft(first["id"], draft["id"])
     assert store.list_drafts(first["id"]) == []
+    trashed = store.list_drafts(first["id"], include_trashed=True)
+    assert len(trashed) == 1
+    assert trashed[0]["trashed"] is True
+
+    # Restore brings it back into the active draft box.
+    store.restore_draft(first["id"], draft["id"])
+    active = store.list_drafts(first["id"])
+    assert len(active) == 1
+    assert active[0]["trashed"] is False
+
+    # Soft delete again, then purge permanently from the recycle bin.
+    store.delete_draft(first["id"], draft["id"])
+    store.purge_draft(first["id"], draft["id"])
+    assert store.list_drafts(first["id"], include_trashed=True) == []
 
     with pytest.raises(WorkflowError, match="草稿不存在"):
-        store.delete_draft(first["id"], draft["id"])
+        store.purge_draft(first["id"], draft["id"])
 
 
 def test_draft_rejects_empty_prompt_and_blank_name(tmp_path):
