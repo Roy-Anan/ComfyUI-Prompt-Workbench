@@ -81,9 +81,75 @@ def test_single_token_sampler_is_one_item_list():
     assert parsed == {"kind": "list", "items": ["LCM"]}
 
 
-def test_two_semicolon_sets_stay_unstructured():
+def test_list_missing_marker_stays_none():
+    assert value_normalize.normalize_list("未给出") is None
+    assert value_normalize.normalize_list("待核实") is None
+    assert value_normalize.normalize_list("Exponential") == {
+        "kind": "list", "items": ["Exponential"]
+    }
+    scheduler = value_normalize.normalize(
+        "GENERATION SETTINGS::Scheduler", "Exponential；未给出"
+    )
+    assert scheduler["structured"] is None
+
+
+def test_two_semicolon_sets_grouped_when_all_parse():
     steps = value_normalize.normalize("GENERATION SETTINGS::Steps", "35；25~40")
+    assert steps["structured"] == {
+        "kind": "sets",
+        "items": [
+            {"kind": "value", "value": 35},
+            {"kind": "range", "low": 25, "high": 40},
+        ],
+    }
+    cfg = value_normalize.normalize("GENERATION SETTINGS::CFG", "4；4~6")
+    assert cfg["structured"] == {
+        "kind": "sets",
+        "items": [
+            {"kind": "value", "value": 4},
+            {"kind": "range", "low": 4, "high": 6},
+        ],
+    }
+
+
+def test_two_semicolon_sets_stay_unstructured_when_one_fails():
+    # Numeric fields keep the whole value unstructured when any part cannot be
+    # parsed; list fields accept a non-empty token by the existing conservative
+    # list rule, and missing markers are filtered earlier in the parser layer.
+    steps = value_normalize.normalize("GENERATION SETTINGS::Steps", "35；低步低 CFG")
     assert steps["structured"] is None
+    cfg = value_normalize.normalize("GENERATION SETTINGS::CFG", "4；待核实")
+    assert cfg["structured"] is None
+
+
+def test_sampler_and_resolution_two_sets_grouped():
+    sampler = value_normalize.normalize(
+        "GENERATION SETTINGS::Sampler", "DPM++ 2M SDE；DPM++ 2M Karras"
+    )
+    assert sampler["structured"] == {
+        "kind": "sets",
+        "items": [
+            {"kind": "list", "items": ["DPM++ 2M SDE"]},
+            {"kind": "list", "items": ["DPM++ 2M Karras"]},
+        ],
+    }
+    resolution = value_normalize.normalize(
+        "GENERATION SETTINGS::Resolution",
+        "832×1216；1024×1024 / 832×1216",
+    )
+    assert resolution["structured"] == {
+        "kind": "sets",
+        "items": [
+            {"kind": "resolutions", "items": [{"width": 832, "height": 1216}]},
+            {
+                "kind": "resolutions",
+                "items": [
+                    {"width": 1024, "height": 1024},
+                    {"width": 832, "height": 1216},
+                ],
+            },
+        ],
+    }
 
 
 def test_candidate_records_carry_structured():

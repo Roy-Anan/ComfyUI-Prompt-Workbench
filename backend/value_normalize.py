@@ -35,6 +35,11 @@ def _strip_trailing_parenthetical(text: str) -> str:
     return cleaned
 
 
+def _split_sets(text: str) -> list[str]:
+    """Split a semicolon-separated second suggestion set, preserving order."""
+    return [part.strip() for part in re.split(r"[；;]", text) if part.strip()]
+
+
 def _to_number(text: str) -> int | float:
     return int(text) if "." not in text else float(text)
 
@@ -77,10 +82,26 @@ def normalize_resolution(raw: str) -> dict[str, Any] | None:
     return {"kind": "resolutions", "items": resolutions}
 
 
+# Markers that carry no usable list value, aligned with the parser's
+# missing-value policy. A token matching one keeps the field unstructured
+# instead of being promoted into a recommendation list.
+_MISSING_MARKERS = ("未给出", "待填写", "待核实", "未找到", "暂无", "none", "no")
+
+
+def _is_missing_token(token: str) -> bool:
+    lowered = token.strip().lower()
+    return any(lowered.startswith(marker) for marker in _MISSING_MARKERS)
+
+
 def normalize_list(raw: str) -> dict[str, Any] | None:
-    """Split a slash/comma list; a single clean token is a one-item list."""
+    """Split a slash/comma list; a single clean token is a one-item list.
+
+    A missing-marker token (``未给出``, ``待核实`` …) means the field was
+    not provided, so the whole value stays unstructured rather than guessing
+    a recommendation from the prose.
+    """
     tokens = [token.strip() for token in re.split(r"\s*/\s*|，|,", raw) if token.strip()]
-    if not tokens:
+    if not tokens or any(_is_missing_token(token) for token in tokens):
         return None
     return {"kind": "list", "items": tokens}
 
@@ -106,9 +127,26 @@ def normalize(rule_key: str, raw: str) -> dict[str, Any]:
     # Numeric/list fields parse against a copy with trailing parenthetical
     # remarks removed; Resolution keeps the original text because its dimensions
     # may live inside a remark. The original raw text is kept untouched for
-    # audit. A second semicolon-set value is not split here and stays
-    # unstructured when ambiguous.
+    # audit.
     cleaned = _strip_trailing_parenthetical(raw)
     source = raw if field_name == "Resolution" else cleaned
-    structured = normalizer(source) if normalizer else None
+    if normalizer is None:
+        return {"raw": raw, "structured": None}
+
+    parts = _split_sets(source)
+    if len(parts) <= 1:
+        structured = normalizer(source)
+    else:
+        # Two or more semicolon-separated suggestions are grouped as a ``sets``
+        # record only when every part normalizes confidently; a single
+        # unparseable part keeps the whole value unstructured rather than
+        # mixing an example set with a recommendation set. Comparison treats
+        # ``sets`` as unresolved until an example-vs-recommendation priority
+        # rule is defined.
+        parsed = [normalizer(part) for part in parts]
+        structured = (
+            {"kind": "sets", "items": parsed}
+            if all(part is not None for part in parsed)
+            else None
+        )
     return {"raw": raw, "structured": structured}

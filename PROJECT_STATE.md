@@ -1044,3 +1044,28 @@
 
 - 无功能性遗留；既有 backlog 沿用 R31 清单。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R32/`。
+
+## 43. TASK-003.1-R33 M3 第二十八切片：分号两套建议分组结构化（sets，保守归 unknown）（2026-11-18）
+
+### 43.1 当前状态
+
+- 归一化层按分号拆套：两套均可解析时产出 `sets` 分组结构；任一子套失败整体 `structured=None`，不混并示例套与推荐套。
+- 列表归一化识别缺失标记（未给出/待核实/待填写/未找到/暂无/none/no），不把缺失文案提升为推荐项。
+- 比对层 `sets` 暂归 `unknown / structured_kind_unhandled`，不做命中判定；前端摘要递归渲染各套。
+- 后端测试 **168 passed**；前端 `tsc -b && vite build` exit 0。
+
+### 43.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 双套数值/范围/分辨率/采样器分组 sets | 通过 | Steps `35；25~40`、CFG `4；4~6`；`samples/rules-payload.json` |
+| 缺失标记套整体归 None | 通过 | Scheduler `Exponential；未给出` |
+| 比对层 sets 归 unknown 无误判 | 通过 | `structured_kind_unhandled`；`samples/compare-payload.json` |
+| 前端 sets 摘要渲染 | 通过 | `screenshots/rules-sets.png` |
+| Python pytest | 通过 | **168 passed, 1 warning in 6.16s** |
+| TypeScript / Vite 构建 | 通过 | exit 0；`index-BK2qO8n_.js 165.17 kB`，CSS 8.09 kB |
+
+### 43.3 边界与 backlog
+
+- 示例套/推荐套优先级语义未拍板；sets 判定留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R33/`。

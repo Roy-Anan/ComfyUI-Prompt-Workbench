@@ -1,0 +1,174 @@
+diff --git a/backend/test_value_normalize.py b/backend/test_value_normalize.py
+index c8b3cab..6512f81 100644
+--- a/backend/test_value_normalize.py
++++ b/backend/test_value_normalize.py
+@@ -81,9 +81,75 @@ def test_single_token_sampler_is_one_item_list():
+     assert parsed == {"kind": "list", "items": ["LCM"]}
+ 
+ 
+-def test_two_semicolon_sets_stay_unstructured():
++def test_list_missing_marker_stays_none():
++    assert value_normalize.normalize_list("未给出") is None
++    assert value_normalize.normalize_list("待核实") is None
++    assert value_normalize.normalize_list("Exponential") == {
++        "kind": "list", "items": ["Exponential"]
++    }
++    scheduler = value_normalize.normalize(
++        "GENERATION SETTINGS::Scheduler", "Exponential；未给出"
++    )
++    assert scheduler["structured"] is None
++
++
++def test_two_semicolon_sets_grouped_when_all_parse():
+     steps = value_normalize.normalize("GENERATION SETTINGS::Steps", "35；25~40")
++    assert steps["structured"] == {
++        "kind": "sets",
++        "items": [
++            {"kind": "value", "value": 35},
++            {"kind": "range", "low": 25, "high": 40},
++        ],
++    }
++    cfg = value_normalize.normalize("GENERATION SETTINGS::CFG", "4；4~6")
++    assert cfg["structured"] == {
++        "kind": "sets",
++        "items": [
++            {"kind": "value", "value": 4},
++            {"kind": "range", "low": 4, "high": 6},
++        ],
++    }
++
++
++def test_two_semicolon_sets_stay_unstructured_when_one_fails():
++    # Numeric fields keep the whole value unstructured when any part cannot be
++    # parsed; list fields accept a non-empty token by the existing conservative
++    # list rule, and missing markers are filtered earlier in the parser layer.
++    steps = value_normalize.normalize("GENERATION SETTINGS::Steps", "35；低步低 CFG")
+     assert steps["structured"] is None
++    cfg = value_normalize.normalize("GENERATION SETTINGS::CFG", "4；待核实")
++    assert cfg["structured"] is None
++
++
++def test_sampler_and_resolution_two_sets_grouped():
++    sampler = value_normalize.normalize(
++        "GENERATION SETTINGS::Sampler", "DPM++ 2M SDE；DPM++ 2M Karras"
++    )
++    assert sampler["structured"] == {
++        "kind": "sets",
++        "items": [
++            {"kind": "list", "items": ["DPM++ 2M SDE"]},
++            {"kind": "list", "items": ["DPM++ 2M Karras"]},
++        ],
++    }
++    resolution = value_normalize.normalize(
++        "GENERATION SETTINGS::Resolution",
++        "832×1216；1024×1024 / 832×1216",
++    )
++    assert resolution["structured"] == {
++        "kind": "sets",
++        "items": [
++            {"kind": "resolutions", "items": [{"width": 832, "height": 1216}]},
++            {
++                "kind": "resolutions",
++                "items": [
++                    {"width": 1024, "height": 1024},
++                    {"width": 832, "height": 1216},
++                ],
++            },
++        ],
++    }
+ 
+ 
+ def test_candidate_records_carry_structured():
+diff --git a/backend/value_normalize.py b/backend/value_normalize.py
+index 013024a..6406af9 100644
+--- a/backend/value_normalize.py
++++ b/backend/value_normalize.py
+@@ -35,6 +35,11 @@ def _strip_trailing_parenthetical(text: str) -> str:
+     return cleaned
+ 
+ 
++def _split_sets(text: str) -> list[str]:
++    """Split a semicolon-separated second suggestion set, preserving order."""
++    return [part.strip() for part in re.split(r"[；;]", text) if part.strip()]
++
++
+ def _to_number(text: str) -> int | float:
+     return int(text) if "." not in text else float(text)
+ 
+@@ -77,10 +82,26 @@ def normalize_resolution(raw: str) -> dict[str, Any] | None:
+     return {"kind": "resolutions", "items": resolutions}
+ 
+ 
++# Markers that carry no usable list value, aligned with the parser's
++# missing-value policy. A token matching one keeps the field unstructured
++# instead of being promoted into a recommendation list.
++_MISSING_MARKERS = ("未给出", "待填写", "待核实", "未找到", "暂无", "none", "no")
++
++
++def _is_missing_token(token: str) -> bool:
++    lowered = token.strip().lower()
++    return any(lowered.startswith(marker) for marker in _MISSING_MARKERS)
++
++
+ def normalize_list(raw: str) -> dict[str, Any] | None:
+-    """Split a slash/comma list; a single clean token is a one-item list."""
++    """Split a slash/comma list; a single clean token is a one-item list.
++
++    A missing-marker token (``未给出``, ``待核实`` …) means the field was
++    not provided, so the whole value stays unstructured rather than guessing
++    a recommendation from the prose.
++    """
+     tokens = [token.strip() for token in re.split(r"\s*/\s*|，|,", raw) if token.strip()]
+-    if not tokens:
++    if not tokens or any(_is_missing_token(token) for token in tokens):
+         return None
+     return {"kind": "list", "items": tokens}
+ 
+@@ -106,9 +127,26 @@ def normalize(rule_key: str, raw: str) -> dict[str, Any]:
+     # Numeric/list fields parse against a copy with trailing parenthetical
+     # remarks removed; Resolution keeps the original text because its dimensions
+     # may live inside a remark. The original raw text is kept untouched for
+-    # audit. A second semicolon-set value is not split here and stays
+-    # unstructured when ambiguous.
++    # audit.
+     cleaned = _strip_trailing_parenthetical(raw)
+     source = raw if field_name == "Resolution" else cleaned
+-    structured = normalizer(source) if normalizer else None
++    if normalizer is None:
++        return {"raw": raw, "structured": None}
++
++    parts = _split_sets(source)
++    if len(parts) <= 1:
++        structured = normalizer(source)
++    else:
++        # Two or more semicolon-separated suggestions are grouped as a ``sets``
++        # record only when every part normalizes confidently; a single
++        # unparseable part keeps the whole value unstructured rather than
++        # mixing an example set with a recommendation set. Comparison treats
++        # ``sets`` as unresolved until an example-vs-recommendation priority
++        # rule is defined.
++        parsed = [normalizer(part) for part in parts]
++        structured = (
++            {"kind": "sets", "items": parsed}
++            if all(part is not None for part in parsed)
++            else None
++        )
+     return {"raw": raw, "structured": structured}
+diff --git a/frontend/src/format.ts b/frontend/src/format.ts
+index d176621..5631277 100644
+--- a/frontend/src/format.ts
++++ b/frontend/src/format.ts
+@@ -32,6 +32,13 @@ export function formatStructured(value: unknown): string {
+       return (Array.isArray(record.items) ? record.items : []).map(dimension).join(" / ");
+     case "list":
+       return (Array.isArray(record.items) ? record.items : []).map(String).join(" / ");
++    case "sets":
++      // Semicolon-separated suggestion groups; each group renders with its own
++      // summary, joined by a semicolon. Comparison keeps sets unresolved until
++      // an example-vs-recommendation priority rule is defined.
++      return (Array.isArray(record.items) ? record.items : [])
++        .map((item) => formatStructured(item))
++        .join("；");
+     default:
+       return JSON.stringify(value);
+   }

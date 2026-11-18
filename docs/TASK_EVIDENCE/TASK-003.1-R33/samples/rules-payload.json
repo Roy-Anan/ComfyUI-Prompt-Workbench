@@ -1,0 +1,144 @@
+[
+  {
+    "id": 745,
+    "level": "checkpoint",
+    "scope_key": "Juggernaut-XI-byRunDiffusion.safetensors",
+    "rule_key": "GENERATION SETTINGS::CFG",
+    "provenance": "author",
+    "confidence": "authoritative",
+    "version": "legacy-1",
+    "note": "作者示例",
+    "created_at": "2026-11-18T06:25:47.835109+00:00",
+    "updated_at": "2026-11-18T06:25:47.835109+00:00",
+    "value": "4； 4~6",
+    "structured": {
+      "items": [
+        {
+          "kind": "value",
+          "value": 4
+        },
+        {
+          "high": 6,
+          "kind": "range",
+          "low": 4
+        }
+      ],
+      "kind": "sets"
+    }
+  },
+  {
+    "id": 741,
+    "level": "checkpoint",
+    "scope_key": "Juggernaut-XI-byRunDiffusion.safetensors",
+    "rule_key": "GENERATION SETTINGS::Resolution",
+    "provenance": "author",
+    "confidence": "authoritative",
+    "version": "legacy-1",
+    "note": "作者示例",
+    "created_at": "2026-11-18T06:25:47.818873+00:00",
+    "updated_at": "2026-11-18T06:25:47.818873+00:00",
+    "value": "832×1216； 1024×1024 / 832×1216 / 1216×832",
+    "structured": {
+      "items": [
+        {
+          "items": [
+            {
+              "height": 1216,
+              "width": 832
+            }
+          ],
+          "kind": "resolutions"
+        },
+        {
+          "items": [
+            {
+              "height": 1024,
+              "width": 1024
+            },
+            {
+              "height": 1216,
+              "width": 832
+            },
+            {
+              "height": 832,
+              "width": 1216
+            }
+          ],
+          "kind": "resolutions"
+        }
+      ],
+      "kind": "sets"
+    }
+  },
+  {
+    "id": 742,
+    "level": "checkpoint",
+    "scope_key": "Juggernaut-XI-byRunDiffusion.safetensors",
+    "rule_key": "GENERATION SETTINGS::Sampler",
+    "provenance": "author",
+    "confidence": "authoritative",
+    "version": "legacy-1",
+    "note": "作者示例",
+    "created_at": "2026-11-18T06:25:47.823398+00:00",
+    "updated_at": "2026-11-18T06:25:47.823398+00:00",
+    "value": "DPM++ 2M SDE； DPM++ 2M Karras",
+    "structured": {
+      "items": [
+        {
+          "items": [
+            "DPM++ 2M SDE"
+          ],
+          "kind": "list"
+        },
+        {
+          "items": [
+            "DPM++ 2M Karras"
+          ],
+          "kind": "list"
+        }
+      ],
+      "kind": "sets"
+    }
+  },
+  {
+    "id": 743,
+    "level": "checkpoint",
+    "scope_key": "Juggernaut-XI-byRunDiffusion.safetensors",
+    "rule_key": "GENERATION SETTINGS::Scheduler",
+    "provenance": "author",
+    "confidence": "authoritative",
+    "version": "legacy-1",
+    "note": "作者示例",
+    "created_at": "2026-11-18T06:25:47.827989+00:00",
+    "updated_at": "2026-11-18T06:25:47.827989+00:00",
+    "value": "Exponential； 未给出",
+    "structured": null
+  },
+  {
+    "id": 744,
+    "level": "checkpoint",
+    "scope_key": "Juggernaut-XI-byRunDiffusion.safetensors",
+    "rule_key": "GENERATION SETTINGS::Steps",
+    "provenance": "author",
+    "confidence": "authoritative",
+    "version": "legacy-1",
+    "note": "作者示例",
+    "created_at": "2026-11-18T06:25:47.831656+00:00",
+    "updated_at": "2026-11-18T06:25:47.831656+00:00",
+    "value": "35； 25~40",
+    "structured": {
+      "items": [
+        {
+          "kind": "value",
+          "value": 35
+        },
+        {
+          "high": 40,
+          "kind": "range",
+          "low": 25
+        }
+      ],
+      "kind": "sets"
+    }
+  }
+]

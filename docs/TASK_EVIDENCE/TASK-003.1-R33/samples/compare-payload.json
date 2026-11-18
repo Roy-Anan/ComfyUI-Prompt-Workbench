@@ -1,0 +1,391 @@
+{
+  "status": "registered",
+  "checkpoint": "Juggernaut-XI-byRunDiffusion.safetensors",
+  "architecture": "SDXL 1.0",
+  "actuals": {
+    "steps": 30,
+    "cfg": 5.0,
+    "sampler_name": "dpmpp_2m_sde",
+    "scheduler": "karras",
+    "denoise": 1.0,
+    "sampler_group_count": 1,
+    "sampler_groups": [
+      {
+        "sampler_node_id": "7",
+        "params": {
+          "steps": 30,
+          "cfg": 5.0,
+          "sampler_name": "dpmpp_2m_sde",
+          "scheduler": "karras",
+          "denoise": 1.0
+        }
+      }
+    ],
+    "width": 832,
+    "height": 1216,
+    "clip_skip": 2,
+    "latent_node_count": 1,
+    "latent_nodes": [
+      {
+        "node_id": "6",
+        "width": 832,
+        "height": 1216
+      }
+    ],
+    "clip_skip_node_count": 1,
+    "clip_skip_nodes": [
+      {
+        "node_id": "8",
+        "clip_skip": 2
+      }
+    ]
+  },
+  "comparisons": [
+    {
+      "key": "ARCHITECTURE::Base Architecture",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "ARCHITECTURE::Model Type",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "ARCHITECTURE::VAE",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "CONFIDENCE::Last Updated",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "CONFIDENCE::Uncertain fields",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "CONFIDENCE::Verified by author documentation",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "GENERATION SETTINGS::CFG",
+      "rule_status": "resolved",
+      "actual_key": "cfg",
+      "actual": 5.0,
+      "status": "unknown",
+      "reason": "structured_kind_unhandled"
+    },
+    {
+      "key": "GENERATION SETTINGS::Parameter Source",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "GENERATION SETTINGS::Resolution",
+      "rule_status": "resolved",
+      "actual_key": "resolution",
+      "actual": {
+        "width": 832,
+        "height": 1216
+      },
+      "status": "unknown",
+      "reason": "structured_kind_unhandled"
+    },
+    {
+      "key": "GENERATION SETTINGS::Sampler",
+      "rule_status": "resolved",
+      "actual_key": "sampler_name",
+      "actual": "dpmpp_2m_sde",
+      "status": "unknown",
+      "reason": "structured_kind_unhandled"
+    },
+    {
+      "key": "GENERATION SETTINGS::Scheduler",
+      "rule_status": "resolved",
+      "actual_key": "scheduler",
+      "actual": "karras",
+      "status": "unknown",
+      "reason": "rule_not_structured"
+    },
+    {
+      "key": "GENERATION SETTINGS::Source Note",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "GENERATION SETTINGS::Steps",
+      "rule_status": "resolved",
+      "actual_key": "steps",
+      "actual": 30,
+      "status": "unknown",
+      "reason": "structured_kind_unhandled"
+    },
+    {
+      "key": "IDENTITY::Base Architecture",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "MODEL BEHAVIOR::Known Weaknesses",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "MODEL BEHAVIOR::NSFW / Mature Content Statement",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "MODEL BEHAVIOR::Strengths",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "PROMPT STYLE::Author Negative Example",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "PROMPT STYLE::Author Positive Example",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "PROMPT STYLE::Preferred Prompt Format",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    }
+  ],
+  "counts": {
+    "unknown": 20
+  },
+  "sampler_group_comparisons": [
+    {
+      "sampler_node_id": "7",
+      "params": {
+        "steps": 30,
+        "cfg": 5.0,
+        "sampler_name": "dpmpp_2m_sde",
+        "scheduler": "karras",
+        "denoise": 1.0
+      },
+      "comparisons": [
+        {
+          "key": "ARCHITECTURE::Base Architecture",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "ARCHITECTURE::Model Type",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "ARCHITECTURE::VAE",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "CONFIDENCE::Last Updated",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "CONFIDENCE::Uncertain fields",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "CONFIDENCE::Verified by author documentation",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "GENERATION SETTINGS::CFG",
+          "rule_status": "resolved",
+          "actual_key": "cfg",
+          "actual": 5.0,
+          "status": "unknown",
+          "reason": "structured_kind_unhandled"
+        },
+        {
+          "key": "GENERATION SETTINGS::Parameter Source",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "GENERATION SETTINGS::Resolution",
+          "rule_status": "resolved",
+          "actual_key": "resolution",
+          "actual": {
+            "width": 832,
+            "height": 1216
+          },
+          "status": "unknown",
+          "reason": "structured_kind_unhandled"
+        },
+        {
+          "key": "GENERATION SETTINGS::Sampler",
+          "rule_status": "resolved",
+          "actual_key": "sampler_name",
+          "actual": "dpmpp_2m_sde",
+          "status": "unknown",
+          "reason": "structured_kind_unhandled"
+        },
+        {
+          "key": "GENERATION SETTINGS::Scheduler",
+          "rule_status": "resolved",
+          "actual_key": "scheduler",
+          "actual": "karras",
+          "status": "unknown",
+          "reason": "rule_not_structured"
+        },
+        {
+          "key": "GENERATION SETTINGS::Source Note",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "GENERATION SETTINGS::Steps",
+          "rule_status": "resolved",
+          "actual_key": "steps",
+          "actual": 30,
+          "status": "unknown",
+          "reason": "structured_kind_unhandled"
+        },
+        {
+          "key": "IDENTITY::Base Architecture",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "MODEL BEHAVIOR::Known Weaknesses",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "MODEL BEHAVIOR::NSFW / Mature Content Statement",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "MODEL BEHAVIOR::Strengths",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "PROMPT STYLE::Author Negative Example",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "PROMPT STYLE::Author Positive Example",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "PROMPT STYLE::Preferred Prompt Format",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        }
+      ],
+      "counts": {
+        "unknown": 20
+      }
+    }
+  ]
+}
