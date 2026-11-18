@@ -111,6 +111,20 @@ type CandidateResponse = {
   conflicts: unknown[];
   unknown: unknown[];
 };
+type ComfyTask = {
+  prompt_id: string;
+  workflow_id: string;
+  status: string;
+  submitted_at: string;
+  updated_at: string;
+  node_errors: unknown;
+  last_error: string | null;
+  outputs: unknown;
+};
+type TasksResponse = {
+  items: ComfyTask[];
+  sync_error: string | null;
+};
 
 const STATUS_LABEL: Record<string, string> = {
   match: "匹配",
@@ -118,6 +132,37 @@ const STATUS_LABEL: Record<string, string> = {
   out_of_set: "不在集合",
   unknown: "无法判定",
 };
+
+const TASK_STATUS_LABEL: Record<string, string> = {
+  submitted: "待运行",
+  running: "运行中",
+  succeeded: "已完成",
+  failed: "失败",
+  interrupted: "已中断",
+  unknown: "未知",
+};
+
+function formatTaskTime(value: string): string {
+  if (!value) return "—";
+  return value.replace("T", " ").slice(0, 16);
+}
+
+function outputFilenames(outputs: unknown): string[] {
+  if (typeof outputs !== "object" || outputs === null) return [];
+  const record = outputs as Record<string, unknown>;
+  const names: string[] = [];
+  for (const entry of Object.values(record)) {
+    if (Array.isArray(entry)) {
+      for (const item of entry) {
+        if (typeof item === "object" && item !== null) {
+          const filename = (item as Record<string, unknown>).filename;
+          if (typeof filename === "string") names.push(filename);
+        }
+      }
+    }
+  }
+  return names;
+}
 
 const ACTUAL_SUMMARY: Array<{ key: string; label: string }> = [
   { key: "steps", label: "步数" },
@@ -142,6 +187,9 @@ export default function WorkflowWorkbench() {
   const [taskText, setTaskText] = useState("");
   const [candidate, setCandidate] = useState<string | null>(null);
   const [candidateBusy, setCandidateBusy] = useState(false);
+  const [comfyTasks, setComfyTasks] = useState<ComfyTask[]>([]);
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [taskSyncError, setTaskSyncError] = useState<string | null>(null);
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -198,6 +246,9 @@ export default function WorkflowWorkbench() {
       setNegativeText(
         result.working_prompts.find((item) => item.role === "negative")?.text ?? "",
       );
+      setComfyTasks([]);
+      setTaskSyncError(null);
+      void loadTasks(false);
       setMessage(`已打开：${result.manifest.filename}`);
     } catch (error) {
       setMessage(`打开失败：${String(error)}`);
@@ -235,6 +286,8 @@ export default function WorkflowWorkbench() {
         working_prompts: [],
       });
       void loadCompare(result.id);
+      setComfyTasks([]);
+      setTaskSyncError(null);
       await refreshList();
       setMessage(`导入成功：${result.filename}`);
     } catch (error) {
@@ -337,6 +390,31 @@ export default function WorkflowWorkbench() {
   }
   function adoptCandidate() {
     if (candidate) setPositiveText(candidate);
+  }
+  async function loadTasks(refresh: boolean) {
+    if (!workflowId) return;
+    try {
+      const result = await apiGet<TasksResponse>(
+        `/api/workflows/${workflowId}/tasks${refresh ? "?refresh=true" : ""}`,
+      );
+      setComfyTasks(result.items);
+      setTaskSyncError(result.sync_error);
+    } catch (error) {
+      setTaskSyncError(String(error));
+    }
+  }
+  async function submitTask() {
+    if (!workflowId) return;
+    setTaskBusy(true);
+    try {
+      await apiPost<ComfyTask>(`/api/workflows/${workflowId}/tasks`, {});
+      setMessage("任务已提交到本地 ComfyUI。");
+      await loadTasks(true);
+    } catch (error) {
+      setMessage(`提交被拒绝或失败：${String(error)}`);
+    } finally {
+      setTaskBusy(false);
+    }
   }
   const canWrite =
     detail?.report.safe_prompt_write_supported === true &&
@@ -733,6 +811,64 @@ export default function WorkflowWorkbench() {
                   不会修改原始文件，也不会提交 ComfyUI 任务。
                 </span>
               </div>
+            </div>
+          )}
+          {detail && (
+            <div className="panel">
+              <h3>ComfyUI 任务</h3>
+              {detail.manifest.format !== "api" ? (
+                <p className="muted">
+                  UI 格式工作流不能直接提交，请先在 ComfyUI 中导出 API 格式。
+                </p>
+              ) : (
+                <>
+                  <div className="actions">
+                    <button
+                      disabled={taskBusy || busy || !detail.manifest.confirmed}
+                      onClick={() => void submitTask()}
+                    >
+                      {taskBusy ? "提交中…" : "提交到 ComfyUI"}
+                    </button>
+                    <button
+                      onClick={() => void loadTasks(true)}
+                      disabled={taskBusy || busy}
+                    >
+                      刷新状态
+                    </button>
+                    <span className="muted">
+                      {detail.manifest.confirmed ? "白名单已确认" : "需先确认白名单"}
+                    </span>
+                  </div>
+                  {taskSyncError && (
+                    <p className="workflow-warning">状态校准不可用：{taskSyncError}</p>
+                  )}
+                  {comfyTasks.length === 0 ? (
+                    <p className="muted">当前工作流还没有已提交的任务。</p>
+                  ) : (
+                    <div className="workflow-node-list">
+                      {comfyTasks.map((task) => (
+                        <div className="workflow-node-row" key={task.prompt_id}>
+                          <div>
+                            <strong>任务 {task.prompt_id.slice(0, 8)}</strong>
+                            <small>提交于 {formatTaskTime(task.submitted_at)}</small>
+                            {task.last_error && (
+                              <small className="workflow-warning">{task.last_error}</small>
+                            )}
+                            {outputFilenames(task.outputs).length > 0 && (
+                              <small>
+                                输出：{outputFilenames(task.outputs).join("、")}
+                              </small>
+                            )}
+                          </div>
+                          <span className={`compare-badge ${task.status}`}>
+                            {TASK_STATUS_LABEL[task.status] ?? task.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </>
