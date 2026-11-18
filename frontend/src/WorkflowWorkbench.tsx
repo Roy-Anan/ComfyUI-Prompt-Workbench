@@ -178,6 +178,64 @@ function clipText(text: string, limit = 80): string {
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
+type PromptImport = { positive: string; negative: string };
+
+function parsePromptImport(filename: string, text: string): PromptImport {
+  const name = filename.toLowerCase();
+  if (name.endsWith(".json")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error("JSON 文件无法解析。");
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error("不是有效的 Prompt 导出 JSON。");
+    }
+    const record = parsed as Record<string, unknown>;
+    const positive = typeof record.positive === "string" ? record.positive : "";
+    const negative = typeof record.negative === "string" ? record.negative : "";
+    if (!positive.trim() && !negative.trim()) {
+      throw new Error("JSON 中未包含有效的正向/负向 Prompt。");
+    }
+    return { positive, negative };
+  }
+  const lines = text.split(/\r?\n/);
+  const positiveLines: string[] = [];
+  const negativeLines: string[] = [];
+  const markPositive = /^\s*正向\s*[:：]/;
+  const markNegative = /^\s*负向\s*[:：]/;
+  let section: "positive" | "negative" = "positive";
+  let anyMark = false;
+  for (const line of lines) {
+    if (markPositive.test(line)) {
+      section = "positive";
+      anyMark = true;
+      const rest = line.replace(markPositive, "").trim();
+      if (rest) positiveLines.push(rest);
+      continue;
+    }
+    if (markNegative.test(line)) {
+      section = "negative";
+      anyMark = true;
+      const rest = line.replace(markNegative, "").trim();
+      if (rest) negativeLines.push(rest);
+      continue;
+    }
+    if (!anyMark || section === "positive") {
+      positiveLines.push(line);
+    } else {
+      negativeLines.push(line);
+    }
+  }
+  const positive = positiveLines.join("\n").trim();
+  const negative = negativeLines.join("\n").trim();
+  if (!positive && !negative) {
+    throw new Error("未解析到有效的 Prompt 文本。");
+  }
+  return { positive, negative };
+}
+
 function outputFilenames(outputs: unknown): string[] {
   if (typeof outputs !== "object" || outputs === null) return [];
   const record = outputs as Record<string, unknown>;
@@ -235,6 +293,7 @@ export default function WorkflowWorkbench() {
   const [taskText, setTaskText] = useState("");
   const [candidate, setCandidate] = useState<string | null>(null);
   const [candidateBusy, setCandidateBusy] = useState(false);
+  const [importedPrompt, setImportedPrompt] = useState<PromptImport | null>(null);
   const [comfyTasks, setComfyTasks] = useState<ComfyTask[]>([]);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskSyncError, setTaskSyncError] = useState<string | null>(null);
@@ -313,6 +372,7 @@ export default function WorkflowWorkbench() {
       setDraftKeyword("");
       setConfirmStamp(null);
       setComparingStamp(null);
+      setImportedPrompt(null);
       void loadTasks(false);
       void loadVersions(id);
       void loadDrafts(id);
@@ -362,6 +422,7 @@ export default function WorkflowWorkbench() {
       setUpdatingDraftId(null);
       setDraftKeyword("");
       setComparingStamp(null);
+      setImportedPrompt(null);
       await refreshList();
       setMessage(`导入成功：${result.filename}`);
     } catch (error) {
@@ -546,6 +607,32 @@ export default function WorkflowWorkbench() {
     );
     setMessage("Prompt 已导出为 JSON（仅本地下载，未写入工作副本）。");
   }
+
+  async function onPromptFileChosen(file?: File) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = parsePromptImport(file.name, text);
+      setImportedPrompt(parsed);
+      setMessage("已解析导入内容，采用前请核对（未写入编辑框与工作副本）。");
+    } catch (error) {
+      setMessage(`导入失败：${String(error)}`);
+    }
+  }
+
+  function adoptImported() {
+    if (!importedPrompt) return;
+    setPositiveText(importedPrompt.positive);
+    setNegativeText(importedPrompt.negative);
+    setImportedPrompt(null);
+    setMessage("已将导入内容填入编辑框（尚未写入工作副本）。");
+  }
+
+  function dismissImported() {
+    setImportedPrompt(null);
+    setMessage("导入内容已放弃（未写入编辑框与工作副本）。");
+  }
+
   async function loadTasks(refresh: boolean) {
     if (!workflowId) return;
     try {
@@ -1237,10 +1324,51 @@ export default function WorkflowWorkbench() {
                 <button onClick={copyBoth}>复制完整</button>
                 <button onClick={exportPromptTxt}>导出 TXT</button>
                 <button onClick={exportPromptJson}>导出 JSON</button>
+                <label className="workflow-import-button">
+                  导入 TXT/JSON
+                  <input
+                    type="file"
+                    accept=".txt,.json,application/json,text/plain"
+                    disabled={busy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      void onPromptFileChosen(file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
                 <span className="muted">
                   不会修改原始文件，也不会提交 ComfyUI 任务。
                 </span>
               </div>
+              {importedPrompt && (
+                <div className="workflow-text-field">
+                  <span>导入预览（只读，采用后进入下方编辑框）</span>
+                  {importedPrompt.positive && (
+                    <>
+                      <div className="workflow-field-head">
+                        <span>正向 Prompt</span>
+                      </div>
+                      <textarea readOnly rows={5} value={importedPrompt.positive} />
+                    </>
+                  )}
+                  {importedPrompt.negative && (
+                    <>
+                      <div className="workflow-field-head">
+                        <span>负向 Prompt</span>
+                      </div>
+                      <textarea readOnly rows={5} value={importedPrompt.negative} />
+                    </>
+                  )}
+                  <div className="actions">
+                    <button onClick={adoptImported}>采用到编辑框</button>
+                    <button onClick={dismissImported}>放弃导入</button>
+                    <span className="muted">
+                      导入内容不会自动写入工作副本。
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {canWrite && (
