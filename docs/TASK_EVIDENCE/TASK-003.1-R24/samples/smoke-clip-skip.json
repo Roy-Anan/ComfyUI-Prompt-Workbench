@@ -1,0 +1,30 @@
+{
+  "report_clip_skip": {
+    "node_id": "8",
+    "clip_skip": 2,
+    "stop_at_clip_layer": -2
+  },
+  "actuals": {
+    "steps": 25,
+    "cfg": 7.0,
+    "sampler_name": null,
+    "scheduler": null,
+    "denoise": null,
+    "width": 832,
+    "height": 1216,
+    "clip_skip": 2
+  },
+  "counts": {
+    "unknown": 18,
+    "match": 2
+  },
+  "clip_comparison": {
+    "key": "ARCHITECTURE::Clip Skip",
+    "rule_status": "resolved",
+    "actual_key": "clip_skip",
+    "actual": 2,
+    "status": "match",
+    "rule": 2
+  },
+  "after_cleanup": 0
+}

@@ -83,6 +83,31 @@ def test_api_parser_extracts_latent_size():
     assert report["latent"] == {"node_id": "7", "width": 832, "height": 1216}
 
 
+def test_api_parser_extracts_clip_skip_from_last_layer_node():
+    workflow = sample_api_workflow()
+    workflow["8"] = {
+        "class_type": "CLIPSetLastLayer",
+        "inputs": {"clip": ["3", 0], "stop_at_clip_layer": -2},
+    }
+    report = analyze_workflow(workflow)
+    assert report["clip_skip"] == {"node_id": "8", "clip_skip": 2, "stop_at_clip_layer": -2}
+
+
+def test_api_parser_clip_skip_none_without_node():
+    report = analyze_workflow(sample_api_workflow())
+    assert report["clip_skip"] is None
+
+
+def test_api_parser_clip_skip_ignores_non_negative_stop_layer():
+    workflow = sample_api_workflow()
+    workflow["8"] = {
+        "class_type": "CLIPSetLastLayer",
+        "inputs": {"clip": ["3", 0], "stop_at_clip_layer": 0},
+    }
+    report = analyze_workflow(workflow)
+    assert report["clip_skip"] is None
+
+
 def test_api_parser_without_latent_reports_none():
     report = analyze_workflow(sample_api_workflow())
     assert report["latent"] is None

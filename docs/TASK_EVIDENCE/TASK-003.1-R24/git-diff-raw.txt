@@ -1,0 +1,210 @@
+diff --git a/backend/rule_compare.py b/backend/rule_compare.py
+index 24d35ab..e463d3a 100644
+--- a/backend/rule_compare.py
++++ b/backend/rule_compare.py
+@@ -46,6 +46,8 @@ def _actual_number(actual: Any) -> float | int | None:
+ 
+ 
+ def _compare_number(structured: dict[str, Any], actual: Any) -> dict[str, Any]:
++    if actual is None or actual == "":
++        return {"status": "unknown", "reason": "actual_missing", "actual": actual}
+     number = _actual_number(actual)
+     if number is None:
+         return {"status": "unknown", "reason": "actual_not_numeric", "actual": actual}
+diff --git a/backend/test_rule_compare.py b/backend/test_rule_compare.py
+index 7828d31..48765f3 100644
+--- a/backend/test_rule_compare.py
++++ b/backend/test_rule_compare.py
+@@ -87,6 +87,25 @@ def test_resolution_unknown_when_latent_size_missing():
+     assert verdict["reason"] == "actual_missing"
+ 
+ 
++def test_clip_skip_value_match_and_mismatch():
++    rule = _field(
++        "GENERATION SETTINGS::Clip Skip",
++        structured={"kind": "value", "value": 2},
++    )
++    assert rule_compare.compare_rule(rule, {"clip_skip": 2})["status"] == "match"
++    assert rule_compare.compare_rule(rule, {"clip_skip": 1})["status"] == "out_of_range"
++
++
++def test_clip_skip_unknown_when_missing():
++    rule = _field(
++        "GENERATION SETTINGS::Clip Skip",
++        structured={"kind": "value", "value": 2},
++    )
++    verdict = rule_compare.compare_rule(rule, {})
++    assert verdict["status"] == "unknown"
++    assert verdict["reason"] == "actual_missing"
++
++
+ def test_non_numeric_actual_stays_unknown():
+     rule = _field(
+         "GENERATION SETTINGS::Steps",
+diff --git a/backend/test_workflow_rules.py b/backend/test_workflow_rules.py
+index bfcaa40..78ce6b7 100644
+--- a/backend/test_workflow_rules.py
++++ b/backend/test_workflow_rules.py
+@@ -141,6 +141,7 @@ def test_workflow_rule_compare_against_sampler_actuals(client):
+             "inputs": {"steps": 20, "cfg": 7.0, "positive": ["1", 0], "negative": ["2", 0]},
+         },
+         "7": {"class_type": "EmptyLatentImage", "inputs": {"width": 704, "height": 1024, "batch_size": 1}},
++        "8": {"class_type": "CLIPSetLastLayer", "inputs": {"clip": ["3", 0], "stop_at_clip_layer": -2}},
+     }
+     workflow_id = _import_sample(test_client, main, workflow)
+ 
+@@ -154,6 +155,7 @@ def test_workflow_rule_compare_against_sampler_actuals(client):
+     assert body["actuals"]["steps"] == 20
+     assert body["actuals"]["width"] == 704
+     assert body["actuals"]["height"] == 1024
++    assert body["actuals"]["clip_skip"] == 2
+     step_entry = next(c for c in body["comparisons"] if c["key"] == "GENERATION SETTINGS::Steps")
+     assert step_entry["status"] in {"match", "out_of_range", "unknown"}
+     assert "counts" in body
+diff --git a/backend/test_workflow_service.py b/backend/test_workflow_service.py
+index 843adf4..4158a11 100644
+--- a/backend/test_workflow_service.py
++++ b/backend/test_workflow_service.py
+@@ -83,6 +83,31 @@ def test_api_parser_extracts_latent_size():
+     assert report["latent"] == {"node_id": "7", "width": 832, "height": 1216}
+ 
+ 
++def test_api_parser_extracts_clip_skip_from_last_layer_node():
++    workflow = sample_api_workflow()
++    workflow["8"] = {
++        "class_type": "CLIPSetLastLayer",
++        "inputs": {"clip": ["3", 0], "stop_at_clip_layer": -2},
++    }
++    report = analyze_workflow(workflow)
++    assert report["clip_skip"] == {"node_id": "8", "clip_skip": 2, "stop_at_clip_layer": -2}
++
++
++def test_api_parser_clip_skip_none_without_node():
++    report = analyze_workflow(sample_api_workflow())
++    assert report["clip_skip"] is None
++
++
++def test_api_parser_clip_skip_ignores_non_negative_stop_layer():
++    workflow = sample_api_workflow()
++    workflow["8"] = {
++        "class_type": "CLIPSetLastLayer",
++        "inputs": {"clip": ["3", 0], "stop_at_clip_layer": 0},
++    }
++    report = analyze_workflow(workflow)
++    assert report["clip_skip"] is None
++
++
+ def test_api_parser_without_latent_reports_none():
+     report = analyze_workflow(sample_api_workflow())
+     assert report["latent"] is None
+diff --git a/backend/workflow_api.py b/backend/workflow_api.py
+index 60e8db1..651ea71 100644
+--- a/backend/workflow_api.py
++++ b/backend/workflow_api.py
+@@ -28,6 +28,9 @@ def _sampler_actuals(report: dict[str, Any]) -> dict[str, Any]:
+             actuals["width"] = latent["width"]
+         if latent.get("height") is not None:
+             actuals["height"] = latent["height"]
++    clip_skip = report.get("clip_skip")
++    if isinstance(clip_skip, dict) and clip_skip.get("clip_skip") is not None:
++        actuals["clip_skip"] = clip_skip["clip_skip"]
+     return actuals
+ 
+ 
+diff --git a/backend/workflow_service.py b/backend/workflow_service.py
+index 7ff19d6..c3e71e3 100644
+--- a/backend/workflow_service.py
++++ b/backend/workflow_service.py
+@@ -13,6 +13,7 @@ MAX_PROMPT_CHARS = 200_000
+ TEXT_ENCODER_MARKERS = ("CLIPTextEncode", "TextEncode")
+ SAMPLER_MARKERS = ("KSampler", "SamplerCustom", "SamplerAdvanced")
+ LATENT_MARKERS = ("LatentImage",)
++CLIP_SKIP_MARKERS = ("CLIPSetLastLayer",)
+ # 中转 conditioning 节点：自身不是文本编码器，但会把上游条件继续向下传。
+ CONDITIONING_PASSTHROUGH_MARKERS = (
+     "ConditioningCombine",
+@@ -149,6 +150,31 @@ def _latent_size(inputs: dict[str, Any]) -> dict[str, Any] | None:
+     return None
+ 
+ 
++def _clip_skip(inputs: dict[str, Any]) -> dict[str, Any] | None:
++    """Derive a positive clip-skip count from a CLIPSetLastLayer node.
++
++    ComfyUI stores the stop layer as a negative index (``-1`` … ``-24``); the
++    rule layer compares a positive skipped-layer count, so ``clip_skip`` is the
++    negated value. Non-negative or non-integer values are left untouched and
++    reported as None instead of guessing a conversion.
++    """
++    raw = inputs.get("stop_at_clip_layer")
++    if isinstance(raw, bool):
++        return None
++    if isinstance(raw, int):
++        value = raw
++    elif isinstance(raw, str):
++        try:
++            value = int(raw.strip())
++        except ValueError:
++            return None
++    else:
++        return None
++    if value >= 0:
++        return None
++    return {"clip_skip": -value, "stop_at_clip_layer": value}
++
++
+ def _sampler_params(inputs: dict[str, Any]) -> dict[str, Any]:
+     """Extract scalar sampler inputs the rule layer can compare against.
+ 
+@@ -260,6 +286,7 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
+     model_nodes: list[dict[str, Any]] = []
+     lora_nodes: list[dict[str, Any]] = []
+     latent: dict[str, Any] | None = None
++    clip_skip: dict[str, Any] | None = None
+     for node_id, node in nodes.items():
+         class_type = str(node.get("class_type", ""))
+         inputs = node.get("inputs", {})
+@@ -269,6 +296,10 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
+             latent_size = _latent_size(inputs)
+             if latent_size is not None:
+                 latent = {"node_id": node_id, **latent_size}
++        if clip_skip is None and any(marker in class_type for marker in CLIP_SKIP_MARKERS):
++            derived = _clip_skip(inputs)
++            if derived is not None:
++                clip_skip = {"node_id": node_id, **derived}
+         if (
+             class_type in MODEL_NODE_NAMES
+             or ("Loader" in class_type and "Lora" not in class_type)
+@@ -343,6 +374,7 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
+         "model_nodes": model_nodes,
+         "lora_nodes": lora_nodes,
+         "latent": latent,
++        "clip_skip": clip_skip,
+         "prompt_groups": prompt_groups,
+         "prompt_nodes": sorted(
+             prompt_nodes,
+@@ -484,12 +516,17 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
+     model_nodes: list[dict[str, Any]] = []
+     lora_nodes: list[dict[str, Any]] = []
+     latent: dict[str, Any] | None = None
++    clip_skip: dict[str, Any] | None = None
+     for node_id, node in nodes.items():
+         node_type = str(node.get("type", ""))
+         if latent is None and any(marker in node_type for marker in LATENT_MARKERS):
+             latent_size = _latent_size(_ui_inputs(node))
+             if latent_size is not None:
+                 latent = {"node_id": node_id, **latent_size}
++        if clip_skip is None and any(marker in node_type for marker in CLIP_SKIP_MARKERS):
++            derived = _clip_skip(_ui_inputs(node))
++            if derived is not None:
++                clip_skip = {"node_id": node_id, **derived}
+         if node_type in MODEL_NODE_NAMES or (
+             "Loader" in node_type and "Lora" not in node_type
+         ):
+@@ -551,6 +588,7 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
+         "model_nodes": model_nodes,
+         "lora_nodes": lora_nodes,
+         "latent": latent,
++        "clip_skip": clip_skip,
+         "prompt_groups": prompt_groups,
+         "prompt_nodes": prompt_nodes,
+         "safe_prompt_write_supported": False,

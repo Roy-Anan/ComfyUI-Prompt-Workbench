@@ -835,3 +835,28 @@
 - 分号两套建议（示例/指南）仍未分组结构化；散文型 Resolution（无任何 `W×H`）structured=None，保持 unknown。
 - 括号内非尺寸备注（待核对、版本说明）仍保留在 `raw`，不参与结构化。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R23/`。
+
+## 34. TASK-003.1-R24 M3 第十九切片：Clip Skip 实际参数链路（2026-11-18）
+
+### 34.1 当前状态
+
+- 解析层识别 `CLIPSetLastLayer` 节点，读取 `stop_at_clip_layer`（负停止层数），派生正数 `clip_skip` 写入报告；非负/非整数不换算，留 None。
+- 比对 actuals 注入派生 `clip_skip`；Clip Skip 规则按数值路径比对；缺实际值归 unknown/actual_missing，非数值归 actual_not_numeric。
+- 后端测试 **163 passed**；前端构建 exit 0。
+
+### 34.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| Clip Skip 派生 | 通过 | 单测：`stop_at_clip_layer=-2`→clip_skip 2；无节点 None；非负值 None |
+| actuals 注入 | 通过 | 接口测试：compare actuals `clip_skip=2` |
+| 数值比对 | 通过 | 单测：值 2 命中 match；1 判 out_of_range；缺失 unknown/actual_missing |
+| 真机闭环 | 通过 | `samples/smoke-clip-skip.json`：规则 2 与实际 -2 派生 2 判 match；清理归零 |
+| Python pytest | 通过 | **163 passed, 1 warning in 5.87s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0 |
+
+### 34.3 边界与 backlog
+
+- 仅取首个 CLIPSetLastLayer 节点；符号换算固定为 `clip_skip = -stop_at_clip_layer`（节点取值域 -24…-1），非标准值不猜。
+- 真机暂无原生含该节点的工作流样本，本轮闭环基于构造 API 样本；多 CLIP 链路与双 CLIP 模型的跳过层数取舍未实现。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R24/`。

@@ -13,6 +13,7 @@ MAX_PROMPT_CHARS = 200_000
 TEXT_ENCODER_MARKERS = ("CLIPTextEncode", "TextEncode")
 SAMPLER_MARKERS = ("KSampler", "SamplerCustom", "SamplerAdvanced")
 LATENT_MARKERS = ("LatentImage",)
+CLIP_SKIP_MARKERS = ("CLIPSetLastLayer",)
 # 中转 conditioning 节点：自身不是文本编码器，但会把上游条件继续向下传。
 CONDITIONING_PASSTHROUGH_MARKERS = (
     "ConditioningCombine",
@@ -149,6 +150,31 @@ def _latent_size(inputs: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _clip_skip(inputs: dict[str, Any]) -> dict[str, Any] | None:
+    """Derive a positive clip-skip count from a CLIPSetLastLayer node.
+
+    ComfyUI stores the stop layer as a negative index (``-1`` … ``-24``); the
+    rule layer compares a positive skipped-layer count, so ``clip_skip`` is the
+    negated value. Non-negative or non-integer values are left untouched and
+    reported as None instead of guessing a conversion.
+    """
+    raw = inputs.get("stop_at_clip_layer")
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, str):
+        try:
+            value = int(raw.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+    if value >= 0:
+        return None
+    return {"clip_skip": -value, "stop_at_clip_layer": value}
+
+
 def _sampler_params(inputs: dict[str, Any]) -> dict[str, Any]:
     """Extract scalar sampler inputs the rule layer can compare against.
 
@@ -260,6 +286,7 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
     model_nodes: list[dict[str, Any]] = []
     lora_nodes: list[dict[str, Any]] = []
     latent: dict[str, Any] | None = None
+    clip_skip: dict[str, Any] | None = None
     for node_id, node in nodes.items():
         class_type = str(node.get("class_type", ""))
         inputs = node.get("inputs", {})
@@ -269,6 +296,10 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
             latent_size = _latent_size(inputs)
             if latent_size is not None:
                 latent = {"node_id": node_id, **latent_size}
+        if clip_skip is None and any(marker in class_type for marker in CLIP_SKIP_MARKERS):
+            derived = _clip_skip(inputs)
+            if derived is not None:
+                clip_skip = {"node_id": node_id, **derived}
         if (
             class_type in MODEL_NODE_NAMES
             or ("Loader" in class_type and "Lora" not in class_type)
@@ -343,6 +374,7 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
         "model_nodes": model_nodes,
         "lora_nodes": lora_nodes,
         "latent": latent,
+        "clip_skip": clip_skip,
         "prompt_groups": prompt_groups,
         "prompt_nodes": sorted(
             prompt_nodes,
@@ -484,12 +516,17 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
     model_nodes: list[dict[str, Any]] = []
     lora_nodes: list[dict[str, Any]] = []
     latent: dict[str, Any] | None = None
+    clip_skip: dict[str, Any] | None = None
     for node_id, node in nodes.items():
         node_type = str(node.get("type", ""))
         if latent is None and any(marker in node_type for marker in LATENT_MARKERS):
             latent_size = _latent_size(_ui_inputs(node))
             if latent_size is not None:
                 latent = {"node_id": node_id, **latent_size}
+        if clip_skip is None and any(marker in node_type for marker in CLIP_SKIP_MARKERS):
+            derived = _clip_skip(_ui_inputs(node))
+            if derived is not None:
+                clip_skip = {"node_id": node_id, **derived}
         if node_type in MODEL_NODE_NAMES or (
             "Loader" in node_type and "Lora" not in node_type
         ):
@@ -551,6 +588,7 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
         "model_nodes": model_nodes,
         "lora_nodes": lora_nodes,
         "latent": latent,
+        "clip_skip": clip_skip,
         "prompt_groups": prompt_groups,
         "prompt_nodes": prompt_nodes,
         "safe_prompt_write_supported": False,

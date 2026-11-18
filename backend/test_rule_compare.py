@@ -87,6 +87,25 @@ def test_resolution_unknown_when_latent_size_missing():
     assert verdict["reason"] == "actual_missing"
 
 
+def test_clip_skip_value_match_and_mismatch():
+    rule = _field(
+        "GENERATION SETTINGS::Clip Skip",
+        structured={"kind": "value", "value": 2},
+    )
+    assert rule_compare.compare_rule(rule, {"clip_skip": 2})["status"] == "match"
+    assert rule_compare.compare_rule(rule, {"clip_skip": 1})["status"] == "out_of_range"
+
+
+def test_clip_skip_unknown_when_missing():
+    rule = _field(
+        "GENERATION SETTINGS::Clip Skip",
+        structured={"kind": "value", "value": 2},
+    )
+    verdict = rule_compare.compare_rule(rule, {})
+    assert verdict["status"] == "unknown"
+    assert verdict["reason"] == "actual_missing"
+
+
 def test_non_numeric_actual_stays_unknown():
     rule = _field(
         "GENERATION SETTINGS::Steps",

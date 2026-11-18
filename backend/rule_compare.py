@@ -46,6 +46,8 @@ def _actual_number(actual: Any) -> float | int | None:
 
 
 def _compare_number(structured: dict[str, Any], actual: Any) -> dict[str, Any]:
+    if actual is None or actual == "":
+        return {"status": "unknown", "reason": "actual_missing", "actual": actual}
     number = _actual_number(actual)
     if number is None:
         return {"status": "unknown", "reason": "actual_not_numeric", "actual": actual}

@@ -28,6 +28,9 @@ def _sampler_actuals(report: dict[str, Any]) -> dict[str, Any]:
             actuals["width"] = latent["width"]
         if latent.get("height") is not None:
             actuals["height"] = latent["height"]
+    clip_skip = report.get("clip_skip")
+    if isinstance(clip_skip, dict) and clip_skip.get("clip_skip") is not None:
+        actuals["clip_skip"] = clip_skip["clip_skip"]
     return actuals
 
 
