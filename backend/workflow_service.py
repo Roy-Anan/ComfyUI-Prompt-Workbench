@@ -14,6 +14,7 @@ MAX_DRAFT_NAME_CHARS = 120
 MAX_DRAFT_NOTE_CHARS = 1000
 MAX_DRAFT_TAGS = 12
 MAX_DRAFT_TAG_CHARS = 30
+MAX_SOURCE_REF_CHARS = 64
 TEXT_ENCODER_MARKERS = ("CLIPTextEncode", "TextEncode")
 SAMPLER_MARKERS = ("KSampler", "SamplerCustom", "SamplerAdvanced")
 LATENT_MARKERS = ("LatentImage",)
@@ -77,6 +78,14 @@ def _read_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise WorkflowError(f"无法读取工作流数据：{exc}") from exc
+
+
+def _clean_source_ref(raw: Any) -> str | None:
+    """Normalize an optional back-reference to a generation history prompt_id."""
+    if not isinstance(raw, str):
+        return None
+    value = raw.strip()[:MAX_SOURCE_REF_CHARS]
+    return value or None
 
 
 def _clean_tags(raw: Any) -> list[str]:
@@ -1108,6 +1117,9 @@ class WorkflowStore:
                     "favored": bool(record.get("favored") or False),
                     "tags": _clean_tags(record.get("tags")),
                     "trashed": trashed,
+                    "source_history_id": _clean_source_ref(
+                        record.get("source_history_id")
+                    ),
                     "created_at": record.get("created_at"),
                     "updated_at": record.get("updated_at"),
                 }
@@ -1127,6 +1139,7 @@ class WorkflowStore:
         negative: str | None,
         note: str | None,
         tags: list[str] | None = None,
+        source_history_id: str | None = None,
     ) -> dict[str, Any]:
         """Create or update a named draft under this workflow's draft box.
 
@@ -1152,6 +1165,7 @@ class WorkflowStore:
         if len(clean_note) > MAX_DRAFT_NOTE_CHARS:
             raise WorkflowError("草稿备注超过 1000 字符限制")
         clean_tags = _clean_tags(tags)
+        clean_source = _clean_source_ref(source_history_id)
 
         existing = {
             entry["id"]: entry
@@ -1168,6 +1182,7 @@ class WorkflowStore:
             record["negative"] = clean_negative
             record["note"] = clean_note
             record["tags"] = clean_tags
+            record["source_history_id"] = clean_source
             record.setdefault("favored", False)
             record["updated_at"] = _now()
             record.setdefault("created_at", record.get("updated_at"))
@@ -1181,6 +1196,7 @@ class WorkflowStore:
                 "negative": clean_negative,
                 "note": clean_note,
                 "tags": clean_tags,
+                "source_history_id": clean_source,
                 "favored": False,
                 "trashed": False,
                 "created_at": _now(),
@@ -1200,6 +1216,18 @@ class WorkflowStore:
         if not path.is_file():
             raise WorkflowError("指定的草稿不存在")
         return self._read_draft_file(path)
+
+    def find_linked_draft(
+        self, workflow_id: str, source_history_id: str
+    ) -> dict[str, Any] | None:
+        """Return the active draft linked to one history record, if any."""
+        ref = _clean_source_ref(source_history_id)
+        if not ref:
+            return None
+        for entry in self.list_drafts(workflow_id):
+            if entry.get("source_history_id") == ref:
+                return {"id": entry["id"], "name": entry["name"]}
+        return None
 
     def delete_draft(self, workflow_id: str, draft_id: str) -> dict[str, Any]:
         """Soft-delete: move the draft to the recycle bin; recoverable via restore_draft.

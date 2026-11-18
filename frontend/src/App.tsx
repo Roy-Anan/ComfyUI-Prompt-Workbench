@@ -287,6 +287,26 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    function onNavigate(event: Event) {
+      const detail = (
+        event as CustomEvent<{ page: PageKey; promptId?: string }>
+      ).detail;
+      if (detail && PAGE_KEYS.includes(detail.page)) {
+        if (detail.promptId) {
+          try {
+            localStorage.setItem("workbench.jumpHistory", detail.promptId);
+          } catch {
+            // 忽略本地存储写入失败。
+          }
+        }
+        switchPage(detail.page);
+      }
+    }
+    window.addEventListener("workbench:navigate", onNavigate);
+    return () => window.removeEventListener("workbench:navigate", onNavigate);
+  }, []);
+
   async function refresh() {
     const [healthResult, settingsResult, serviceResult, catalogResult, ruleResult, profileResult] =
       await Promise.all([

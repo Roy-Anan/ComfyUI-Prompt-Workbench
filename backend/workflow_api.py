@@ -121,6 +121,7 @@ class DraftSave(BaseModel):
     negative: str | None = None
     note: str = Field(default="", max_length=1000)
     tags: list[str] = Field(default_factory=list)
+    source_history_id: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -272,6 +273,7 @@ def save_draft(workflow_id: str, payload: DraftSave):
             payload.negative,
             payload.note,
             payload.tags,
+            payload.source_history_id,
         )
     except (WorkflowError, FileNotFoundError, OSError) as exc:
         _raise_api_error(exc)

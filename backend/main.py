@@ -893,9 +893,13 @@ def generation_history_list(
         items = generation_history.list_history(
             connection, workflow_id=workflow_id, status=status, keyword=keyword
         )
+    store = WorkflowStore(DATA_ROOT / "workflows")
     for item in items:
         item["images"] = generation_history.annotate_exists(
             item.get("images") or [], output_dir
+        )
+        item["linked_draft"] = store.find_linked_draft(
+            item.get("workflow_id") or "", item.get("prompt_id") or ""
         )
     return {"items": items}
 
@@ -910,6 +914,10 @@ def generation_history_detail(prompt_id: str):
     output_dir = load_settings().get("storage", {}).get("output", "")
     record["images"] = generation_history.annotate_exists(
         record.get("images") or [], output_dir
+    )
+    store = WorkflowStore(DATA_ROOT / "workflows")
+    record["linked_draft"] = store.find_linked_draft(
+        record.get("workflow_id") or "", record.get("prompt_id") or ""
     )
     return record
 

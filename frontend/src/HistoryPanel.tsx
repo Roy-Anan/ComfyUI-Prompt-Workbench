@@ -36,6 +36,8 @@ type ModelSnapshot = {
   clips: ModelFile[];
 };
 
+type LinkedDraft = { id: string; name: string };
+
 type HistoryRecord = {
   prompt_id: string;
   workflow_id: string;
@@ -46,6 +48,7 @@ type HistoryRecord = {
   task_status: string;
   images: HistoryImage[] | null;
   last_error: string | null;
+  linked_draft: LinkedDraft | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -148,6 +151,22 @@ export default function HistoryPanel() {
     try {
       const body = await apiGet<{ items: HistoryRecord[] }>("/api/history");
       setItems(body.items);
+      let jump: string | null = null;
+      try {
+        jump = localStorage.getItem("workbench.jumpHistory");
+      } catch {
+        // 忽略本地存储读取失败。
+      }
+      if (jump) {
+        if (body.items.some((record) => record.prompt_id === jump)) {
+          setOpenId(jump);
+        }
+        try {
+          localStorage.removeItem("workbench.jumpHistory");
+        } catch {
+          // 忽略本地存储写入失败。
+        }
+      }
       setError("");
     } catch (err) {
       setError(`读取历史失败：${String(err)}`);
@@ -194,6 +213,7 @@ export default function HistoryPanel() {
         positive: record.positive_prompt ?? "",
         negative: record.negative_prompt ?? "",
         note,
+        source_history_id: record.prompt_id,
       });
       setSavedIds((prev) =>
         prev.includes(record.prompt_id) ? prev : [...prev, record.prompt_id],
@@ -214,6 +234,12 @@ export default function HistoryPanel() {
     } finally {
       setDraftBusy(false);
     }
+  }
+
+  function goToWorkbench() {
+    window.dispatchEvent(
+      new CustomEvent("workbench:navigate", { detail: { page: "workflows" } }),
+    );
   }
 
   const workflowOptions = Array.from(
@@ -316,6 +342,22 @@ export default function HistoryPanel() {
                 </small>
               </div>
             </div>
+            {record.linked_draft && (
+              <div className="rule-row">
+                <div className="rule-row-main">
+                  <strong>关联草稿</strong>
+                  <small>
+                    <button
+                      className="secondary"
+                      onClick={goToWorkbench}
+                      title="跳转到工作流工作区查看草稿"
+                    >
+                      {record.linked_draft.name}
+                    </button>
+                  </small>
+                </div>
+              </div>
+            )}
             {images.length > 0 && (
               <div className="rule-row">
                 <div className="rule-row-main">

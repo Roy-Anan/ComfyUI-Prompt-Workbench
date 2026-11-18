@@ -142,6 +142,7 @@ type DraftEntry = {
   favored?: boolean;
   tags?: string[];
   trashed?: boolean;
+  source_history_id?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -818,6 +819,19 @@ export default function WorkflowWorkbench() {
     setMessage(`草稿「${draft.name}」已载入编辑框（尚未写入工作副本）。`);
   }
 
+  function goToHistory(promptId: string) {
+    try {
+      localStorage.setItem("workbench.jumpHistory", promptId);
+    } catch {
+      // 忽略本地存储写入失败。
+    }
+    window.dispatchEvent(
+      new CustomEvent("workbench:navigate", {
+        detail: { page: "history", promptId },
+      }),
+    );
+  }
+
   async function deleteDraft(draftId: string) {
     if (!workflowId) return;
     setDraftBusy(true);
@@ -896,6 +910,7 @@ export default function WorkflowWorkbench() {
         negative: negativeText,
         note: draftNote.trim(),
         tags: parseDraftTags(draftTags),
+        source_history_id: draft.source_history_id ?? null,
       });
       setUpdatingDraftId(null);
       await loadDrafts(workflowId, showTrashed);
@@ -1702,6 +1717,18 @@ export default function WorkflowWorkbench() {
                         {(draft.tags || []).length > 0 && (
                           <small className="workflow-meta">
                             标签：{(draft.tags || []).join("、")}
+                          </small>
+                        )}
+                        {draft.source_history_id && (
+                          <small className="workflow-meta">
+                            来源历史：
+                            <button
+                              className="secondary"
+                              onClick={() => goToHistory(draft.source_history_id!)}
+                              title="跳转到生成历史"
+                            >
+                              {draft.source_history_id.slice(0, 8)}
+                            </button>
                           </small>
                         )}
                       </div>

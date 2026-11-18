@@ -859,3 +859,32 @@ def test_draft_tags_cleaned_and_preserved_on_update(tmp_path):
         workflow_id, draft["id"], "标签草稿改", "positive3", None, "", tags=[]
     )
     assert cleared["tags"] == []
+
+
+def test_draft_source_history_link_and_lookup(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+
+    draft = store.save_draft(
+        workflow_id,
+        None,
+        "索引草稿",
+        "positive",
+        None,
+        "",
+        source_history_id="pid-abc-123",
+    )
+    listed = store.list_drafts(workflow_id)
+    assert listed[0]["source_history_id"] == "pid-abc-123"
+
+    linked = store.find_linked_draft(workflow_id, "pid-abc-123")
+    assert linked == {"id": draft["id"], "name": "索引草稿"}
+    assert store.find_linked_draft(workflow_id, "pid-unknown") is None
+
+    # Non-string / blank source refs normalize back to None.
+    plain = store.save_draft(
+        workflow_id, None, "无来源草稿", "positive2", None, "", source_history_id=123
+    )
+    assert plain["source_history_id"] is None
+    assert store.find_linked_draft(workflow_id, "pid-abc-123") is not None
