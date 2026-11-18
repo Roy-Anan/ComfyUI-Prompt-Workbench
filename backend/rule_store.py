@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS workbench_rule (
     scope_key TEXT NOT NULL,
     rule_key TEXT NOT NULL,
     value_json TEXT NOT NULL,
+    structured_json TEXT,
     provenance TEXT NOT NULL,
     confidence TEXT NOT NULL,
     version TEXT NOT NULL,
@@ -48,6 +49,10 @@ def _now() -> str:
 
 def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(_SCHEMA)
+    # Backfill the structured column for databases created before R15.
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(workbench_rule)")}
+    if "structured_json" not in columns:
+        connection.execute("ALTER TABLE workbench_rule ADD COLUMN structured_json TEXT")
     connection.commit()
 
 
@@ -66,6 +71,7 @@ def _row_to_record(row: sqlite3.Row | tuple[Any, ...]) -> dict[str, Any]:
         "scope_key",
         "rule_key",
         "value_json",
+        "structured_json",
         "provenance",
         "confidence",
         "version",
@@ -75,6 +81,8 @@ def _row_to_record(row: sqlite3.Row | tuple[Any, ...]) -> dict[str, Any]:
     )
     record = dict(zip(keys, row))
     record["value"] = _decode_value(record.pop("value_json"))
+    structured_raw = record.pop("structured_json")
+    record["structured"] = _decode_value(structured_raw) if structured_raw else None
     return record
 
 
@@ -88,6 +96,7 @@ def upsert_rule(
     confidence: str = "unverified",
     version: str = "1",
     note: str = "",
+    structured: Any = None,
 ) -> dict[str, Any]:
     """Insert or replace one rule identified by level/scope_key/key."""
     probe = rule_engine.RuleRecord(
@@ -104,14 +113,16 @@ def upsert_rule(
 
     effective_scope = scope_key or ""
     now = _now()
+    structured_json = _encode_value(structured) if structured is not None else None
     connection.execute(
         """
         INSERT INTO workbench_rule
-            (level, scope_key, rule_key, value_json, provenance, confidence,
-             version, note, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (level, scope_key, rule_key, value_json, structured_json,
+             provenance, confidence, version, note, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(level, scope_key, rule_key) DO UPDATE SET
             value_json = excluded.value_json,
+            structured_json = excluded.structured_json,
             provenance = excluded.provenance,
             confidence = excluded.confidence,
             version = excluded.version,
@@ -123,6 +134,7 @@ def upsert_rule(
             effective_scope,
             rule_key,
             _encode_value(value),
+            structured_json,
             provenance,
             confidence,
             version,
@@ -140,8 +152,8 @@ def lookup_rule(
 ) -> dict[str, Any] | None:
     row = connection.execute(
         """
-        SELECT id, level, scope_key, rule_key, value_json, provenance,
-               confidence, version, note, created_at, updated_at
+        SELECT id, level, scope_key, rule_key, value_json, structured_json,
+               provenance, confidence, version, note, created_at, updated_at
         FROM workbench_rule
         WHERE level = ? AND scope_key = ? AND rule_key = ?
         """,
@@ -154,8 +166,8 @@ def list_rules(
     connection: sqlite3.Connection, level: str | None = None, scope_key: str | None = None
 ) -> list[dict[str, Any]]:
     sql = (
-        "SELECT id, level, scope_key, rule_key, value_json, provenance, "
-        "confidence, version, note, created_at, updated_at FROM workbench_rule"
+        "SELECT id, level, scope_key, rule_key, value_json, structured_json, "
+        "provenance, confidence, version, note, created_at, updated_at FROM workbench_rule"
     )
     clauses: list[str] = []
     params: list[Any] = []

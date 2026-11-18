@@ -1,0 +1,53 @@
+diff --git a/PROJECT_STATE.md b/PROJECT_STATE.md
+index 0432f75..20658f7 100644
+--- a/PROJECT_STATE.md
++++ b/PROJECT_STATE.md
+@@ -600,3 +600,29 @@
+ - 本轮仅 checkpoint 级导入；architecture/global 级规则装载、参数结构化拆分、前端导入/审核界面未实现。
+ - 导入为整档 upsert，无逐候选勾选/驳回/差异预览；多模型/LoRA 组合、冲突人工裁决、动态检索、LLM 上下文装配、版本/差异回退未实现。
+ - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R14/`。
++
++## 25. TASK-003.1-R15 M3 第十切片：生成参数值结构化解析（2026-11-18）
++
++### 25.1 当前状态
++
++- 新增 `value_normalize.py` 纯函数层：步数/CFG/Clip Skip 解析为 `value`/`range`/`floor`；分辨率解析为 `resolutions` 列表；采样器/调度器解析为 `list`。解析失败保留原文，`structured=None`，不臆测数值。
++- `profile_parser.candidates_to_records` 每条记录附 `structured`；`rule_store` 表新增 `structured_json` 列（旧库 `ALTER TABLE` 补列），`value_json` 仍存原始裸值，不破坏引擎 `record.value` 原样返回口径。
++- `import_profile` 透传候选 `structured` 落库；回读记录同时给出 `value`（原文）与 `structured`（可比较结构）。
++- 后端测试 **118 passed**；前端构建 exit 0。
++
++### 25.2 验收结果
++
++| 验收项 | 状态 | 证据 / 说明 |
++| --- | --- | --- |
++| 数值/范围解析 | 通过 | 单值 `7`→value；`6~12`/`1.5~2`→range；`30+`→floor；非数值回退 None |
++| 分辨率/列表 | 通过 | `896×1152 / 832×1216`→resolutions；多采样器→list |
++| 失败回退 | 通过 | 散文值（如「SDXL 友好分辨率」「待核实」）structured=None，原文保留 |
++| 落库回读 | 通过 | 真机 IntoRealism 导入 16 条，Steps/CFG/Resolution/Sampler 结构化正确回读，清理归零 |
++| Python pytest | 通过 | **118 passed, 1 warning in 5.36s** |
++| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
++
++### 25.3 边界与 backlog
++
++- 结构化仅覆盖生成参数六类字段；提示词/标签/架构等散文字段不拆。
++- 结构尚未被前端展示或用于参数比对/冲突检测；architecture/global 级装载、逐候选审核界面、多模型/LoRA 组合、动态检索、LLM 上下文装配、版本/差异回退仍未实现。
++- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R15/`。
+diff --git a/docs/ROADMAP.md b/docs/ROADMAP.md
+index 3dc94ee..63aee9a 100644
+--- a/docs/ROADMAP.md
++++ b/docs/ROADMAP.md
+@@ -164,8 +164,12 @@ M3 第八切片已落地（R13）：旧档案扫描清单与单档案候选预
+ 候选审核导入规则库、前端档案/规则管理界面尚未实现。
+ 
+ M3 第九切片已落地（R14）：档案候选可整档导入为 checkpoint 级规则，落库前引擎校验，非法候选跳过回报；
+-导入后可经规则解析回读。architecture/global 级装载、逐候选审核界面、参数结构化尚未实现。
++导入后可经规则解析回读。
+ 
+-下一步继续 M3：architecture/global 级规则装载、来源/可信度/版本/差异回退、
++M3 第十切片已落地（R15）：生成参数散文值拆为可比较结构（数值/范围/下限/分辨率列表/采样器列表），
++解析失败保留原文不臆测；结构化随规则落库并回读。
++
++下一步继续 M3：architecture/global 级规则装载、结构化参数的前端展示与比对、
++逐候选勾选/驳回/差异预览、来源/可信度/版本/差异回退、
+ 多模型与启用 LoRA 规则组合及冲突人工处理界面、动态检索、云端研究资料导入审核；之后 M4 Ollama 候选生成、
+ M6 ComfyUI 任务提交与结果拉取。工作流安全边界是全项目最重要的基础。

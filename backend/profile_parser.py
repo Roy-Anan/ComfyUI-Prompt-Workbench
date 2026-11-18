@@ -29,6 +29,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+import value_normalize
+
 # Sections recognized in the legacy profile text.
 SECTIONS = (
     "IDENTITY",
@@ -227,12 +229,15 @@ def candidates_to_records(
     """
     records: list[dict[str, Any]] = []
     for candidate in profile.candidates:
+        rule_key = f"{candidate.section}::{candidate.key}"
+        normalized = value_normalize.normalize(rule_key, candidate.value)
         records.append(
             {
                 "level": level,
                 "scope_key": scope_key,
-                "rule_key": f"{candidate.section}::{candidate.key}",
+                "rule_key": rule_key,
                 "value": candidate.value,
+                "structured": normalized["structured"],
                 "provenance": candidate.provenance,
                 "confidence": candidate.confidence,
                 "version": "legacy-1",

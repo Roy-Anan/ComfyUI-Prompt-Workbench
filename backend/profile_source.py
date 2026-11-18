@@ -126,6 +126,7 @@ def import_profile(
                 confidence=record["confidence"],
                 version=record["version"],
                 note=record["note"],
+                structured=record.get("structured"),
             )
             imported.append(stored)
         except rule_engine.RuleError as exc:

@@ -1,0 +1,11 @@
+{
+  "target": {"file": "IntoRealism_Ultra_V8.txt", "filename": "intorealismUltra_v80.safetensors", "preview_candidates": 16},
+  "import": {"status": 200, "imported": 16, "rejected": 0},
+  "structured_records": [
+    {"rule_key": "GENERATION SETTINGS::Steps", "raw": "6~12", "structured": {"kind": "range", "low": 6, "high": 12}},
+    {"rule_key": "GENERATION SETTINGS::CFG", "raw": "1.5~2", "structured": {"kind": "range", "low": 1.5, "high": 2}},
+    {"rule_key": "GENERATION SETTINGS::Resolution", "raw": "896×1152 / 832×1216", "structured": {"kind": "resolutions", "items": [{"width": 896, "height": 1152}, {"width": 832, "height": 1216}]}},
+    {"rule_key": "GENERATION SETTINGS::Sampler", "raw": "Euler A Karras / Exponential", "structured": {"kind": "list", "items": ["Euler A Karras", "Exponential"]}}
+  ],
+  "after_cleanup": {"items": 0}
+}
