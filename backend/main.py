@@ -746,9 +746,14 @@ def comfyui_queue():
 @app.get("/api/history")
 def generation_history_list(workflow_id: str | None = None):
     """Read-only generation history, newest first, optionally filtered by workflow."""
+    output_dir = load_settings().get("storage", {}).get("output", "")
     with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
         generation_history.ensure_schema(connection)
         items = generation_history.list_history(connection, workflow_id)
+    for item in items:
+        item["images"] = generation_history.annotate_exists(
+            item.get("images") or [], output_dir
+        )
     return {"items": items}
 
 
@@ -759,6 +764,10 @@ def generation_history_detail(prompt_id: str):
         record = generation_history.get_by_prompt_id(connection, prompt_id)
     if record is None:
         raise HTTPException(status_code=404, detail="历史记录不存在")
+    output_dir = load_settings().get("storage", {}).get("output", "")
+    record["images"] = generation_history.annotate_exists(
+        record.get("images") or [], output_dir
+    )
     return record
 
 

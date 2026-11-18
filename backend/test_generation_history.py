@@ -179,3 +179,24 @@ def test_extract_images_supports_list_and_dict_shapes():
 def test_model_snapshot_stays_conservative_on_unknown_report():
     snapshot = generation_history.extract_model_snapshot({})
     assert snapshot == {"checkpoints": [], "loras": [], "vaes": [], "clips": []}
+
+
+def test_annotate_exists_marks_present_and_missing(tmp_path):
+    (tmp_path / "a.png").write_bytes(b"x")
+    images = [
+        {"node_id": "9", "filename": "a.png", "subfolder": "", "type": "output", "exists": None},
+        {"node_id": "10", "filename": "missing.png", "subfolder": "", "type": "output", "exists": None},
+    ]
+    annotated = generation_history.annotate_exists(images, str(tmp_path))
+    assert annotated[0]["exists"] is True
+    assert annotated[1]["exists"] is False
+
+
+def test_annotate_exists_none_without_output_dir():
+    images = [{"filename": "a.png", "exists": None}]
+    assert generation_history.annotate_exists(images, "")[0]["exists"] is None
+
+
+def test_annotate_exists_rejects_path_escape(tmp_path):
+    images = [{"filename": "../escape.png", "subfolder": "", "exists": None}]
+    assert generation_history.annotate_exists(images, str(tmp_path))[0]["exists"] is False

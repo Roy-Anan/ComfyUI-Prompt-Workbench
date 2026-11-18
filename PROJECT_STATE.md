@@ -1304,3 +1304,19 @@
 - 图片磁盘存在性探测（需 ComfyUI 输出目录配置）、时间轴/图库双视图、搜索筛选导出、历史反向创建
   草稿、缩略图索引留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R46/`。
+
+## 57. TASK-003.1-R47 历史图片存在性标注（2026-11-18）
+
+### 57.1 落地内容
+
+- `settings.storage` 新增可选外部目录 `output`（ComfyUI 输出目录，与 checkpoint/lora/clip/vae 同范式，
+  可留空）；`datadir.OPTIONAL_EXTERNAL_KEYS` 与默认设置同步纳入。
+- `generation_history.annotate_exists`：按输出目录 + 子目录 + 文件名核对 `exists`；未配置目录记
+  `None`，文件存在 `True`、丢失 `False`；路径越出输出目录按丢失处理，不复制原图。
+- 历史列表/详情端点返回时实时标注存在性；文件丢失历史记录保留，仅标记不存在。
+- 新增 3 个单测：存在/丢失标注、未配置目录记 None、路径越出拒绝。后端 **215 passed**。
+
+### 57.2 边界与 backlog
+
+- 缩略图索引、时间轴/图库双视图、搜索筛选导出、历史反向创建草稿留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R47/`。

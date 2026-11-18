@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 _SCHEMA = """
@@ -160,6 +161,43 @@ def extract_images(outputs: Any) -> list[dict[str, Any]]:
                     "exists": None,
                 }
             )
+    return images
+
+
+def annotate_exists(
+    images: list[dict[str, Any]], output_dir: str | None
+) -> list[dict[str, Any]]:
+    """Mark each recorded image with on-disk existence.
+
+    Without a configured output directory the status stays ``None`` rather
+    than being guessed. A resolved path that escapes the output directory is
+    treated as missing; original images are never copied or touched here.
+    """
+    if not images:
+        return images
+    if not output_dir or not str(output_dir).strip():
+        for image in images:
+            image["exists"] = None
+        return images
+
+    base = Path(str(output_dir).strip()).expanduser()
+    try:
+        base_resolved = base.resolve()
+    except OSError:
+        base_resolved = base
+
+    for image in images:
+        filename = image.get("filename")
+        if not isinstance(filename, str) or not filename:
+            image["exists"] = False
+            continue
+        subfolder = image.get("subfolder") or ""
+        candidate = (base_resolved / subfolder / filename).resolve()
+        try:
+            candidate.relative_to(base_resolved)
+            image["exists"] = candidate.is_file()
+        except (ValueError, OSError):
+            image["exists"] = False
     return images
 
 
