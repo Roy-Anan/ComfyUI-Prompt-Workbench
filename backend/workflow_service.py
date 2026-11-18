@@ -12,6 +12,28 @@ MAX_WORKFLOW_BYTES = 20 * 1024 * 1024
 MAX_PROMPT_CHARS = 200_000
 TEXT_ENCODER_MARKERS = ("CLIPTextEncode", "TextEncode")
 SAMPLER_MARKERS = ("KSampler", "SamplerCustom", "SamplerAdvanced")
+# 中转 conditioning 节点：自身不是文本编码器，但会把上游条件继续向下传。
+CONDITIONING_PASSTHROUGH_MARKERS = (
+    "ConditioningCombine",
+    "ConditioningConcat",
+    "ConditioningSetArea",
+    "ConditioningSetAreaPercentage",
+    "ConditioningSetAreaStrength",
+    "ConditioningAverage",
+    "ConditioningMask",
+    "ConditioningZeroOut",
+    "ConditioningDrop",
+    "ConditioningBias",
+)
+# 这些输入名携带 conditioning 链路，追溯时沿它们继续向上。
+CONDITIONING_INPUT_KEYS = (
+    "conditioning",
+    "positive",
+    "negative",
+    "conditioning1",
+    "conditioning2",
+    "cond",
+)
 MODEL_NODE_NAMES = {
     "CheckpointLoaderSimple",
     "CheckpointLoader",
@@ -95,11 +117,61 @@ def _api_nodes(workflow: dict[str, Any]) -> dict[str, dict[str, Any]]:
     raise WorkflowError("API workflow 节点结构无效")
 def _is_text_encoder(class_type: str) -> bool:
     return any(marker in class_type for marker in TEXT_ENCODER_MARKERS)
+def _is_conditioning_passthrough(class_type: str) -> bool:
+    return any(
+        marker in class_type
+        for marker in CONDITIONING_PASSTHROUGH_MARKERS
+    )
 def _is_sampler(class_type: str, inputs: dict[str, Any]) -> bool:
     return (
         any(marker in class_type for marker in SAMPLER_MARKERS)
         or ("positive" in inputs and "negative" in inputs)
     )
+def _structure_diff(
+    original: Any,
+    candidate: Any,
+    allowed_paths: set[str],
+    prefix: str = "",
+) -> list[str]:
+    """Return structural differences; only `allowed_paths` may differ.
+
+    Paths use a dot/array index prefix, e.g. ``"6.inputs.seed"``. Node-level
+    whitelist paths are stored as ``"<node_id>.inputs.text"``.
+    """
+    diffs: list[str] = []
+    if type(original) is not type(candidate):
+        return [prefix or "<root>"]
+    if isinstance(original, dict):
+        if original.keys() != candidate.keys():
+            diffs.append(prefix or "<root>")
+        for key, original_value in original.items():
+            child = f"{prefix}.{key}" if prefix else str(key)
+            diffs.extend(
+                _structure_diff(
+                    original_value,
+                    candidate[key],
+                    allowed_paths,
+                    child,
+                )
+            )
+        return diffs
+    if isinstance(original, list):
+        if len(original) != len(candidate):
+            diffs.append(prefix or "<root>")
+        for index, original_value in enumerate(original):
+            child = f"{prefix}[{index}]"
+            diffs.extend(
+                _structure_diff(
+                    original_value,
+                    candidate[index],
+                    allowed_paths,
+                    child,
+                )
+            )
+        return diffs
+    if original != candidate:
+        diffs.append(prefix or "<root>")
+    return [item for item in diffs if item not in allowed_paths]
 def _api_link_node_id(value: Any, nodes: dict[str, Any]) -> str | None:
     if not isinstance(value, (list, tuple)) or len(value) < 2:
         return None
@@ -131,7 +203,19 @@ def _trace_api_encoders(
             if isinstance(inputs.get("text"), str):
                 found.append(node_id)
                 continue
-        for value in inputs.values():
+        # 文本编码器的 clip 输入不携带 conditioning，不向上追溯；
+        # 中转 conditioning 节点沿其 conditioning 输入（含 conditioning_1/2 等编号键）继续追溯。
+        if _is_conditioning_passthrough(class_type):
+            trace_keys = [
+                key
+                for key in inputs
+                if key in CONDITIONING_INPUT_KEYS
+                or str(key).startswith("conditioning")
+            ]
+        else:
+            trace_keys = tuple(inputs.keys())
+        for key in trace_keys:
+            value = inputs.get(key)
             upstream = _api_link_node_id(value, nodes)
             if upstream is not None:
                 stack.append(upstream)
@@ -599,14 +683,10 @@ class WorkflowStore:
                     or not isinstance(inputs.get("text"), str)
                 ):
                     raise WorkflowError("白名单文本字段结构异常")
-        # 检查当前工作副本：除白名单 text 外，必须与原始文件完全相同。
-        normalized = copy.deepcopy(working)
-        normalized_nodes = _api_nodes(normalized)
-        for node_id in allowed:
-            normalized_nodes[node_id]["inputs"]["text"] = (
-                nodes_original[node_id]["inputs"]["text"]
-            )
-        if normalized != original:
+        # 检查当前工作副本：除白名单 text 字段外，逐节点逐字段必须与原始一致。
+        allowed_paths = {f"{node_id}.inputs.text" for node_id in allowed}
+        prewrite_diffs = _structure_diff(original, working, allowed_paths)
+        if prewrite_diffs:
             raise WorkflowError(
                 "工作副本存在非白名单变化，拒绝写入以保护工作流完整性"
             )
@@ -631,14 +711,15 @@ class WorkflowStore:
                     "old_text": old_value,
                     "new_text": replacement,
                 })
-        # 写入后再次验证：还原全部白名单文本，必须得到原始工作流。
+        # 写入后再次验证：还原全部白名单文本，结构化比对必须回到原始工作流。
         verified = copy.deepcopy(updated)
         verified_nodes = _api_nodes(verified)
         for node_id in allowed:
             verified_nodes[node_id]["inputs"]["text"] = (
                 nodes_original[node_id]["inputs"]["text"]
             )
-        if verified != original:
+        postwrite_diffs = _structure_diff(original, verified, allowed_paths)
+        if postwrite_diffs:
             raise WorkflowError(
                 "写入后完整性校验失败，工作副本未更新"
             )

@@ -154,6 +154,31 @@ def test_write_rejects_non_whitelist_mutation(tmp_path):
             positive_text="must be rejected",
             negative_text=None,
         )
+def test_structural_diff_rejects_non_whitelist_value_change(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow(
+        "sample_api.json",
+        sample_api_workflow(),
+    )
+    workflow_id = imported["id"]
+    store.confirm_prompt_nodes(
+        workflow_id,
+        positive_node_ids=["1"],
+        negative_node_ids=["2"],
+    )
+    working_file = tmp_path / "workflows" / workflow_id / "working.json"
+    working = json.loads(working_file.read_text(encoding="utf-8"))
+    working["6"]["inputs"]["steps"] = 30
+    working_file.write_text(
+        json.dumps(working, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    with pytest.raises(WorkflowError, match="非白名单"):
+        store.write_prompts(
+            workflow_id,
+            positive_text="must be rejected",
+            negative_text=None,
+        )
 def test_write_rejects_changed_original_fingerprint(tmp_path):
     store = WorkflowStore(tmp_path / "workflows")
     imported = store.import_workflow(
@@ -199,6 +224,123 @@ def test_ui_workflow_is_parsed_but_not_writable():
     assert report["safe_prompt_write_supported"] is False
     assert report["prompt_nodes"][0]["node_id"] == "1"
     assert report["prompt_nodes"][0]["editable"] is False
+def test_detect_api_workflow_wrapped_in_nodes():
+    wrapped = {"nodes": sample_api_workflow()}
+    assert detect_format(wrapped) == "api"
+    report = analyze_workflow(wrapped)
+    assert report["format"] == "api"
+    roles = {
+        item["node_id"]: item["roles"]
+        for item in report["prompt_nodes"]
+    }
+    assert roles["1"] == ["positive"]
+    assert roles["2"] == ["negative"]
+def test_passthrough_conditioning_node_trace_continues_upstream():
+    workflow = {
+        "1": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "positive via combine", "clip": ["5", 0]},
+        },
+        "2": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "negative", "clip": ["5", 0]},
+        },
+        "3": {
+            "class_type": "ConditioningCombine",
+            "inputs": {"conditioning_1": ["1", 0], "conditioning_2": ["4", 0]},
+        },
+        "4": {
+            "class_type": "ConditioningZeroOut",
+            "inputs": {"conditioning": ["1", 0]},
+        },
+        "5": {
+            "class_type": "CLIPLoader",
+            "inputs": {"clip_name": "text_encoder.safetensors"},
+        },
+        "6": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": 1,
+                "positive": ["3", 0],
+                "negative": ["2", 0],
+            },
+        },
+    }
+    report = analyze_workflow(workflow)
+    group = next(
+        item for item in report["prompt_groups"] if item["sampler_node_id"] == "6"
+    )
+    assert "1" in group["positive_node_ids"]
+    roles = {
+        item["node_id"]: item["roles"]
+        for item in report["prompt_nodes"]
+    }
+    assert "positive" in roles["1"]
+def test_version_snapshot_keeps_previous_prompt_text(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+    store.confirm_prompt_nodes(
+        workflow_id,
+        positive_node_ids=["1"],
+        negative_node_ids=["2"],
+    )
+    store.write_prompts(
+        workflow_id,
+        positive_text="first positive",
+        negative_text="first negative",
+    )
+    store.write_prompts(
+        workflow_id,
+        positive_text="second positive",
+        negative_text="second negative",
+    )
+    versions_dir = tmp_path / "workflows" / workflow_id / "versions"
+    snapshots = sorted(versions_dir.glob("*.json"))
+    assert len(snapshots) == 2
+    first_snapshot = json.loads(
+        snapshots[0].read_text(encoding="utf-8")
+    )
+    # 第一份快照必须保存第一次写入前的原始旧文本，而不是第二次写入后的新文本。
+    assert first_snapshot["1"]["inputs"]["text"] == "old positive"
+    assert first_snapshot["2"]["inputs"]["text"] == "old negative"
+    second_snapshot = json.loads(
+        snapshots[1].read_text(encoding="utf-8")
+    )
+    assert second_snapshot["1"]["inputs"]["text"] == "first positive"
+    assert second_snapshot["2"]["inputs"]["text"] == "first negative"
+def test_reimport_and_reopen_persists_across_store_instances(tmp_path):
+    data_root = tmp_path / "workflows"
+    first_store = WorkflowStore(data_root)
+    source = sample_api_workflow()
+    imported = first_store.import_workflow("sample_api.json", source)
+    workflow_id = imported["id"]
+    first_store.confirm_prompt_nodes(
+        workflow_id,
+        positive_node_ids=["1"],
+        negative_node_ids=["2"],
+    )
+    first_store.write_prompts(
+        workflow_id,
+        positive_text="persisted positive",
+        negative_text="persisted negative",
+    )
+    # 重新打开：模拟进程重启后用同一数据目录重建 Store。
+    reopened = WorkflowStore(data_root)
+    detail = reopened.get_workflow(workflow_id)
+    prompts = {
+        item["role"]: item["text"] for item in detail["working_prompts"]
+    }
+    assert prompts["positive"] == "persisted positive"
+    assert prompts["negative"] == "persisted negative"
+    assert detail["manifest"]["confirmed"] is True
+    listing = reopened.list_workflows()
+    assert any(item["id"] == workflow_id for item in listing)
+    # 原始文件在重开后仍未被修改。
+    original = json.loads(
+        (data_root / workflow_id / "original.json").read_text(encoding="utf-8")
+    )
+    assert original == source
 def test_invalid_workflow_is_rejected():
     with pytest.raises(WorkflowError):
         detect_format({"hello": "world"})

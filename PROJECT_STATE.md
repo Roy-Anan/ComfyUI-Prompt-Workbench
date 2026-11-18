@@ -271,3 +271,30 @@
 - service 已知改进点（详见 R2 `known-issues.md`）：指纹规范化偏严格、ConditioningCombine/中转节点 conditioning 追溯、结构化白名单 diff、测试缺口、工程分层。
 - Python 3.12 兼容性未验证；显存阈值待真机测量。
 - 下一步：提供真实 ComfyUI 导出的 API workflow JSON，完成 M1/M2 真机闭环，再进入 M3。
+
+## 13. TASK-003.1-R3 服务收尾记录（2026-11-18）
+
+### 13.1 当前状态
+
+- 在 R2 基础上完成中转 conditioning 追溯修复、结构化白名单 diff 改造与回归用例补齐；后端 **62 passed**，前端构建 exit 0。
+- 改动仅限 `backend/workflow_service.py` 与 `backend/test_workflow_service.py`；前端无代码改动。
+
+### 13.2 测试与构建（已实测）
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| Python pytest | 通过 | **62 passed, 1 warning in 6.95s**（Python 3.13.18 / pytest 8.4.2，exit 0） |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块，Vite 5.4.21 |
+| `nodes` 字典结构识别 | 通过 | `test_detect_api_workflow_wrapped_in_nodes` |
+| 中转 conditioning 追溯 | 通过 | `test_passthrough_conditioning_node_trace_continues_upstream` |
+| 版本快照存旧文本 | 通过 | `test_version_snapshot_keeps_previous_prompt_text` |
+| 重开持久化 | 通过 | `test_reimport_and_reopen_persists_across_store_instances` |
+| 非白名单值变更拒绝 | 通过 | `test_structural_diff_rejects_non_whitelist_value_change` |
+| 真机浏览器闭环 | **未闭环** | 仍缺真实 ComfyUI API workflow 样本 |
+
+### 13.3 遗留与 backlog
+
+- 指纹规范化偏严格（数字 1/1.0、浮点精度、空值空串、链接 slot 序号）本轮刻意未放宽，待真实样本确认口径后再改。
+- 工程分层：模型节点硬编码清单可抽配置；并发写锁未加；前端 `**{filename}**` 星号纯文本未渲染。
+- Python 3.12 兼容性未验证；显存阈值待真机测量。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R3/`。
