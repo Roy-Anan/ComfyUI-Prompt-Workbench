@@ -518,3 +518,31 @@
 - 本轮无前端规则管理界面；旧 profiles 文本结构化导入、多模型/LoRA 组合、冲突人工裁决、动态检索、LLM 上下文组装、版本/差异回退未实现。
 - 哈希按需触发；VAE/CLIP 目录未纳入索引；目录不递归；并发写锁未加；stopper 身份校验缺陷未修。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R11/`。
+
+## 22. TASK-003.1-R12 M3 第七切片：旧 profiles 文本解析器与来源/可信度标注映射（2026-11-18）
+
+### 22.1 当前状态
+
+- 新增 `backend/profile_parser.py`：纯只读解析层，把旧 `profiles/*.txt` 分节文本转成规则**候选**（`RuleCandidate` / `ParsedProfile`），不写库、不调 ComfyUI/Ollama、不回写工作流。
+- 标注映射：`[已核实]/[镜像核实]` → verified_mirror/partial；`[作者说明]` → author/partial；`[作者推荐]/[作者示例]` → author/authoritative；含「社区」→ community/unverified；待核实/其余 → unverified/unverified。同时识别无方括号的前缀标签（作者推荐/作者示例/社区参考等）。
+- 缺失口径：未给出/待填写/未找到/暂无/空值记为 unknown 字段，不产出候选；范例字段内嵌「未找到」同样判缺失；架构标签剥离尾部全角/半角括号备注。
+- `candidates_to_records(profile, level, scope_key)` 把候选投影成规则记录形状的纯 dict（rule_key=`SECTION::Field`、version=`legacy-1`、带 source_section/source_raw），持久化留后续切片。
+- 后端测试 **105 passed**；前端构建 exit 0。
+
+### 22.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 身份字段提取 | 通过 | filename/display_name/architecture 顶层提取 |
+| 缺失字段不产候选 | 通过 | unknown_fields 记录，候选清单不含缺失键 |
+| 标注映射 | 通过 | 已核实/作者说明/作者推荐/社区四类映射正确 |
+| 记录形状投影 | 通过 | `candidates_to_records` 输出 level/scope_key/rule_key/source_raw |
+| 真实 13 份档案盘点 | 通过 | `samples/profile-parse-summary.json`：13 文件，288 候选，270 未知字段，全部解析出文件名 |
+| Python pytest | 通过 | **105 passed, 1 warning in 4.76s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 22.3 边界与 backlog
+
+- 本轮只产出候选与投影 dict；候选→规则库的审核导入流程、三级规则实际数据装载、前端规则管理界面未实现。
+- 解析为保守口径：值内散文不作参数解析（步长/分辨率/CFG 保留原文）；哈希按需；VAE/CLIP 目录未索引；并发写锁未加；stopper 身份校验缺陷未修。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R12/`。
