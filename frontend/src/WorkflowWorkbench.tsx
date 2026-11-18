@@ -272,6 +272,7 @@ export default function WorkflowWorkbench() {
       setComfyTasks([]);
       setTaskSyncError(null);
       setVersions([]);
+      setConfirmStamp(null);
       void loadTasks(false);
       void loadVersions(id);
       setMessage(`已打开：${result.manifest.filename}`);
@@ -439,6 +440,37 @@ export default function WorkflowWorkbench() {
       setVersions([]);
     }
   }
+  const [restoringStamp, setRestoringStamp] = useState<string | null>(null);
+  const [confirmStamp, setConfirmStamp] = useState<string | null>(null);
+
+  async function restoreVersion(stamp: string) {
+    if (!workflowId) return;
+    setRestoringStamp(stamp);
+    setConfirmStamp(null);
+    try {
+      const result = await apiPost<WriteResult>(
+        `/api/workflows/${workflowId}/versions/${stamp}/restore`,
+        {},
+      );
+      setDetail(result.workflow);
+      setPositiveText(
+        result.workflow.working_prompts.find((item) => item.role === "positive")
+          ?.text ?? "",
+      );
+      setNegativeText(
+        result.workflow.working_prompts.find((item) => item.role === "negative")
+          ?.text ?? "",
+      );
+      await loadVersions(workflowId);
+      setMessage(
+        "已恢复所选版本；当前内容已另存为一个新的历史版本快照。",
+      );
+    } catch (error) {
+      setMessage(`版本恢复失败：${String(error)}`);
+    } finally {
+      setRestoringStamp(null);
+    }
+  }
   async function submitTask() {
     if (!workflowId) return;
     setTaskBusy(true);
@@ -582,7 +614,7 @@ export default function WorkflowWorkbench() {
                     ))}
                   </ul>
                 )}
-                <h4>历史版本（只读）</h4>
+                <h4>历史版本</h4>
                 {versions.length === 0 ? (
                   <p className="muted">暂无保存过的历史版本。</p>
                 ) : (
@@ -592,6 +624,8 @@ export default function WorkflowWorkbench() {
                         entry.prompts.find((p) => p.role === "positive")?.text ?? "";
                       const negative =
                         entry.prompts.find((p) => p.role === "negative")?.text ?? "";
+                      const restoring = restoringStamp === entry.stamp;
+                      const confirming = confirmStamp === entry.stamp;
                       return (
                         <li key={entry.stamp}>
                           <small className="workflow-meta">
@@ -599,6 +633,32 @@ export default function WorkflowWorkbench() {
                           </small>
                           <div>正向：{clipText(positive)}</div>
                           <div>负向：{clipText(negative)}</div>
+                          {confirming ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={restoring || busy}
+                                onClick={() => void restoreVersion(entry.stamp)}
+                              >
+                                {restoring ? "正在恢复…" : "再次点击确认恢复"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={restoring || busy}
+                                onClick={() => setConfirmStamp(null)}
+                              >
+                                取消
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={restoring || busy}
+                              onClick={() => setConfirmStamp(entry.stamp)}
+                            >
+                              {restoring ? "正在恢复…" : "恢复此版本"}
+                            </button>
+                          )}
                         </li>
                       );
                     })}

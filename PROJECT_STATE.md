@@ -1624,3 +1624,33 @@
 - R64 仅整档导入；逐候选勾选 / 驳回、差异预览、候选审核写入深化仍属 M3 backlog。
 - R65 不做导入前后差异对照；外部目录存在性与连接合法性由后端保存时 fail-closed 校验。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R64/`。
+
+## 74. TASK-003.1-R66 版本快照恢复（恢复旧版本产生新版本）（2026-11-18）
+
+### 74.1 落地内容
+
+- 后端 `WorkflowStore.restore_version(workflow_id, stamp)`：UUID / 目录 / manifest（api、confirmed）
+  校验；快照标识经 `Path(stamp).name` 归一化并 resolve 限定在 `versions/` 内防越界；按白名单提取
+  positive / negative 首个字符串文本；两类皆空报错；最终复用既有 `write_prompts` 写回，写入前先把
+  当前工作副本存为新快照，满足「恢复旧版本产生新版本」。
+- 端点 `POST /api/workflows/{workflow_id}/versions/{stamp}/restore`（无 body），异常走既有
+  `_raise_api_error`，返回结构同 `write_prompts`。
+- 前端版本条目接入恢复：`restoreVersion(stamp)` 调端点后同步工作副本文本并重载版本列表；两步内联
+  确认（首点进入确认态、二次点击提交、可取消），不使用原生 `window.confirm`；切换工作流清空确认态。
+
+### 74.2 真机闭环与回归
+
+- 后端直连：导入样本 → 确认 → 写 v1 / v2；恢复 v1 后工作副本回退 v1，版本由 2 变 3（最新为恢复前
+  v2 新快照）；缺失快照 400，越界标识被拒。
+- 浏览器：两条快照各带「恢复此版本」；确认态二次点击后消息「已恢复所选版本；当前内容已另存为一个
+  新的历史版本快照。」，编辑框回退 v1，版本列表三条。
+- 冒烟临时副本已删除，`rules=0`、`profiles=13`、`workflows` 回到 22；stopper 按身份回收 PID 23168，
+  端口关闭；Ollama / ComfyUI 未触碰。
+- 后端 **229 passed, 1 warning**（较 225 基线 +4：服务层 2 + 端点层 2）；前端 `tsc -b && vite build`
+  绿，产物 `index-C6s1S_OZ.js` 180.85 kB / gzip 57.71 kB，`index-X0JFovQF.css` 9.42 kB / gzip 2.33 kB。
+
+### 74.3 边界与 backlog
+
+- 同 role 多节点沿用既有 `write_prompts` 聚合口径；恢复按 role 取首个节点文本，不做多节点逐字段合并。
+- 多草稿 / 草稿箱、版本备注、版本差异对照、标签 / 收藏 / 搜索 / 回收站仍属 M5 backlog。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R66/`。

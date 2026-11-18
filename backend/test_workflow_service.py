@@ -218,6 +218,66 @@ def test_list_versions_returns_saved_snapshots_newest_first(tmp_path):
     assert entries[0]["stamp"] and entries[1]["stamp"]
 
 
+def test_restore_version_writes_back_snapshot_and_creates_new_snapshot(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+    store.confirm_prompt_nodes(
+        workflow_id,
+        positive_node_ids=["1"],
+        negative_node_ids=["2"],
+    )
+
+    store.write_prompts(
+        workflow_id,
+        positive_text="v1 positive",
+        negative_text="v1 negative",
+    )
+    store.write_prompts(
+        workflow_id,
+        positive_text="v2 positive",
+        negative_text="v2 negative",
+    )
+
+    entries = store.list_versions(workflow_id)
+    v1_stamp = entries[0]["stamp"]  # v1 snapshot, newest before restore
+
+    restored = store.restore_version(workflow_id, v1_stamp)
+    working = {p["role"]: p["text"] for p in restored["workflow"]["working_prompts"]}
+    assert working["positive"] == "v1 positive"
+    assert working["negative"] == "v1 negative"
+
+    # Restoring first snapshots the current v2 working copy as a new version.
+    versions_dir = tmp_path / "workflows" / workflow_id / "versions"
+    assert len(list(versions_dir.glob("*.json"))) == 3
+    after = store.list_versions(workflow_id)
+    newest = {p["role"]: p["text"] for p in after[0]["prompts"]}
+    assert newest["positive"] == "v2 positive"
+    assert newest["negative"] == "v2 negative"
+
+
+def test_restore_version_rejects_missing_snapshot(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+    store.confirm_prompt_nodes(
+        workflow_id,
+        positive_node_ids=["1"],
+        negative_node_ids=["2"],
+    )
+    store.write_prompts(
+        workflow_id,
+        positive_text="v1 positive",
+        negative_text="v1 negative",
+    )
+
+    with pytest.raises(WorkflowError, match="版本快照不存在"):
+        store.restore_version(workflow_id, "20000101-000000-000000")
+
+    with pytest.raises(WorkflowError, match="版本快照路径越界|无效的版本标识"):
+        store.restore_version(workflow_id, "../escape")
+
+
 def test_write_rejects_unconfirmed_nodes(tmp_path):
     store = WorkflowStore(tmp_path / "workflows")
     imported = store.import_workflow(

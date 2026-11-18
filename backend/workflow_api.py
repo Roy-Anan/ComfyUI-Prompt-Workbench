@@ -222,6 +222,19 @@ def list_versions(workflow_id: str):
         _raise_api_error(exc)
 
 
+@router.post("/{workflow_id}/versions/{stamp}/restore")
+def restore_version(workflow_id: str, stamp: str):
+    """Restore whitelist Prompt texts from a saved version snapshot.
+
+    Reuses the guarded write path; the current working copy is first saved as
+    a new version snapshot, so restoring an old version produces a new version.
+    """
+    try:
+        return store().restore_version(workflow_id, stamp)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
 @router.post("/{workflow_id}/confirm")
 def confirm_prompt_nodes(
     workflow_id: str,

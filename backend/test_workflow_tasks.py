@@ -521,6 +521,55 @@ def test_versions_unknown_workflow_returns_404(client):
     assert response.status_code == 404
 
 
+def _write(test_client, workflow_id, positive, negative):
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/write",
+        headers=AUTH,
+        json={"positive_text": positive, "negative_text": negative},
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_restore_version_endpoint_writes_back_and_adds_snapshot(client):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    _confirm(test_client, workflow_id)
+    _write(test_client, workflow_id, "v1 positive", "v1 negative")
+    _write(test_client, workflow_id, "v2 positive", "v2 negative")
+
+    versions = test_client.get(
+        f"/api/workflows/{workflow_id}/versions", headers=AUTH
+    ).json()["items"]
+    stamp = versions[0]["stamp"]
+
+    restored = test_client.post(
+        f"/api/workflows/{workflow_id}/versions/{stamp}/restore",
+        headers=AUTH,
+    )
+    assert restored.status_code == 200
+    working = {
+        p["role"]: p["text"]
+        for p in restored.json()["workflow"]["working_prompts"]
+    }
+    assert working["positive"] == "v1 positive"
+    assert working["negative"] == "v1 negative"
+
+    after = test_client.get(
+        f"/api/workflows/{workflow_id}/versions", headers=AUTH
+    ).json()["items"]
+    assert len(after) == 3
+
+
+def test_restore_unknown_workflow_returns_404(client):
+    test_client, _ = client
+    response = test_client.post(
+        "/api/workflows/00000000-0000-4000-8000-000000000000/versions/20000101-000000-000000/restore",
+        headers=AUTH,
+    )
+    assert response.status_code == 404
+
+
 def test_candidate_blocked_when_comfyui_queue_active(client, monkeypatch):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())

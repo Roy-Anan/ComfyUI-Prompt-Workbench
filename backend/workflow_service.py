@@ -779,6 +779,67 @@ class WorkflowStore:
                 )
             entries.append({"stamp": stamp, "prompts": prompts})
         return entries
+
+    def restore_version(self, workflow_id: str, stamp: str) -> dict[str, Any]:
+        """Restore whitelist Prompt texts from a saved pre-write snapshot.
+
+        The snapshot is read-only source: its whitelist texts are written back
+        through the same guarded ``write_prompts`` path, which first saves the
+        current working copy as a new version snapshot (restoring an old
+        version therefore produces a new version, per the M5 acceptance).
+        Missing/corrupt snapshots, non-API workflows, unconfirmed whitelist
+        and source-fingerprint drift all fail closed; no draft or multi-draft
+        model is introduced here.
+        """
+        folder = self._folder(workflow_id)
+        if not folder.is_dir():
+            raise FileNotFoundError("工作流不存在")
+        manifest = _read_json(folder / "manifest.json")
+        if manifest.get("format") != "api":
+            raise WorkflowError("UI workflow 当前不支持安全写入")
+        if manifest.get("confirmed") is not True:
+            raise WorkflowError("请先确认 Prompt 节点白名单")
+
+        safe_stamp = Path(stamp).name
+        if not safe_stamp or safe_stamp != stamp or ".." in safe_stamp:
+            raise WorkflowError("无效的版本标识")
+        versions_dir = folder / "versions"
+        snapshot_path = (versions_dir / f"{safe_stamp}.json").resolve()
+        try:
+            snapshot_path.relative_to(versions_dir.resolve())
+        except ValueError as exc:
+            raise WorkflowError("版本快照路径越界") from exc
+        if not snapshot_path.is_file():
+            raise WorkflowError("指定的版本快照不存在")
+
+        snapshot = _read_json(snapshot_path)
+        snapshot_nodes = _api_nodes(snapshot)
+        whitelist = manifest.get("whitelist", [])
+        positive_text: str | None = None
+        negative_text: str | None = None
+        for item in whitelist:
+            if not isinstance(item, dict):
+                continue
+            node_id = str(item.get("node_id", ""))
+            role = item.get("role")
+            node = snapshot_nodes.get(node_id, {})
+            text = node.get("inputs", {}).get("text", "")
+            if not isinstance(text, str):
+                continue
+            if role == "positive" and positive_text is None:
+                positive_text = text
+            elif role == "negative" and negative_text is None:
+                negative_text = text
+
+        if positive_text is None and negative_text is None:
+            raise WorkflowError("该版本快照没有可恢复的 Prompt 文本")
+
+        return self.write_prompts(
+            workflow_id,
+            positive_text,
+            negative_text,
+        )
+
     def confirm_prompt_nodes(
         self,
         workflow_id: str,
