@@ -21,5 +21,5 @@ ComfyUI Prompt Workbench，M3 第二切片：模型身份库骨架与元数据�
 ## 提交信息
 
 - 分支：`dev`
-- 提交：见提交后回填（本地 commit 与 origin/dev 推送记录）。
+- 提交：`cdedbc05d6a54d8f5871a93691f6a49d5edb62e1`（本地 commit，已推送 origin/dev，连接器核对远端 dev 最新即此提交）。
 - 基线：`d8f8778`（R6）。
