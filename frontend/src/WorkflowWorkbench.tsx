@@ -180,26 +180,26 @@ function clipText(text: string, limit = 80): string {
 
 type PromptImport = { positive: string; negative: string };
 
-function parsePromptImport(filename: string, text: string): PromptImport {
-  const name = filename.toLowerCase();
-  if (name.endsWith(".json")) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new Error("JSON 文件无法解析。");
-    }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new Error("不是有效的 Prompt 导出 JSON。");
-    }
-    const record = parsed as Record<string, unknown>;
-    const positive = typeof record.positive === "string" ? record.positive : "";
-    const negative = typeof record.negative === "string" ? record.negative : "";
-    if (!positive.trim() && !negative.trim()) {
-      throw new Error("JSON 中未包含有效的正向/负向 Prompt。");
-    }
-    return { positive, negative };
+function parsePromptJson(text: string): PromptImport {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("JSON 文件无法解析。");
   }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("不是有效的 Prompt 导出 JSON。");
+  }
+  const record = parsed as Record<string, unknown>;
+  const positive = typeof record.positive === "string" ? record.positive : "";
+  const negative = typeof record.negative === "string" ? record.negative : "";
+  if (!positive.trim() && !negative.trim()) {
+    throw new Error("JSON 中未包含有效的正向/负向 Prompt。");
+  }
+  return { positive, negative };
+}
+
+function parsePromptText(text: string): PromptImport {
   const lines = text.split(/\r?\n/);
   const positiveLines: string[] = [];
   const negativeLines: string[] = [];
@@ -234,6 +234,26 @@ function parsePromptImport(filename: string, text: string): PromptImport {
     throw new Error("未解析到有效的 Prompt 文本。");
   }
   return { positive, negative };
+}
+
+function parsePromptImport(filename: string, text: string): PromptImport {
+  const name = filename.toLowerCase();
+  if (name.endsWith(".json")) {
+    return parsePromptJson(text);
+  }
+  return parsePromptText(text);
+}
+
+function parsePromptContent(text: string): PromptImport {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      return parsePromptJson(trimmed);
+    } catch {
+      // 非导出 JSON 结构时回退按纯文本分段，不臆造字段。
+    }
+  }
+  return parsePromptText(text);
 }
 
 function outputFilenames(outputs: unknown): string[] {
@@ -294,6 +314,8 @@ export default function WorkflowWorkbench() {
   const [candidate, setCandidate] = useState<string | null>(null);
   const [candidateBusy, setCandidateBusy] = useState(false);
   const [importedPrompt, setImportedPrompt] = useState<PromptImport | null>(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
   const [comfyTasks, setComfyTasks] = useState<ComfyTask[]>([]);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskSyncError, setTaskSyncError] = useState<string | null>(null);
@@ -373,6 +395,8 @@ export default function WorkflowWorkbench() {
       setConfirmStamp(null);
       setComparingStamp(null);
       setImportedPrompt(null);
+      setPasteOpen(false);
+      setPasteText("");
       void loadTasks(false);
       void loadVersions(id);
       void loadDrafts(id);
@@ -423,6 +447,8 @@ export default function WorkflowWorkbench() {
       setDraftKeyword("");
       setComparingStamp(null);
       setImportedPrompt(null);
+      setPasteOpen(false);
+      setPasteText("");
       await refreshList();
       setMessage(`导入成功：${result.filename}`);
     } catch (error) {
@@ -631,6 +657,23 @@ export default function WorkflowWorkbench() {
   function dismissImported() {
     setImportedPrompt(null);
     setMessage("导入内容已放弃（未写入编辑框与工作副本）。");
+  }
+
+  function parsePasted() {
+    try {
+      const parsed = parsePromptContent(pasteText);
+      setImportedPrompt(parsed);
+      setPasteOpen(false);
+      setPasteText("");
+      setMessage("已解析粘贴内容，采用前请核对（未写入编辑框与工作副本）。");
+    } catch (error) {
+      setMessage(`粘贴解析失败：${String(error)}`);
+    }
+  }
+
+  function cancelPaste() {
+    setPasteOpen(false);
+    setPasteText("");
   }
 
   async function loadTasks(refresh: boolean) {
@@ -1337,10 +1380,30 @@ export default function WorkflowWorkbench() {
                     }}
                   />
                 </label>
+                <button onClick={() => setPasteOpen((v) => !v)}>粘贴文本</button>
                 <span className="muted">
                   不会修改原始文件，也不会提交 ComfyUI 任务。
                 </span>
               </div>
+              {pasteOpen && (
+                <div className="workflow-text-field">
+                  <span>粘贴 Prompt 文本（可含正向/负向标记，或导出 JSON）</span>
+                  <textarea
+                    rows={6}
+                    value={pasteText}
+                    disabled={busy}
+                    onChange={(event) => setPasteText(event.target.value)}
+                    placeholder={"正向：…\n负向：…"}
+                  />
+                  <div className="actions">
+                    <button onClick={parsePasted}>解析到预览</button>
+                    <button onClick={cancelPaste}>取消</button>
+                    <span className="muted">
+                      粘贴内容不会自动写入工作副本。
+                    </span>
+                  </div>
+                </div>
+              )}
               {importedPrompt && (
                 <div className="workflow-text-field">
                   <span>导入预览（只读，采用后进入下方编辑框）</span>
