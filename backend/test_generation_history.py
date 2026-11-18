@@ -167,6 +167,51 @@ def test_history_filter_by_workflow_and_404(client, monkeypatch):
     assert missing.status_code == 404
 
 
+def test_history_filters_by_status_keyword_and_combo(client, monkeypatch):
+    test_client, main = client
+    workflow_id = _submit_one(test_client, monkeypatch, prompt_id="prompt-1")
+
+    with main.model_identity.connect(
+        main.datadir.database_path(main.DATA_ROOT)
+    ) as connection:
+        main.generation_history.ensure_schema(connection)
+        main.generation_history.record_snapshot(
+            connection,
+            "prompt-2",
+            workflow_id,
+            [
+                {"role": "positive", "text": "landscape scenery"},
+                {"role": "negative", "text": "ugly"},
+            ],
+            {
+                "model_nodes": [
+                    {"node_id": "5", "inputs": {"ckpt_name": "landscape.safetensors"}}
+                ],
+                "lora_nodes": [],
+            },
+            "succeeded",
+        )
+
+    def query(params: str):
+        return test_client.get(
+            f"/api/history?{params}", headers=AUTH
+        ).json()["items"]
+
+    # Status exact match; unknown status returns empty rather than remapped.
+    assert [item["prompt_id"] for item in query("status=submitted")] == ["prompt-1"]
+    assert [item["prompt_id"] for item in query("status=succeeded")] == ["prompt-2"]
+    assert query("status=weird-status") == []
+
+    # Keyword matches prompt text and frozen model snapshot file names.
+    assert [item["prompt_id"] for item in query("keyword=landscape")] == ["prompt-2"]
+    assert [item["prompt_id"] for item in query("keyword=x.safetensors")] == ["prompt-1"]
+    assert query("keyword=zzz-not-found") == []
+
+    # Combined filters narrow both ways.
+    assert len(query("status=succeeded&keyword=landscape")) == 1
+    assert query("status=submitted&keyword=landscape") == []
+
+
 def test_extract_images_supports_list_and_dict_shapes():
     list_shape = {"9": [{"filename": "a.png"}]}
     dict_shape = {"10": {"images": [{"filename": "b.png"}]}}

@@ -278,17 +278,46 @@ def get_by_prompt_id(
     return _row(row)
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards so a literal search term matches literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def list_history(
-    connection: sqlite3.Connection, workflow_id: str | None = None
+    connection: sqlite3.Connection,
+    workflow_id: str | None = None,
+    status: str | None = None,
+    keyword: str | None = None,
 ) -> list[dict[str, Any]]:
+    """List history newest-first, with conservative read-only filters.
+
+    ``status`` matches ``task_status`` exactly; an unknown status simply
+    returns an empty result rather than being remapped. ``keyword`` matches
+    case-insensitively against positive/negative prompt text and the frozen
+    model snapshot JSON (file names). Empty/blank filters are ignored.
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+
     if workflow_id:
-        rows = connection.execute(
-            "SELECT * FROM generation_history WHERE workflow_id = ? "
-            "ORDER BY created_at DESC",
-            (workflow_id,),
-        ).fetchall()
-    else:
-        rows = connection.execute(
-            "SELECT * FROM generation_history ORDER BY created_at DESC"
-        ).fetchall()
+        clauses.append("workflow_id = ?")
+        params.append(workflow_id)
+    if status:
+        clauses.append("task_status = ?")
+        params.append(status)
+    if keyword and keyword.strip():
+        term = _escape_like(keyword.strip().lower())
+        like = f"%{term}%"
+        clauses.append(
+            "(LOWER(positive_prompt) LIKE ? ESCAPE '\\' "
+            "OR LOWER(negative_prompt) LIKE ? ESCAPE '\\' "
+            "OR LOWER(model_snapshot) LIKE ? ESCAPE '\\')"
+        )
+        params.extend([like, like, like])
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = connection.execute(
+        f"SELECT * FROM generation_history {where} ORDER BY created_at DESC",
+        params,
+    ).fetchall()
     return [record for record in (_row(row) for row in rows) if record]

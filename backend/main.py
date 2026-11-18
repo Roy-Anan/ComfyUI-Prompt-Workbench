@@ -744,12 +744,22 @@ def comfyui_queue():
 
 
 @app.get("/api/history")
-def generation_history_list(workflow_id: str | None = None):
-    """Read-only generation history, newest first, optionally filtered by workflow."""
+def generation_history_list(
+    workflow_id: str | None = None,
+    status: str | None = None,
+    keyword: str | None = None,
+):
+    """Read-only generation history, newest first, optionally filtered.
+
+    Filters: ``workflow_id`` exact match, ``status`` exact task status,
+    ``keyword`` case-insensitive match against prompt text and model snapshot.
+    """
     output_dir = load_settings().get("storage", {}).get("output", "")
     with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
         generation_history.ensure_schema(connection)
-        items = generation_history.list_history(connection, workflow_id)
+        items = generation_history.list_history(
+            connection, workflow_id=workflow_id, status=status, keyword=keyword
+        )
     for item in items:
         item["images"] = generation_history.annotate_exists(
             item.get("images") or [], output_dir

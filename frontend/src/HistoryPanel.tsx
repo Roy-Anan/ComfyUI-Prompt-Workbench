@@ -58,10 +58,22 @@ function summarize(text: string | null, limit = 80): string {
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
+const STATUS_OPTIONS = [
+  "submitted",
+  "running",
+  "succeeded",
+  "failed",
+  "interrupted",
+  "unknown",
+];
+
 export default function HistoryPanel() {
   const [items, setItems] = useState<HistoryRecord[] | null>(null);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [workflowFilter, setWorkflowFilter] = useState("");
+  const [keyword, setKeyword] = useState("");
 
   async function load() {
     try {
@@ -78,6 +90,27 @@ export default function HistoryPanel() {
     void load();
   }, []);
 
+  const workflowOptions = Array.from(
+    new Set((items || []).map((record) => record.workflow_id)),
+  );
+
+  const keywordTerm = keyword.trim().toLowerCase();
+  const filtered = (items || []).filter((record) => {
+    if (statusFilter && record.task_status !== statusFilter) return false;
+    if (workflowFilter && record.workflow_id !== workflowFilter) return false;
+    if (keywordTerm) {
+      const haystack = [
+        record.positive_prompt,
+        record.negative_prompt,
+        JSON.stringify(record.model_snapshot),
+      ]
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(keywordTerm)) return false;
+    }
+    return true;
+  });
+
   return (
     <section className="panel">
       <div className="section-heading">
@@ -92,13 +125,59 @@ export default function HistoryPanel() {
 
       {error && <p className="workflow-warning">{error}</p>}
 
+      {items !== null && items.length > 0 && (
+        <div className="history-filters">
+          <label>
+            状态
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="">全部</option>
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {STATUS_LABEL[status] ?? status}
+                </option>
+              ))}
+            </select>
+          </label>
+          {workflowOptions.length > 1 && (
+            <label>
+              工作流
+              <select
+                value={workflowFilter}
+                onChange={(event) => setWorkflowFilter(event.target.value)}
+              >
+                <option value="">全部</option>
+                {workflowOptions.map((workflowId) => (
+                  <option key={workflowId} value={workflowId}>
+                    {workflowId.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label>
+            关键词
+            <input
+              type="text"
+              value={keyword}
+              placeholder="Prompt 或模型文件名"
+              onChange={(event) => setKeyword(event.target.value)}
+            />
+          </label>
+        </div>
+      )}
+
       {items === null ? (
         <p>正在读取历史…</p>
       ) : items.length === 0 ? (
         <p className="catalog-empty">暂无生成历史。</p>
+      ) : filtered.length === 0 ? (
+        <p className="catalog-empty">没有符合筛选条件的历史记录。</p>
       ) : (
         <div className="rule-list">
-          {items.map((record) => {
+          {filtered.map((record) => {
             const open = openId === record.prompt_id;
             const checkpoints = snapshotFiles(record.model_snapshot, "checkpoints");
             const loras = snapshotFiles(record.model_snapshot, "loras");

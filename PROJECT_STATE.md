@@ -1342,6 +1342,23 @@
 
 ### 58.3 边界与 backlog
 
-- 缩略图索引、图库网格视图、搜索筛选导出、历史反向创建草稿留后续切片。
+- 缩略图索引、图库网格视图、历史反向创建草稿留后续切片。
 - userdata/workflows 残留 22 个历次验收副本（非本轮新增），待确认后批量清理。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R48/`。
+
+## 59. TASK-003.1-R49 历史记录筛选（2026-11-18）
+
+### 59.1 落地内容
+
+- 后端 `list_history` 增加 `status`（任务状态精确匹配）、`keyword`（大小写不敏感，匹配正/负向
+  Prompt 文本与冻结模型快照文件名）只读过滤；`/api/history` 透传 `status`/`keyword` 查询参数。
+  未知状态不重映射，匹配为空；LIKE 通配符转义。
+- 前端 `HistoryPanel` 加状态下拉、工作流下拉（从现有记录派生）、关键词输入框，本地即时筛选；
+  无匹配显示独立空态。
+- 后端 **216 passed, 1 warning**；前端 `tsc -b && vite build` 绿（`index-B1NYoJeQ.js 173.69 kB
+  gzip 55.39 kB`）。
+
+### 59.2 边界与 backlog
+
+- 缩略图索引、图库网格视图、按日期范围/导出、历史反向创建草稿留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R49/`。
