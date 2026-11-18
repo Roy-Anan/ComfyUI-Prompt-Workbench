@@ -95,6 +95,7 @@ def resolve_field(
     level: str,
     scope_key: str | None,
     key: str,
+    architecture_scope: str | None = None,
 ) -> dict[str, Any]:
     """Resolve one field for a checkpoint/architecture context.
 
@@ -102,14 +103,19 @@ def resolve_field(
     level that covers the key wins (programmatic priority). A same-level value
     disagreement resolves to ``conflict``; an uncovered field resolves to
     ``unknown``.
+
+    ``architecture_scope`` identifies the architecture family for a checkpoint
+    context; checkpoint and architecture scopes differ, so it must be passed
+    explicitly when the two are not the same string.
     """
     if level not in LEVEL_RANK:
         raise RuleError(f"Unknown context level: {level}")
 
     indexed = _index_by_level(rules)
+    arch_scope = scope_key if level == "architecture" else architecture_scope
     context_scopes: list[tuple[str, str | None]] = [
         ("checkpoint", scope_key),
-        ("architecture", scope_key if level == "architecture" else None),
+        ("architecture", arch_scope),
         ("global", None),
     ]
     # When the request itself targets architecture, do not let a checkpoint
@@ -166,18 +172,22 @@ def resolve_context(
     level: str,
     scope_key: str | None,
     keys: list[str],
+    architecture_scope: str | None = None,
 ) -> dict[str, Any]:
     """Resolve several fields for one context in a single pass.
 
     Returns ``{fields: {key: resolution}, conflicts: [...], unknown: [...]}``.
     Only requested keys are evaluated; unrelated rules are never sent onward.
+    ``architecture_scope`` is the architecture family for a checkpoint context.
     """
     fields: dict[str, Any] = {}
     conflicts: list[str] = []
     unknown: list[str] = []
 
     for key in keys:
-        resolution = resolve_field(rules, level, scope_key, key)
+        resolution = resolve_field(
+            rules, level, scope_key, key, architecture_scope=architecture_scope
+        )
         fields[key] = resolution
         if resolution["status"] == "conflict":
             conflicts.append(key)

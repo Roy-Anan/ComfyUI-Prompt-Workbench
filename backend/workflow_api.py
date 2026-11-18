@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 import datadir
 import model_identity
+import rule_prompt
 import rule_store
 from workflow_service import WorkflowError, WorkflowStore
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
@@ -108,3 +109,38 @@ def workflow_rule_context(workflow_id: str):
         rule_store.ensure_schema(connection)
         context = rule_store.context_for_checkpoint(connection, checkpoint)
     return context
+
+
+@router.get("/{workflow_id}/rules/prompt")
+def workflow_rule_prompt(workflow_id: str):
+    """Assemble the trimmed, LLM-ready rule prompt payload for this workflow.
+
+    Resolves the R17 context through the engine's programmatic inheritance and
+    keeps the winning source, provenance and confidence per field. Conflicts
+    stay marked ``conflict`` and uncovered fields ``unknown``; the downstream
+    model is never asked to guess a value or inheritance priority. Unregistered
+    workflows return an empty payload with a no-guidance instruction.
+    """
+    try:
+        workflow = store().get_workflow(workflow_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+    report = workflow.get("report", {})
+    checkpoint = _checkpoint_filename(report)
+    if not checkpoint:
+        return rule_prompt.build_prompt_context(
+            {
+                "status": "unregistered",
+                "checkpoint": None,
+                "architecture": None,
+                "checkpoint_rules": [],
+                "architecture_rules": [],
+                "global_rules": [],
+            }
+        )
+
+    with model_identity.connect(_database_path()) as connection:
+        rule_store.ensure_schema(connection)
+        context = rule_store.context_for_checkpoint(connection, checkpoint)
+    return rule_prompt.build_prompt_context(context)

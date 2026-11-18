@@ -1,0 +1,13 @@
+{
+  "checkpoint": "intorealismUltra_v80.safetensors",
+  "architecture": "SDXL 1.0",
+  "field_count": 16,
+  "by_level": {
+    "architecture": 2,
+    "checkpoint": 14
+  },
+  "conflicts": [],
+  "unknown": [],
+  "ghost_status": "unregistered",
+  "after_cleanup": 0
+}

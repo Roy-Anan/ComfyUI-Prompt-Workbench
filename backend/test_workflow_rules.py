@@ -103,6 +103,48 @@ def test_workflow_rules_unregistered_for_unknown_checkpoint(client):
     assert body["checkpoint_rules"] == []
 
 
+def test_workflow_rule_prompt_payload_for_registered_workflow(client):
+    test_client, main = client
+    db = main.DATA_ROOT / "database" / "workbench.sqlite3"
+    _seed_context_rules(db)
+
+    workflow = {
+        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sample_checkpoint.safetensors"}},
+    }
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    response = test_client.get(
+        f"/api/workflows/{workflow_id}/rules/prompt",
+        headers={"Authorization": "Bearer test-session-token"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "registered"
+    assert body["checkpoint"] == "sample_checkpoint.safetensors"
+    field_keys = {item["key"] for item in body["fields"]}
+    assert "GENERATION SETTINGS::Steps" in field_keys
+    assert any(f["source_level"] == "global" for f in body["fields"])
+    assert "checkpoint 规则优先" in body["instruction"]
+
+
+def test_workflow_rule_prompt_unregistered_without_checkpoint(client):
+    test_client, main = client
+    db = main.DATA_ROOT / "database" / "workbench.sqlite3"
+    _seed_context_rules(db)
+
+    workflow = {"6": {"class_type": "KSampler", "inputs": {}}}
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    response = test_client.get(
+        f"/api/workflows/{workflow_id}/rules/prompt",
+        headers={"Authorization": "Bearer test-session-token"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "unregistered"
+    assert body["fields"] == []
+
+
 def test_workflow_rules_unregistered_without_checkpoint(client):
     test_client, main = client
     db = main.DATA_ROOT / "database" / "workbench.sqlite3"

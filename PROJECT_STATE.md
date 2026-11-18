@@ -679,3 +679,29 @@
 - 本轮仅按 checkpoint 匹配；启用 LoRA 的规则组合尚未纳入（旧档案无 LoRA 规则来源）。
 - 上下文只做规则归集，尚未装配成发给 LLM 的裁剪提示；冲突人工裁决界面、动态检索、版本/差异回退、前端规则/档案管理界面未实现。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R17/`。
+
+## 28. TASK-003.1-R18 M3 第十三切片：上下文规则装配为 LLM 裁剪提示（2026-11-18）
+
+### 28.1 当前状态
+
+- 新增 `rule_prompt.build_prompt_context()`：把 R17 上下文规则经引擎 checkpoint → architecture → global 继承解析，装配为可下发的裁剪提示载荷；每字段保留来源层级、来源、可信度与版本。
+- 新增 `GET /api/workflows/{id}/rules/prompt`：注册模型返回解析后字段集、冲突/未知列表与说明指令；未识别/未登记模型返回空字段集与「不得猜测」指令。
+- 引擎 `resolve_field`/`resolve_context` 增加可选 `architecture_scope`，显式区分 checkpoint 作用域与架构家族作用域。
+- 后端测试 **127 passed**；前端构建 exit 0。
+
+### 28.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 继承优先级程序确定 | 通过 | 测试：checkpoint Steps 覆盖架构/全局；架构与全局字段各自标注来源层级 |
+| 冲突/未知不由 LLM 猜测 | 通过 | 同层冲突保留 conflict 与双来源；未覆盖字段入 unknown；未注册空载荷 |
+| 来源/可信度随字段保留 | 通过 | 真机 Steps=6~12，source=checkpoint，confidence=authoritative |
+| 真机闭环 | 通过 | `samples/smoke-prompt.json`：16 字段（14 checkpoint + 2 architecture/SDXL 1.0），0 冲突；ghost 未注册；清理归零 |
+| Python pytest | 通过 | **127 passed, 1 warning in 5.52s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0 |
+
+### 28.3 边界与 backlog
+
+- 本轮只装配载荷，不调用 Ollama、不发送提示、不回写工作流（M4 接入）。
+- 启用 LoRA 规则组合、冲突人工裁决界面、上下文裁剪长度控制与动态检索未实现。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R18/`。
