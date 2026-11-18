@@ -230,6 +230,23 @@ class StorageValidation(BaseModel):
     create: bool = False
 
 
+class RuleUpsert(BaseModel):
+    level: str
+    scope_key: str | None = None
+    rule_key: str = Field(min_length=1, max_length=120)
+    value: Any = None
+    provenance: str = "unverified"
+    confidence: str = "unverified"
+    version: str = Field(default="1", min_length=1, max_length=40)
+    note: str = Field(default="", max_length=1000)
+
+
+class RuleDelete(BaseModel):
+    level: str
+    scope_key: str | None = None
+    rule_key: str = Field(min_length=1, max_length=120)
+
+
 app = FastAPI(
     title=APP_NAME,
     version=APP_VERSION,
@@ -625,6 +642,51 @@ def resolve_rules(level: str, scope_key: str | None = None, keys: str = ""):
     with model_identity.connect(database_path) as connection:
         rule_store.ensure_schema(connection)
         return rule_store.resolve_stored(connection, level, scope_key, requested)
+
+
+@app.post("/api/rules")
+def upsert_rule(payload: RuleUpsert):
+    """Insert or replace one structured rule.
+
+    Validation is enforced twice: by the pydantic model and again by the
+    engine record validator in ``rule_store``. Invalid records are rejected
+    with 400 and are never written to the store.
+    """
+    settings = load_settings()
+    database_path = Path(settings["storage"]["database"]).expanduser() / "workbench.sqlite3"
+    try:
+        with model_identity.connect(database_path) as connection:
+            rule_store.ensure_schema(connection)
+            record = rule_store.upsert_rule(
+                connection,
+                level=payload.level,
+                scope_key=payload.scope_key,
+                rule_key=payload.rule_key,
+                value=payload.value,
+                provenance=payload.provenance,
+                confidence=payload.confidence,
+                version=payload.version,
+                note=payload.note,
+            )
+            return record
+    except rule_engine.RuleError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete("/api/rules")
+def delete_rule(payload: RuleDelete):
+    """Delete one rule identified by level/scope_key/key."""
+    if payload.level not in rule_engine.LEVEL_ORDER:
+        raise HTTPException(400, f"Unknown rule level: {payload.level}")
+
+    settings = load_settings()
+    database_path = Path(settings["storage"]["database"]).expanduser() / "workbench.sqlite3"
+    with model_identity.connect(database_path) as connection:
+        rule_store.ensure_schema(connection)
+        removed = rule_store.delete_rule(
+            connection, payload.level, payload.scope_key, payload.rule_key
+        )
+    return {"removed": removed}
 
 
 # ---- Static frontend hosting (local Web runtime) ---------------------------

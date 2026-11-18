@@ -1,0 +1,13 @@
+{
+  "bootstrap": {"status": 200, "csrf": true},
+  "upsert": {"status": 200, "level": "checkpoint", "value": 32},
+  "list_after_upsert": {"status": 200, "items": 1},
+  "resolve": {
+    "status": 200,
+    "steps": 32,
+    "unknown": ["clip_skip"]
+  },
+  "invalid_upsert": {"status": 400, "detail": "Unknown rule level: avatar"},
+  "delete": {"status": 200, "removed": true},
+  "list_after_delete": {"status": 200, "items": 0}
+}

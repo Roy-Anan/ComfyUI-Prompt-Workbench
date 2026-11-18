@@ -493,3 +493,28 @@
 - 多模型与启用 LoRA 规则组合、冲突人工裁决界面、动态检索、LLM 上下文组装、版本/差异回退未实现。
 - 哈希按需触发；VAE/CLIP 目录未纳入身份库索引；目录不递归；并发写锁未加；stopper 身份校验缺陷未修。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R10/`。
+
+## 21. TASK-003.1-R11 M3 第六切片：规则写入/删除接口与会话 CSRF 保护（2026-11-18）
+
+### 21.1 当前状态
+
+- `main.py` 新增 `POST /api/rules`（upsert）与 `DELETE /api/rules`（按 level/scope_key/key 删除）；`RuleUpsert`/`RuleDelete` pydantic 模型限定键长与来源/可信度枚举由存储层二次校验；非法层级/记录返回 400，不写库。
+- 写/删请求走既有本地会话与 CSRF 中间件（cookie 会话需 `X-Workbench-CSRF`，Bearer 测试调用豁免）。前端 `apiDelete` 方法补齐。
+- 后端测试增至 **100 passed**；前端构建 exit 0。
+
+### 21.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| upsert 写入 | 通过 | 接口测试：POST 后清单 1 条，值/层级回挂正确 |
+| 删除规则 | 通过 | 接口测试：DELETE 返回 removed=True，清单清空 |
+| 非法记录拒绝 | 通过 | 接口测试：level=avatar 返回 400，未写库 |
+| 真机写删闭环 | 通过 | `samples/smoke-rules-write.json`：写入→清单→解析 steps=32→非法 400→删除→清空 |
+| Python pytest | 通过 | **100 passed, 1 warning in 4.70s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 21.3 边界与 backlog
+
+- 本轮无前端规则管理界面；旧 profiles 文本结构化导入、多模型/LoRA 组合、冲突人工裁决、动态检索、LLM 上下文组装、版本/差异回退未实现。
+- 哈希按需触发；VAE/CLIP 目录未纳入索引；目录不递归；并发写锁未加；stopper 身份校验缺陷未修。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R11/`。

@@ -60,3 +60,57 @@ def test_resolve_rules_rejects_empty_keys_and_bad_level(client):
         "/api/rules/resolve?level=avatar&keys=steps", headers=headers
     )
     assert bad_level.status_code == 400
+
+
+def test_upsert_and_delete_rule_via_api(client):
+    test_client, main = client
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    created = test_client.post(
+        "/api/rules",
+        headers=headers,
+        json={
+            "level": "checkpoint",
+            "scope_key": "pony.safetensors",
+            "rule_key": "steps",
+            "value": 32,
+            "provenance": "author",
+            "confidence": "authoritative",
+        },
+    )
+    assert created.status_code == 200
+    assert created.json()["value"] == 32
+
+    listing = test_client.get("/api/rules", headers=headers)
+    assert len(listing.json()["items"]) == 1
+
+    removed = test_client.request(
+        "DELETE",
+        "/api/rules",
+        headers=headers,
+        json={
+            "level": "checkpoint",
+            "scope_key": "pony.safetensors",
+            "rule_key": "steps",
+        },
+    )
+    assert removed.status_code == 200
+    assert removed.json()["removed"] is True
+
+    listing = test_client.get("/api/rules", headers=headers)
+    assert listing.json()["items"] == []
+
+
+def test_upsert_rejects_invalid_rule(client):
+    test_client, _ = client
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    invalid = test_client.post(
+        "/api/rules",
+        headers=headers,
+        json={"level": "avatar", "rule_key": "steps", "value": 20},
+    )
+    assert invalid.status_code == 400
+
+    listing = test_client.get("/api/rules", headers=headers)
+    assert listing.json()["items"] == []

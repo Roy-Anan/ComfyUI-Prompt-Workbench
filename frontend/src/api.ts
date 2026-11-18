@@ -81,3 +81,13 @@ export function apiPost<T>(
     body: JSON.stringify(body),
   });
 }
+
+export function apiDelete<T>(
+  path: string,
+  body: unknown,
+): Promise<T> {
+  return request<T>(path, {
+    method: "DELETE",
+    body: JSON.stringify(body),
+  });
+}
