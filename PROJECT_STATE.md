@@ -1443,3 +1443,18 @@
 
 - 版本恢复、差异比对、备注、标签收藏、多草稿与草稿箱留后续切片；当前仅只读列表。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R54/`。
+
+## 65. TASK-003.1-R55 设置只读导出 JSON（2026-11-18）
+
+### 65.1 落地内容
+
+- 前端设置页新增「导出设置」按钮：将当前已加载设置按白名单（`version/storage/connections`）
+  经 Blob 下载 `workbench-settings-<时间戳>.json`；不含模型权重、原图、历史记录或遗留杂项。
+- 纯前端，复用既有 `GET /api/settings` 数据；无新增后端端点。
+- 后端沿用 **224 passed, 1 warning**；前端 `tsc -b && vite build` 绿
+  （`index-lDUuS2TQ.js 176.57 kB gzip 56.19 kB`）。
+
+### 65.2 边界与 backlog
+
+- 设置导入、备份恢复整库、数据库迁移留后续切片；当前仅只读导出当前配置。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R55/`。

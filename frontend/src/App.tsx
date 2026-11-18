@@ -394,6 +394,29 @@ export default function App() {
     }
   }
 
+  function exportSettings() {
+    if (!settings) return;
+    // 只导出白名单配置（本地路径与回环连接地址）；不含模型权重、原图、历史记录或遗留杂项。
+    const payload = {
+      version: 2,
+      storage: settings.storage,
+      connections: settings.connections,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `workbench-settings-${stamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setMessage("设置已导出（仅本地，未上传；不含模型权重与原图）。");
+  }
+
   function updateStorage(key: string, value: string) {
     if (!settings || key === "root") return;
 
@@ -869,6 +892,13 @@ export default function App() {
             disabled={busy}
           >
             导出诊断报告
+          </button>
+
+          <button
+            onClick={exportSettings}
+            disabled={busy || !settings}
+          >
+            导出设置
           </button>
 
           <span className="message" role="status">
