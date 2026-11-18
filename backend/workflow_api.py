@@ -15,12 +15,20 @@ def store() -> WorkflowStore:
 def _database_path() -> Path:
     return datadir.database_path(datadir.default_data_root())
 def _sampler_actuals(report: dict[str, Any]) -> dict[str, Any]:
-    """Merge the first sampler group's scalar params for comparison."""
+    """Merge the first sampler group's scalar params and latent size for comparison."""
+    actuals: dict[str, Any] = {}
     for group in report.get("prompt_groups", []):
         params = group.get("params")
         if isinstance(params, dict) and params:
-            return params
-    return {}
+            actuals.update(params)
+            break
+    latent = report.get("latent")
+    if isinstance(latent, dict):
+        if latent.get("width") is not None:
+            actuals["width"] = latent["width"]
+        if latent.get("height") is not None:
+            actuals["height"] = latent["height"]
+    return actuals
 
 
 def _checkpoint_filename(report: dict[str, Any]) -> str | None:

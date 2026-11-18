@@ -12,6 +12,7 @@ MAX_WORKFLOW_BYTES = 20 * 1024 * 1024
 MAX_PROMPT_CHARS = 200_000
 TEXT_ENCODER_MARKERS = ("CLIPTextEncode", "TextEncode")
 SAMPLER_MARKERS = ("KSampler", "SamplerCustom", "SamplerAdvanced")
+LATENT_MARKERS = ("LatentImage",)
 # 中转 conditioning 节点：自身不是文本编码器，但会把上游条件继续向下传。
 CONDITIONING_PASSTHROUGH_MARKERS = (
     "ConditioningCombine",
@@ -132,6 +133,22 @@ def _is_sampler(class_type: str, inputs: dict[str, Any]) -> bool:
 _SAMPLER_PARAM_KEYS = ("steps", "cfg", "sampler_name", "scheduler", "denoise")
 
 
+def _latent_size(inputs: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract width/height scalars from a latent-image node, if both exist."""
+    width = inputs.get("width")
+    height = inputs.get("height")
+    if isinstance(width, bool) or isinstance(height, bool):
+        return None
+    if isinstance(width, (int, float)) and isinstance(height, (int, float)):
+        return {"width": int(width), "height": int(height)}
+    if isinstance(width, str) and isinstance(height, str):
+        try:
+            return {"width": int(width), "height": int(height)}
+        except ValueError:
+            return None
+    return None
+
+
 def _sampler_params(inputs: dict[str, Any]) -> dict[str, Any]:
     """Extract scalar sampler inputs the rule layer can compare against.
 
@@ -242,11 +259,16 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
     prompt_groups: list[dict[str, Any]] = []
     model_nodes: list[dict[str, Any]] = []
     lora_nodes: list[dict[str, Any]] = []
+    latent: dict[str, Any] | None = None
     for node_id, node in nodes.items():
         class_type = str(node.get("class_type", ""))
         inputs = node.get("inputs", {})
         if not isinstance(inputs, dict):
             inputs = {}
+        if latent is None and any(marker in class_type for marker in LATENT_MARKERS):
+            latent_size = _latent_size(inputs)
+            if latent_size is not None:
+                latent = {"node_id": node_id, **latent_size}
         if (
             class_type in MODEL_NODE_NAMES
             or ("Loader" in class_type and "Lora" not in class_type)
@@ -320,6 +342,7 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
         "node_count": len(nodes),
         "model_nodes": model_nodes,
         "lora_nodes": lora_nodes,
+        "latent": latent,
         "prompt_groups": prompt_groups,
         "prompt_nodes": sorted(
             prompt_nodes,
@@ -460,8 +483,13 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
     prompt_groups: list[dict[str, Any]] = []
     model_nodes: list[dict[str, Any]] = []
     lora_nodes: list[dict[str, Any]] = []
+    latent: dict[str, Any] | None = None
     for node_id, node in nodes.items():
         node_type = str(node.get("type", ""))
+        if latent is None and any(marker in node_type for marker in LATENT_MARKERS):
+            latent_size = _latent_size(_ui_inputs(node))
+            if latent_size is not None:
+                latent = {"node_id": node_id, **latent_size}
         if node_type in MODEL_NODE_NAMES or (
             "Loader" in node_type and "Lora" not in node_type
         ):
@@ -522,6 +550,7 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
         "node_count": len(nodes),
         "model_nodes": model_nodes,
         "lora_nodes": lora_nodes,
+        "latent": latent,
         "prompt_groups": prompt_groups,
         "prompt_nodes": prompt_nodes,
         "safe_prompt_write_supported": False,

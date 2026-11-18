@@ -23,6 +23,8 @@ _FIELD_TO_ACTUAL = {
     "Sampler": "sampler_name",
     "Scheduler": "scheduler",
 }
+# Resolution is compared against the latent node's width/height pair.
+_RESOLUTION_FIELD = "Resolution"
 
 
 def _field_name(rule_key: str) -> str:
@@ -75,6 +77,45 @@ def _compare_number(structured: dict[str, Any], actual: Any) -> dict[str, Any]:
     return {"status": "unknown", "reason": "structured_kind_unhandled", "actual": number}
 
 
+def _actual_dimension(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _compare_resolutions(structured: dict[str, Any], actuals: dict[str, Any]) -> dict[str, Any]:
+    width = _actual_dimension(actuals.get("width"))
+    height = _actual_dimension(actuals.get("height"))
+    if width is None or height is None:
+        return {"status": "unknown", "reason": "actual_missing", "actual": {"width": actuals.get("width"), "height": actuals.get("height")}}
+
+    allowed: list[dict[str, int]] = []
+    for item in structured.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        item_w = _actual_dimension(item.get("width"))
+        item_h = _actual_dimension(item.get("height"))
+        if item_w is not None and item_h is not None:
+            allowed.append({"width": item_w, "height": item_h})
+
+    actual = {"width": width, "height": height}
+    match = any(item == actual for item in allowed)
+    return {
+        "status": "match" if match else "out_of_set",
+        "rule": allowed,
+        "actual": actual,
+    }
+
+
 def _compare_list(structured: dict[str, Any], actual: Any) -> dict[str, Any]:
     items = [str(item).strip().lower() for item in structured.get("items", [])]
     actual_text = str(actual).strip().lower() if actual is not None else ""
@@ -97,8 +138,12 @@ def compare_rule(rule: dict[str, Any], actuals: dict[str, Any]) -> dict[str, Any
     """
     key = rule["key"]
     field = _field_name(key)
-    actual_key = _FIELD_TO_ACTUAL.get(field)
-    actual = actuals.get(actual_key) if actual_key else None
+    if field == _RESOLUTION_FIELD:
+        actual_key = "resolution"
+        actual = {"width": actuals.get("width"), "height": actuals.get("height")}
+    else:
+        actual_key = _FIELD_TO_ACTUAL.get(field)
+        actual = actuals.get(actual_key) if actual_key else None
 
     result: dict[str, Any] = {
         "key": key,
@@ -124,7 +169,9 @@ def compare_rule(rule: dict[str, Any], actuals: dict[str, Any]) -> dict[str, Any
     kind = structured.get("kind")
     if kind in ("value", "range", "floor"):
         verdict = _compare_number(structured, actual)
-    elif kind in ("list", "resolutions"):
+    elif kind == "resolutions":
+        verdict = _compare_resolutions(structured, actuals)
+    elif kind == "list":
         verdict = _compare_list(structured, actual)
     else:
         verdict = {"status": "unknown", "reason": "structured_kind_unhandled"}

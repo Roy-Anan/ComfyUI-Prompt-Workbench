@@ -58,6 +58,35 @@ def test_scheduler_list_match_after_note_strip():
     assert verdict["status"] == "match"
 
 
+def test_resolution_match_against_latent_size():
+    rule = _field(
+        "GENERATION SETTINGS::Resolution",
+        structured={"kind": "resolutions", "items": [{"width": 832, "height": 1216}, {"width": 704, "height": 1024}]},
+    )
+    verdict = rule_compare.compare_rule(rule, {"width": 704, "height": 1024})
+    assert verdict["status"] == "match"
+    assert verdict["actual"] == {"width": 704, "height": 1024}
+
+
+def test_resolution_out_of_set_against_latent_size():
+    rule = _field(
+        "GENERATION SETTINGS::Resolution",
+        structured={"kind": "resolutions", "items": [{"width": 832, "height": 1216}]},
+    )
+    verdict = rule_compare.compare_rule(rule, {"width": 704, "height": 1024})
+    assert verdict["status"] == "out_of_set"
+
+
+def test_resolution_unknown_when_latent_size_missing():
+    rule = _field(
+        "GENERATION SETTINGS::Resolution",
+        structured={"kind": "resolutions", "items": [{"width": 832, "height": 1216}]},
+    )
+    verdict = rule_compare.compare_rule(rule, {})
+    assert verdict["status"] == "unknown"
+    assert verdict["reason"] == "actual_missing"
+
+
 def test_non_numeric_actual_stays_unknown():
     rule = _field(
         "GENERATION SETTINGS::Steps",

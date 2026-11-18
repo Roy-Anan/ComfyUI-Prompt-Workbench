@@ -73,6 +73,21 @@ def test_api_parser_finds_prompt_roles_models_and_lora():
     assert "CheckpointLoaderSimple" in model_types
     assert len(report["lora_nodes"]) == 1
     assert report["lora_nodes"][0]["node_id"] == "4"
+def test_api_parser_extracts_latent_size():
+    workflow = sample_api_workflow()
+    workflow["7"] = {
+        "class_type": "EmptyLatentImage",
+        "inputs": {"width": 832, "height": 1216, "batch_size": 1},
+    }
+    report = analyze_workflow(workflow)
+    assert report["latent"] == {"node_id": "7", "width": 832, "height": 1216}
+
+
+def test_api_parser_without_latent_reports_none():
+    report = analyze_workflow(sample_api_workflow())
+    assert report["latent"] is None
+
+
 def test_prompt_write_changes_only_confirmed_text_fields(tmp_path):
     store = WorkflowStore(tmp_path / "workflows")
     source = sample_api_workflow()

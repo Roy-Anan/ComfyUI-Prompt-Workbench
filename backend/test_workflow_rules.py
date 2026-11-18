@@ -140,6 +140,7 @@ def test_workflow_rule_compare_against_sampler_actuals(client):
             "class_type": "KSampler",
             "inputs": {"steps": 20, "cfg": 7.0, "positive": ["1", 0], "negative": ["2", 0]},
         },
+        "7": {"class_type": "EmptyLatentImage", "inputs": {"width": 704, "height": 1024, "batch_size": 1}},
     }
     workflow_id = _import_sample(test_client, main, workflow)
 
@@ -151,6 +152,8 @@ def test_workflow_rule_compare_against_sampler_actuals(client):
     body = response.json()
     assert body["status"] == "registered"
     assert body["actuals"]["steps"] == 20
+    assert body["actuals"]["width"] == 704
+    assert body["actuals"]["height"] == 1024
     step_entry = next(c for c in body["comparisons"] if c["key"] == "GENERATION SETTINGS::Steps")
     assert step_entry["status"] in {"match", "out_of_range", "unknown"}
     assert "counts" in body

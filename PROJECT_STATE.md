@@ -785,3 +785,28 @@
 - 仅剥离**尾部**括号；括号内含关键参数、分号第二套建议不在本轮拆分。
 - 多套建议（示例/指南并存）的分组结构化、Resolution 与 latent 尺寸对接在后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R21/`。
+
+## 32. TASK-003.1-R22 M3 第十七切片：Resolution 规则对接实际 latent 尺寸比对（2026-11-18）
+
+### 32.1 当前状态
+
+- 解析层识别 `EmptyLatentImage` 等 LatentImage 节点，提取 width/height 标量写入报告 `latent`（API/UI 两段路径一致）。
+- 比对 actuals 注入 latent 宽高；Resolution 规则（structured kind=`resolutions`）与实际 (宽,高) 整数集合保守匹配：集合内 match，否则 out_of_set；缺宽/高或非数值归 unknown。
+- 后端测试 **156 passed**；前端构建 exit 0。
+
+### 32.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| latent 尺寸提取 | 通过 | 单测：API 样本提取 832×1216；无 latent 节点报告 latent=None |
+| actuals 注入宽高 | 通过 | 接口测试：compare actuals 带 width=704 / height=1024 |
+| Resolution 集合匹配 | 通过 | 单测：命中 match；不命中 out_of_set；缺尺寸 unknown/actual_missing |
+| 真机闭环 | 通过 | `samples/smoke-resolution.json`：latent 704×1024；规则 {896×1152, 832×1216} 判 out_of_set；清理归零 |
+| Python pytest | 通过 | **156 passed, 1 warning in 5.75s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0 |
+
+### 32.3 边界与 backlog
+
+- 仅取首个有效 latent 节点；多采样器组逐组比对、多 latent 节点取舍在后续切片。
+- 括号内分辨率提取、分号两套建议分组结构化仍未实现；散文型 Resolution（如「SDXL 友好分辨率」）structured=None，保持 unknown。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R22/`。
