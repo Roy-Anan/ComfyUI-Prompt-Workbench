@@ -218,6 +218,12 @@ def parse_profile_text(text: str, source_filename: str | None = None) -> ParsedP
     )
 
 
+# Sections whose facts describe the model architecture rather than this exact
+# checkpoint; they are projected to the architecture level when a base label
+# exists.
+ARCHITECTURE_SECTIONS = {"ARCHITECTURE"}
+
+
 def candidates_to_records(
     profile: ParsedProfile,
     level: str,
@@ -225,16 +231,27 @@ def candidates_to_records(
 ) -> list[dict[str, Any]]:
     """Project candidates onto the rule record shape for later review/import.
 
-    This returns plain dictionaries only; persistence remains a separate slice.
+    The target level/scope are the checkpoint defaults; ARCHITECTURE-section
+    facts are redirected to the architecture level scoped by the parsed base
+    architecture label. A redirected record without an architecture label
+    keeps ``level="architecture"`` and ``scope_key=None`` so the import layer
+    can reject it instead of mis-scoping the fact. This returns plain
+    dictionaries only; persistence remains a separate slice.
     """
     records: list[dict[str, Any]] = []
     for candidate in profile.candidates:
         rule_key = f"{candidate.section}::{candidate.key}"
         normalized = value_normalize.normalize(rule_key, candidate.value)
+        if candidate.section in ARCHITECTURE_SECTIONS:
+            record_level = "architecture"
+            record_scope = profile.architecture
+        else:
+            record_level = level
+            record_scope = scope_key
         records.append(
             {
-                "level": level,
-                "scope_key": scope_key,
+                "level": record_level,
+                "scope_key": record_scope,
                 "rule_key": rule_key,
                 "value": candidate.value,
                 "structured": normalized["structured"],

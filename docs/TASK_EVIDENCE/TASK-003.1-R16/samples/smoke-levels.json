@@ -1,0 +1,18 @@
+{
+  "target": {"file": "Anything_V5.txt", "filename": "anything-v5.safetensors", "architecture": "SD1.5", "preview_candidates": 11},
+  "import": {"status": 200, "imported": 11, "rejected": 0},
+  "checkpoint_rules": [
+    "CONFIDENCE::Last Updated",
+    "CONFIDENCE::Uncertain fields",
+    "CONFIDENCE::Verified by author documentation",
+    "GENERATION SETTINGS::Parameter Source",
+    "GENERATION SETTINGS::Source Note",
+    "MODEL BEHAVIOR::Known Weaknesses",
+    "MODEL BEHAVIOR::NSFW / Mature Content Statement",
+    "MODEL BEHAVIOR::Strengths",
+    "PROMPT STYLE::Preferred Prompt Format"
+  ],
+  "architecture_rules": {"scope": "SD1.5", "items": ["ARCHITECTURE::Base Architecture", "ARCHITECTURE::Model Type"]},
+  "resolve_checkpoint_context_arch_field": "unknown",
+  "after_cleanup": {"checkpoint_items": 0, "architecture_items": 0}
+}

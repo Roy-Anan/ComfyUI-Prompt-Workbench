@@ -626,3 +626,30 @@
 - 结构化仅覆盖生成参数六类字段；提示词/标签/架构等散文字段不拆。
 - 结构尚未被前端展示或用于参数比对/冲突检测；architecture/global 级装载、逐候选审核界面、多模型/LoRA 组合、动态检索、LLM 上下文装配、版本/差异回退仍未实现。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R15/`。
+
+## 26. TASK-003.1-R16 M3 第十一切片：架构级规则随档案导入（2026-11-18）
+
+### 26.1 当前状态
+
+- 候选投影按分节分流：`ARCHITECTURE` 节事实落 **architecture** 级，scope_key 为解析出的底座标签（如 `SD1.5`/`SDXL 1.0`）；其余节落 **checkpoint** 级，scope_key 为完整 checkpoint 文件名。
+- 无底座标签的架构字段无法确定作用域，导入时记入 `rejected`，不擅自归到 checkpoint 或全局；引擎层级/继承/冲突口径不变。
+- 导入接口按记录自带的 `level`/`scope_key` 落库，复用既有校验与结构化落库链路。
+- 后端测试 **119 passed**；前端构建 exit 0。
+
+### 26.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 架构级分流 | 通过 | 接口测试：Base Architecture/Model Type 落 architecture 级 scope=SDXL 1.0；Steps 落 checkpoint 级 |
+| 无底座标签拒绝 | 通过 | 无 Base Architecture 的 Model Type 记入 rejected，Steps 正常入库 |
+| 作用域隔离 | 通过 | checkpoint 上下文解析架构字段为 unknown，架构规则不泄漏进 checkpoint 作用域 |
+| 真机闭环 | 通过 | `samples/smoke-levels.json`：Anything_V5 导入 11 条，9 checkpoint + 2 architecture(SD1.5)，清理归零 |
+| Python pytest | 通过 | **119 passed, 1 warning in 5.23s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 26.3 边界与 backlog
+
+- 本轮不装载 global 级规则：旧档案中暂无跨模型通用事实的来源，全局规则留后续明确来源后再建。
+- 架构标签为档案散文标签，未做归一化/同义归并（如 SD1.5 与 sd1.5）；架构级规则的前端展示、跨模型继承在真机上下文装配时再验。
+- 逐候选勾选/驳回/差异预览、多模型/LoRA 组合、冲突人工裁决、动态检索、LLM 上下文装配、版本/差异回退仍未实现。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R16/`。

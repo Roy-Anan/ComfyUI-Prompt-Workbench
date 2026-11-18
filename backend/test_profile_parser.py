@@ -72,11 +72,14 @@ def test_candidates_to_records_shape():
         parsed, level="checkpoint", scope_key="intorealismUltra_v80.safetensors"
     )
     assert records, "expected at least one candidate"
-    first = records[0]
-    assert first["level"] == "checkpoint"
-    assert first["scope_key"] == "intorealismUltra_v80.safetensors"
-    assert any(r["rule_key"].startswith("ARCHITECTURE::") for r in records)
-    assert "source_raw" in first
+    arch_records = [r for r in records if r["rule_key"].startswith("ARCHITECTURE::")]
+    other_records = [r for r in records if not r["rule_key"].startswith("ARCHITECTURE::")]
+    assert arch_records, "expected architecture-section records"
+    assert all(r["level"] == "architecture" for r in arch_records)
+    assert all(r["scope_key"] == "SDXL 1.0" for r in arch_records)
+    assert all(r["level"] == "checkpoint" for r in other_records)
+    assert all(r["scope_key"] == "intorealismUltra_v80.safetensors" for r in other_records)
+    assert "source_raw" in records[0]
     # Missing fields must not project into records.
     assert all("CFG" != r["rule_key"].split("::")[1] for r in records)
 

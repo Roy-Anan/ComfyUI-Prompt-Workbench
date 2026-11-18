@@ -96,8 +96,15 @@ def test_import_profile_persists_candidates(client, tmp_path, monkeypatch):
     )
     items = stored.json()["items"]
     keys = {item["rule_key"] for item in items}
-    assert "ARCHITECTURE::Base Architecture" in keys
     assert "GENERATION SETTINGS::Steps" in keys
+    assert "ARCHITECTURE::Base Architecture" not in keys
+
+    arch = test_client.get(
+        "/api/rules?level=architecture&scope_key=SDXL 1.0", headers=headers
+    )
+    arch_items = arch.json()["items"]
+    arch_keys = {item["rule_key"] for item in arch_items}
+    assert "ARCHITECTURE::Base Architecture" in arch_keys
 
     resolved = test_client.get(
         "/api/rules/resolve?level=checkpoint&scope_key=alpha.safetensors"
@@ -107,6 +114,36 @@ def test_import_profile_persists_candidates(client, tmp_path, monkeypatch):
     body = resolved.json()
     assert body["fields"]["GENERATION SETTINGS::Steps"]["status"] == "resolved"
     assert body["fields"]["GENERATION SETTINGS::Steps"]["value"] == "20"
+
+
+def test_import_architecture_field_without_label_is_rejected(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("WORKBENCH_PROFILES_DIR", str(tmp_path))
+    (tmp_path / "NoArch.txt").write_text(
+        textwrap.dedent(
+            """\
+            [IDENTITY]
+            Exact Checkpoint Filename: noarch.safetensors
+
+            [ARCHITECTURE]
+            Model Type: [作者说明] Checkpoint Merge
+
+            [GENERATION SETTINGS]
+            Steps: [作者推荐] 20
+            """
+        ),
+        encoding="utf-8",
+    )
+    test_client, _ = client
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    response = test_client.post(
+        "/api/profiles/import", headers=headers, json={"file_name": "NoArch.txt"}
+    )
+    assert response.status_code == 200
+    report = response.json()
+    assert report["imported"] == 1
+    rejected_keys = {item["rule_key"] for item in report["rejected"]}
+    assert "ARCHITECTURE::Model Type" in rejected_keys
 
 
 def test_import_missing_profile_returns_404(client, tmp_path, monkeypatch):

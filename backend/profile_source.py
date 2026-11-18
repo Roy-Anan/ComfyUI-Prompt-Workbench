@@ -98,13 +98,15 @@ def import_profile(
     file_name: str,
     source_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Persist one profile's reviewed candidates as checkpoint-level rules.
+    """Persist one profile's reviewed candidates at their projected levels.
 
-    Each candidate goes through the engine record validator before upsert;
-    invalid candidates are skipped and reported rather than aborting the whole
-    import. A profile without an exact checkpoint filename has no checkpoint
-    scope and is rejected up front. Returns an import report; does not call any
-    external service.
+    ARCHITECTURE-section facts land at the architecture level scoped by the
+    parsed base architecture label; every other fact lands at checkpoint level
+    scoped by the exact checkpoint filename. Each candidate goes through the
+    engine record validator before upsert; invalid or mis-scoped candidates
+    are skipped and reported rather than aborting the whole import. A profile
+    without an exact checkpoint filename has no checkpoint scope and is rejected
+    up front. Returns an import report; does not call any external service.
     """
     preview = preview_profile(file_name, source_dir)
     scope_key = preview["filename"]
@@ -115,11 +117,17 @@ def import_profile(
     rejected: list[dict[str, Any]] = []
 
     for record in preview["candidates"]:
+        record_level = record["level"]
+        record_scope = record["scope_key"]
         try:
+            if record_level != "global" and not record_scope:
+                raise rule_engine.RuleError(
+                    f"{record_level} rule has no scope; architecture label missing"
+                )
             stored = rule_store.upsert_rule(
                 connection,
-                level="checkpoint",
-                scope_key=scope_key,
+                level=record_level,
+                scope_key=record_scope,
                 rule_key=record["rule_key"],
                 value=record["value"],
                 provenance=record["provenance"],
