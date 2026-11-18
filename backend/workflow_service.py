@@ -127,6 +127,22 @@ def _is_sampler(class_type: str, inputs: dict[str, Any]) -> bool:
         any(marker in class_type for marker in SAMPLER_MARKERS)
         or ("positive" in inputs and "negative" in inputs)
     )
+
+
+_SAMPLER_PARAM_KEYS = ("steps", "cfg", "sampler_name", "scheduler", "denoise")
+
+
+def _sampler_params(inputs: dict[str, Any]) -> dict[str, Any]:
+    """Extract scalar sampler inputs the rule layer can compare against.
+
+    Only known keys are copied; link arrays and unrelated inputs are left out.
+    """
+    params: dict[str, Any] = {}
+    for key in _SAMPLER_PARAM_KEYS:
+        value = inputs.get(key)
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            params[key] = value
+    return params
 def _structure_diff(
     original: Any,
     candidate: Any,
@@ -263,6 +279,7 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
             "sampler_class": class_type,
             "positive_node_ids": [],
             "negative_node_ids": [],
+            "params": _sampler_params(inputs),
         }
         for role in ("positive", "negative"):
             ids = _trace_api_encoders(nodes, inputs.get(role))
@@ -475,6 +492,7 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
             "sampler_class": node_type,
             "positive_node_ids": [],
             "negative_node_ids": [],
+            "params": _sampler_params(_ui_inputs(node)),
         }
         for role in ("positive", "negative"):
             ids = _trace_ui_encoders(nodes, links, node, role)

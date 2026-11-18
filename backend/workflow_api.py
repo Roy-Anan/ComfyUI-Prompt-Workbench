@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 import datadir
 import model_identity
+import rule_compare
 import rule_prompt
 import rule_store
 from workflow_service import WorkflowError, WorkflowStore
@@ -13,6 +14,15 @@ def store() -> WorkflowStore:
     return WorkflowStore(datadir.default_data_root() / "workflows")
 def _database_path() -> Path:
     return datadir.database_path(datadir.default_data_root())
+def _sampler_actuals(report: dict[str, Any]) -> dict[str, Any]:
+    """Merge the first sampler group's scalar params for comparison."""
+    for group in report.get("prompt_groups", []):
+        params = group.get("params")
+        if isinstance(params, dict) and params:
+            return params
+    return {}
+
+
 def _checkpoint_filename(report: dict[str, Any]) -> str | None:
     """Extract the first checkpoint file name recognized in the workflow."""
     for node in report.get("model_nodes", []):
@@ -144,3 +154,39 @@ def workflow_rule_prompt(workflow_id: str):
         rule_store.ensure_schema(connection)
         context = rule_store.context_for_checkpoint(connection, checkpoint)
     return rule_prompt.build_prompt_context(context)
+
+
+@router.get("/{workflow_id}/rules/compare")
+def workflow_rule_compare(workflow_id: str):
+    """Compare the resolved rule payload against this workflow's sampler actuals.
+
+    Only facts readable on both sides get a verdict; non-numeric actuals,
+    non-structured rules and unrelated fields stay ``unknown`` rather than being
+    guessed. Unregistered workflows return an empty comparison set.
+    """
+    try:
+        workflow = store().get_workflow(workflow_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+    report = workflow.get("report", {})
+    checkpoint = _checkpoint_filename(report)
+    actuals = _sampler_actuals(report)
+    if not checkpoint:
+        payload = rule_prompt.build_prompt_context(
+            {
+                "status": "unregistered",
+                "checkpoint": None,
+                "architecture": None,
+                "checkpoint_rules": [],
+                "architecture_rules": [],
+                "global_rules": [],
+            }
+        )
+        return rule_compare.compare_workflow(payload, actuals)
+
+    with model_identity.connect(_database_path()) as connection:
+        rule_store.ensure_schema(connection)
+        context = rule_store.context_for_checkpoint(connection, checkpoint)
+    payload = rule_prompt.build_prompt_context(context)
+    return rule_compare.compare_workflow(payload, actuals)

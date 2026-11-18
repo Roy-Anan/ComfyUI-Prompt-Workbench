@@ -1,0 +1,151 @@
+diff --git a/backend/rule_prompt.py b/backend/rule_prompt.py
+index c022367..e9679be 100644
+--- a/backend/rule_prompt.py
++++ b/backend/rule_prompt.py
+@@ -35,12 +35,13 @@ def _record_to_engine(row: dict[str, Any]) -> rule_engine.RuleRecord:
+     )
+ 
+ 
+-def _field_entry(resolution: dict[str, Any]) -> dict[str, Any]:
++def _field_entry(resolution: dict[str, Any], structured: Any = None) -> dict[str, Any]:
+     """Normalize one engine resolution into a prompt-payload field entry."""
+     entry: dict[str, Any] = {
+         "key": resolution["key"],
+         "status": resolution["status"],
+         "value": resolution.get("value"),
++        "structured": structured,
+         "source_level": resolution.get("source_level"),
+     }
+     if resolution["status"] == "resolved":
+@@ -87,12 +88,19 @@ def build_prompt_context(context: dict[str, Any]) -> dict[str, Any]:
+         _record_to_engine(row)
+         for row in checkpoint_rules + architecture_rules + global_rules
+     ]
++    structured_by_key = {
++        row["rule_key"]: row.get("structured")
++        for row in checkpoint_rules + architecture_rules + global_rules
++    }
+     keys = sorted({_record_key(record) for record in engine_records})
+ 
+     resolved = rule_engine.resolve_context(
+         engine_records, "checkpoint", checkpoint, keys, architecture_scope=architecture
+     )
+-    fields = [_field_entry(resolved["fields"][key]) for key in keys]
++    fields = [
++        _field_entry(resolved["fields"][key], structured_by_key.get(key))
++        for key in keys
++    ]
+ 
+     return {
+         "status": "registered",
+diff --git a/backend/workflow_api.py b/backend/workflow_api.py
+index 87cd9da..2a17de0 100644
+--- a/backend/workflow_api.py
++++ b/backend/workflow_api.py
+@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
+ from pydantic import BaseModel, Field
+ import datadir
+ import model_identity
++import rule_compare
+ import rule_prompt
+ import rule_store
+ from workflow_service import WorkflowError, WorkflowStore
+@@ -13,6 +14,15 @@ def store() -> WorkflowStore:
+     return WorkflowStore(datadir.default_data_root() / "workflows")
+ def _database_path() -> Path:
+     return datadir.database_path(datadir.default_data_root())
++def _sampler_actuals(report: dict[str, Any]) -> dict[str, Any]:
++    """Merge the first sampler group's scalar params for comparison."""
++    for group in report.get("prompt_groups", []):
++        params = group.get("params")
++        if isinstance(params, dict) and params:
++            return params
++    return {}
++
++
+ def _checkpoint_filename(report: dict[str, Any]) -> str | None:
+     """Extract the first checkpoint file name recognized in the workflow."""
+     for node in report.get("model_nodes", []):
+@@ -144,3 +154,39 @@ def workflow_rule_prompt(workflow_id: str):
+         rule_store.ensure_schema(connection)
+         context = rule_store.context_for_checkpoint(connection, checkpoint)
+     return rule_prompt.build_prompt_context(context)
++
++
++@router.get("/{workflow_id}/rules/compare")
++def workflow_rule_compare(workflow_id: str):
++    """Compare the resolved rule payload against this workflow's sampler actuals.
++
++    Only facts readable on both sides get a verdict; non-numeric actuals,
++    non-structured rules and unrelated fields stay ``unknown`` rather than being
++    guessed. Unregistered workflows return an empty comparison set.
++    """
++    try:
++        workflow = store().get_workflow(workflow_id)
++    except (WorkflowError, FileNotFoundError, OSError) as exc:
++        _raise_api_error(exc)
++
++    report = workflow.get("report", {})
++    checkpoint = _checkpoint_filename(report)
++    actuals = _sampler_actuals(report)
++    if not checkpoint:
++        payload = rule_prompt.build_prompt_context(
++            {
++                "status": "unregistered",
++                "checkpoint": None,
++                "architecture": None,
++                "checkpoint_rules": [],
++                "architecture_rules": [],
++                "global_rules": [],
++            }
++        )
++        return rule_compare.compare_workflow(payload, actuals)
++
++    with model_identity.connect(_database_path()) as connection:
++        rule_store.ensure_schema(connection)
++        context = rule_store.context_for_checkpoint(connection, checkpoint)
++    payload = rule_prompt.build_prompt_context(context)
++    return rule_compare.compare_workflow(payload, actuals)
+diff --git a/backend/workflow_service.py b/backend/workflow_service.py
+index 70473c9..7497b83 100644
+--- a/backend/workflow_service.py
++++ b/backend/workflow_service.py
+@@ -127,6 +127,22 @@ def _is_sampler(class_type: str, inputs: dict[str, Any]) -> bool:
+         any(marker in class_type for marker in SAMPLER_MARKERS)
+         or ("positive" in inputs and "negative" in inputs)
+     )
++
++
++_SAMPLER_PARAM_KEYS = ("steps", "cfg", "sampler_name", "scheduler", "denoise")
++
++
++def _sampler_params(inputs: dict[str, Any]) -> dict[str, Any]:
++    """Extract scalar sampler inputs the rule layer can compare against.
++
++    Only known keys are copied; link arrays and unrelated inputs are left out.
++    """
++    params: dict[str, Any] = {}
++    for key in _SAMPLER_PARAM_KEYS:
++        value = inputs.get(key)
++        if isinstance(value, (str, int, float, bool)) or value is None:
++            params[key] = value
++    return params
+ def _structure_diff(
+     original: Any,
+     candidate: Any,
+@@ -263,6 +279,7 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
+             "sampler_class": class_type,
+             "positive_node_ids": [],
+             "negative_node_ids": [],
++            "params": _sampler_params(inputs),
+         }
+         for role in ("positive", "negative"):
+             ids = _trace_api_encoders(nodes, inputs.get(role))
+@@ -475,6 +492,7 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
+             "sampler_class": node_type,
+             "positive_node_ids": [],
+             "negative_node_ids": [],
++            "params": _sampler_params(_ui_inputs(node)),
+         }
+         for role in ("positive", "negative"):
+             ids = _trace_ui_encoders(nodes, links, node, role)

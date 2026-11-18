@@ -127,6 +127,51 @@ def test_workflow_rule_prompt_payload_for_registered_workflow(client):
     assert "checkpoint 规则优先" in body["instruction"]
 
 
+def test_workflow_rule_compare_against_sampler_actuals(client):
+    test_client, main = client
+    db = main.DATA_ROOT / "database" / "workbench.sqlite3"
+    _seed_context_rules(db)
+
+    workflow = {
+        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sample_checkpoint.safetensors"}},
+        "6": {
+            "class_type": "KSampler",
+            "inputs": {"steps": 20, "cfg": 7.0, "positive": ["1", 0], "negative": ["2", 0]},
+        },
+    }
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    response = test_client.get(
+        f"/api/workflows/{workflow_id}/rules/compare",
+        headers={"Authorization": "Bearer test-session-token"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "registered"
+    assert body["actuals"]["steps"] == 20
+    step_entry = next(c for c in body["comparisons"] if c["key"] == "GENERATION SETTINGS::Steps")
+    assert step_entry["status"] in {"match", "out_of_range", "unknown"}
+    assert "counts" in body
+
+
+def test_workflow_rule_compare_unregistered_without_checkpoint(client):
+    test_client, main = client
+    db = main.DATA_ROOT / "database" / "workbench.sqlite3"
+    _seed_context_rules(db)
+
+    workflow = {"6": {"class_type": "KSampler", "inputs": {"steps": 20}}}
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    response = test_client.get(
+        f"/api/workflows/{workflow_id}/rules/compare",
+        headers={"Authorization": "Bearer test-session-token"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "unregistered"
+    assert body["comparisons"] == []
+
+
 def test_workflow_rule_prompt_unregistered_without_checkpoint(client):
     test_client, main = client
     db = main.DATA_ROOT / "database" / "workbench.sqlite3"

@@ -705,3 +705,29 @@
 - 本轮只装配载荷，不调用 Ollama、不发送提示、不回写工作流（M4 接入）。
 - 启用 LoRA 规则组合、冲突人工裁决界面、上下文裁剪长度控制与动态检索未实现。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R18/`。
+
+## 29. TASK-003.1-R19 M3 第十四切片：结构化规则值与工作流实际参数保守比对（2026-11-18）
+
+### 29.1 当前状态
+
+- 采样器组报告补充 `params` 快照（steps/cfg/sampler_name/scheduler/denoise 标量），API 与 UI 两种解析均提取。
+- 新增 `rule_compare.py` 纯函数层：规则结构化值（range/floor/value/resolutions/list）与工作流实际参数保守比对；可判定给 `match`/`out_of_range`/`out_of_set`，不可判定归 `unknown`（实际非数值、规则未结构化、字段不可比、规则冲突/未知）。
+- 新增 `GET /api/workflows/{id}/rules/compare`：返回逐字段比对、实际值与计数；未注册工作流空比对集。
+- 后端测试 **137 passed**；前端构建 exit 0。
+
+### 29.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 数值范围/下限/单值比对 | 通过 | 单测：range 命中/越界、floor 命中/越界、value 相等判定 |
+| 列表集合比对 | 通过 | 单测：采样器名大小写归一后命中/不在集合 |
+| 不可判定不臆造 | 通过 | 非数值实际、未结构化规则、冲突规则、非参数字段均 unknown |
+| 真机闭环 | 通过 | `samples/smoke-compare.json`：Steps 35→out_of_range(6~12)、CFG 5.5→out_of_range(1.5~2)、Sampler→out_of_set；Scheduler 带备注未结构化→unknown；清理归零 |
+| Python pytest | 通过 | **137 passed, 1 warning in 5.81s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0 |
+
+### 29.3 边界与 backlog
+
+- 比对只读，不回写工作流、不触发 LLM；VAE/CLIP 参数未纳入比对。
+- 带备注数值（如 Scheduler `Karras（Euler A 时）`）仍回退原文、structured=None，比对归 unknown。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R19/`。

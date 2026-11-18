@@ -35,12 +35,13 @@ def _record_to_engine(row: dict[str, Any]) -> rule_engine.RuleRecord:
     )
 
 
-def _field_entry(resolution: dict[str, Any]) -> dict[str, Any]:
+def _field_entry(resolution: dict[str, Any], structured: Any = None) -> dict[str, Any]:
     """Normalize one engine resolution into a prompt-payload field entry."""
     entry: dict[str, Any] = {
         "key": resolution["key"],
         "status": resolution["status"],
         "value": resolution.get("value"),
+        "structured": structured,
         "source_level": resolution.get("source_level"),
     }
     if resolution["status"] == "resolved":
@@ -87,12 +88,19 @@ def build_prompt_context(context: dict[str, Any]) -> dict[str, Any]:
         _record_to_engine(row)
         for row in checkpoint_rules + architecture_rules + global_rules
     ]
+    structured_by_key = {
+        row["rule_key"]: row.get("structured")
+        for row in checkpoint_rules + architecture_rules + global_rules
+    }
     keys = sorted({_record_key(record) for record in engine_records})
 
     resolved = rule_engine.resolve_context(
         engine_records, "checkpoint", checkpoint, keys, architecture_scope=architecture
     )
-    fields = [_field_entry(resolved["fields"][key]) for key in keys]
+    fields = [
+        _field_entry(resolved["fields"][key], structured_by_key.get(key))
+        for key in keys
+    ]
 
     return {
         "status": "registered",
