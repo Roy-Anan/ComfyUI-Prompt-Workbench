@@ -413,3 +413,28 @@
 - 目录索引只扫直下层权重文件，不递归子目录；并发写锁未加。
 - Ollama 对话生成（M4）、ComfyUI 提交/队列/进度/结果/输出目录索引（M6）未实现。
 - 停止脚本身份校验既有缺陷未修；证据：`docs/TASK_EVIDENCE/TASK-003.1-R7/`。
+
+## 18. TASK-003.1-R8 M3 第三切片：同 SHA256 多路径身份归并（2026-11-18）
+
+### 18.1 当前状态
+
+- 在 R7 身份库骨架上补摘要归并：同类别下持有相同 SHA256 的多个文件映射到同一身份组；`identity_group` 返回 `identity_key`（`category:digest`）、`digest` 与副本列表；`identity_summary` 回挂 `identity_key`、`copy_count`、`copies`（相对名/绝对路径/在盘）。无摘要时身份键为 None，不做哈希推断。
+- 后端测试增至 **80 passed**；前端类型补充副本字段，构建 exit 0。
+
+### 18.2 真机验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 同摘要归并 | 通过 | 单元测试：两份相同内容副本 `copy_count=2`、同一 `identity_key`；不同内容不归并 |
+| 未哈希无身份键 | 通过 | 单元测试：无摘要 `identity_key=None`、`copies=[]` |
+| 真机摘要回挂 | 通过 | `suyuexi.safetensors` 哈希后 `identity_key=lora:fedeb940…`，`copy_count=1`，见 `samples/merge-summary.json` |
+| 浏览器渲染 | 通过 | `screenshots/identity-merge-list.png`；已校验/未哈希标签正常 |
+| Python pytest | 通过 | **80 passed, 1 warning in 4.44s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 18.3 边界与 backlog
+
+- 归并仅按类别内摘要匹配；跨类别同名/同摘要不合并。文件移动后按身份重新定位、多路径别名展示留后续切片。
+- 规则继承、规则来源/可信度/版本/回退、规则组合与冲突检测、动态检索、云端资料导入审核仍属后续 M3 切片。
+- 哈希按需触发，尚无全量/定时策略与前端触发入口；VAE/CLIP 目录未纳入索引；目录不递归；并发写锁未加。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R8/`。

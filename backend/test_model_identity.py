@@ -101,6 +101,61 @@ def test_identity_summary_reports_cached_state(tmp_path):
     conn.close()
 
 
+def test_identical_copies_share_one_identity(tmp_path):
+    conn = _db(tmp_path)
+    lora = tmp_path / "lora"
+    payload = b"identical-weight-bytes"
+    _write_model(lora, "copy-a.safetensors", payload)
+    _write_model(lora, "copy-b.safetensors", payload)
+
+    model_identity.index_directory(conn, "lora", str(lora))
+    model_identity.ensure_hash(conn, "lora", "copy-a.safetensors")
+    model_identity.ensure_hash(conn, "lora", "copy-b.safetensors")
+
+    group_a = model_identity.identity_group(conn, "lora", "copy-a.safetensors")
+    group_b = model_identity.identity_group(conn, "lora", "copy-b.safetensors")
+
+    assert group_a["identity_key"] == group_b["identity_key"]
+    assert group_a["digest"] == hashlib.sha256(payload).hexdigest()
+    names = {copy["relative_name"] for copy in group_a["copies"]}
+    assert names == {"copy-a.safetensors", "copy-b.safetensors"}
+
+    summary = model_identity.identity_summary(conn, "lora", "copy-a.safetensors")
+    assert summary["copy_count"] == 2
+    conn.close()
+
+
+def test_different_content_not_merged(tmp_path):
+    conn = _db(tmp_path)
+    lora = tmp_path / "lora"
+    _write_model(lora, "alpha.safetensors", b"content-one")
+    _write_model(lora, "beta.safetensors", b"content-two")
+
+    model_identity.index_directory(conn, "lora", str(lora))
+    model_identity.ensure_hash(conn, "lora", "alpha.safetensors")
+    model_identity.ensure_hash(conn, "lora", "beta.safetensors")
+
+    group_a = model_identity.identity_group(conn, "lora", "alpha.safetensors")
+    group_b = model_identity.identity_group(conn, "lora", "beta.safetensors")
+    assert group_a["identity_key"] != group_b["identity_key"]
+    assert len(group_a["copies"]) == 1
+    assert len(group_b["copies"]) == 1
+    conn.close()
+
+
+def test_unhashed_group_has_no_identity_key(tmp_path):
+    conn = _db(tmp_path)
+    ckpt = tmp_path / "ckpt"
+    _write_model(ckpt, "ghost.safetensors", b"weight")
+    model_identity.index_directory(conn, "checkpoint", str(ckpt))
+
+    group = model_identity.identity_group(conn, "checkpoint", "ghost.safetensors")
+    assert group["known"] is True
+    assert group["identity_key"] is None
+    assert group["copies"] == []
+    conn.close()
+
+
 def test_unknown_category_rejected(tmp_path):
     conn = _db(tmp_path)
     try:

@@ -83,6 +83,63 @@ def _row_to_record(row: sqlite3.Row | tuple[Any, ...]) -> dict[str, Any]:
     return record
 
 
+def _copies_with_digest(
+    connection: sqlite3.Connection, category: str, digest: str
+) -> list[dict[str, Any]]:
+    """Other on-disk records sharing the same digest in one category."""
+    rows = connection.execute(
+        """
+        SELECT id, category, relative_name, absolute_path, size_bytes,
+               mtime_ns, sha256, hashed_at, last_seen_at
+        FROM model_identity
+        WHERE category = ? AND sha256 = ?
+        ORDER BY absolute_path
+        """,
+        (category, digest),
+    ).fetchall()
+    return [_row_to_record(row) for row in rows]
+
+
+def identity_group(
+    connection: sqlite3.Connection, category: str, name: str
+) -> dict[str, Any]:
+    """Resolve a named file to its digest-based identity group.
+
+    When the named file has a cached digest, every other recorded copy in the
+    same category sharing that digest is listed under ``copies``; this is how
+    identical weights in multiple paths map to one identity. Without a digest
+    the group is unknown and no hash-based matching is inferred.
+    """
+    record = lookup_name(connection, category, name)
+    if record is None:
+        return {"known": False}
+
+    digest = record["sha256"]
+    if not digest:
+        return {
+            "known": True,
+            "identity_key": None,
+            "digest": None,
+            "copies": [],
+        }
+
+    copies = _copies_with_digest(connection, category, digest)
+    return {
+        "known": True,
+        "identity_key": f"{category}:{digest}",
+        "digest": digest,
+        "copies": [
+            {
+                "relative_name": copy["relative_name"],
+                "absolute_path": copy["absolute_path"],
+                "on_disk": copy["on_disk"],
+                "size_bytes": copy["size_bytes"],
+            }
+            for copy in copies
+        ],
+    }
+
+
 def index_directory(
     connection: sqlite3.Connection,
     category: str,
@@ -242,10 +299,26 @@ def identity_summary(
     record = lookup_name(connection, category, name)
     if record is None:
         return {"known": False}
+
+    digest = record["sha256"]
+    copies: list[dict[str, Any]] = []
+    if digest:
+        copies = [
+            {
+                "relative_name": copy["relative_name"],
+                "absolute_path": copy["absolute_path"],
+                "on_disk": copy["on_disk"],
+            }
+            for copy in _copies_with_digest(connection, category, digest)
+        ]
+
     return {
         "known": True,
         "on_disk": record["on_disk"],
         "size_bytes": record["size_bytes"],
-        "sha256": record["sha256"],
-        "hashed": record["sha256"] is not None,
+        "sha256": digest,
+        "hashed": digest is not None,
+        "identity_key": f"{category}:{digest}" if digest else None,
+        "copy_count": len(copies),
+        "copies": copies,
     }

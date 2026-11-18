@@ -37,12 +37,21 @@ type PathCheck = {
   writable: boolean;
 };
 
+type IdentityCopy = {
+  relative_name: string;
+  absolute_path: string;
+  on_disk: boolean;
+};
+
 type IdentitySummary = {
   known: boolean;
   on_disk?: boolean;
   size_bytes?: number | null;
   sha256?: string | null;
   hashed?: boolean;
+  identity_key?: string | null;
+  copy_count?: number;
+  copies?: IdentityCopy[];
 };
 
 type CatalogEntry = {

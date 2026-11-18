@@ -1,0 +1,27 @@
+{
+  "online": true,
+  "checkpoint_count": 13,
+  "lora_count": 3,
+  "hashed_lora": "suyuexi.safetensors",
+  "identity_key": "lora:fedeb940e7725e869fc51b7fe2c1d776ee9c460b6598810ec82b8f0f7fb69b1d",
+  "copy_count": 1,
+  "copies": [
+    "suyuexi.safetensors"
+  ],
+  "catalog_identity": {
+    "known": true,
+    "on_disk": true,
+    "size_bytes": 37866968,
+    "sha256": "fedeb940e7725e869fc51b7fe2c1d776ee9c460b6598810ec82b8f0f7fb69b1d",
+    "hashed": true,
+    "identity_key": "lora:fedeb940e7725e869fc51b7fe2c1d776ee9c460b6598810ec82b8f0f7fb69b1d",
+    "copy_count": 1,
+    "copies": [
+      {
+        "relative_name": "suyuexi.safetensors",
+        "absolute_path": "D:\\AI\\Qiuye\\ComfyUI-aki-v3.2\\ComfyUI\\models\\loras\\suyuexi.safetensors",
+        "on_disk": true
+      }
+    ]
+  }
+}
