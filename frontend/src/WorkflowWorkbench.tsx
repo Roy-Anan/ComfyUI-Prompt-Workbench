@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "./api";
+import { apiDelete, apiGet, apiPost } from "./api";
 import { formatActual } from "./format";
 type PromptNode = {
   node_id: string;
@@ -133,6 +133,15 @@ type TasksResponse = {
   items: ComfyTask[];
   sync_error: string | null;
 };
+type DraftEntry = {
+  id: string;
+  name: string;
+  positive: string;
+  negative: string;
+  note: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
 
 const STATUS_LABEL: Record<string, string> = {
   match: "匹配",
@@ -230,6 +239,11 @@ export default function WorkflowWorkbench() {
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskSyncError, setTaskSyncError] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionEntry[]>([]);
+  const [drafts, setDrafts] = useState<DraftEntry[]>([]);
+  const [draftName, setDraftName] = useState("");
+  const [draftNote, setDraftNote] = useState("");
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -289,9 +303,14 @@ export default function WorkflowWorkbench() {
       setComfyTasks([]);
       setTaskSyncError(null);
       setVersions([]);
+      setDrafts([]);
+      setDraftName("");
+      setDraftNote("");
+      setDeletingDraftId(null);
       setConfirmStamp(null);
       void loadTasks(false);
       void loadVersions(id);
+      void loadDrafts(id);
       setMessage(`已打开：${result.manifest.filename}`);
     } catch (error) {
       setMessage(`打开失败：${String(error)}`);
@@ -331,6 +350,10 @@ export default function WorkflowWorkbench() {
       void loadCompare(result.id);
       setComfyTasks([]);
       setTaskSyncError(null);
+      setDrafts([]);
+      setDraftName("");
+      setDraftNote("");
+      setDeletingDraftId(null);
       await refreshList();
       setMessage(`导入成功：${result.filename}`);
     } catch (error) {
@@ -536,6 +559,68 @@ export default function WorkflowWorkbench() {
       setVersions(result.items);
     } catch {
       setVersions([]);
+    }
+  }
+
+  async function loadDrafts(id: string) {
+    try {
+      const result = await apiGet<{ items: DraftEntry[] }>(
+        `/api/workflows/${id}/drafts`,
+      );
+      setDrafts(result.items);
+    } catch {
+      setDrafts([]);
+    }
+  }
+
+  async function saveDraft() {
+    if (!workflowId) return;
+    const name = draftName.trim();
+    if (!name) {
+      setMessage("请先填写草稿名称。");
+      return;
+    }
+    if (!positiveText.trim() && !negativeText.trim()) {
+      setMessage("正向与负向均为空，无法保存草稿。");
+      return;
+    }
+    setDraftBusy(true);
+    try {
+      await apiPost(`/api/workflows/${workflowId}/drafts`, {
+        name,
+        positive: positiveText,
+        negative: negativeText,
+        note: draftNote.trim(),
+      });
+      setDraftName("");
+      setDraftNote("");
+      await loadDrafts(workflowId);
+      setMessage("草稿已保存（未写入工作副本）。");
+    } catch (error) {
+      setMessage(`保存草稿失败：${String(error)}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  function adoptDraft(draft: DraftEntry) {
+    setPositiveText(draft.positive);
+    setNegativeText(draft.negative);
+    setMessage(`草稿「${draft.name}」已载入编辑框（尚未写入工作副本）。`);
+  }
+
+  async function deleteDraft(draftId: string) {
+    if (!workflowId) return;
+    setDraftBusy(true);
+    try {
+      await apiDelete(`/api/workflows/${workflowId}/drafts/${draftId}`, {});
+      setDeletingDraftId(null);
+      await loadDrafts(workflowId);
+      setMessage("草稿已删除。");
+    } catch (error) {
+      setMessage(`删除草稿失败：${String(error)}`);
+    } finally {
+      setDraftBusy(false);
     }
   }
   const [restoringStamp, setRestoringStamp] = useState<string | null>(null);
@@ -1070,6 +1155,85 @@ export default function WorkflowWorkbench() {
                   不会修改原始文件，也不会提交 ComfyUI 任务。
                 </span>
               </div>
+            </div>
+          )}
+          {canWrite && (
+            <div className="panel">
+              <h3>草稿箱</h3>
+              <p className="muted">
+                手动保存的 Prompt 组合；保存不写入工作副本，载入编辑框后仍需确认写入。
+              </p>
+              <div className="actions">
+                <input
+                  type="text"
+                  placeholder="草稿名称"
+                  value={draftName}
+                  disabled={draftBusy || busy}
+                  onChange={(event) => setDraftName(event.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="备注（可选）"
+                  value={draftNote}
+                  disabled={draftBusy || busy}
+                  onChange={(event) => setDraftNote(event.target.value)}
+                />
+                <button
+                  disabled={draftBusy || busy}
+                  onClick={() => void saveDraft()}
+                >
+                  保存当前为草稿
+                </button>
+              </div>
+              {drafts.length === 0 ? (
+                <p className="muted">还没有保存的草稿。</p>
+              ) : (
+                <div className="workflow-node-list">
+                  {drafts.map((draft) => (
+                    <div className="workflow-node-row" key={draft.id}>
+                      <div>
+                        <strong>{draft.name}</strong>
+                        <small>正向：{clipText(draft.positive)}</small>
+                        <small>负向：{clipText(draft.negative)}</small>
+                        {draft.note && (
+                          <small className="workflow-meta">备注：{draft.note}</small>
+                        )}
+                      </div>
+                      <div className="actions">
+                        <button
+                          onClick={() => adoptDraft(draft)}
+                          disabled={draftBusy || busy}
+                        >
+                          载入到编辑框
+                        </button>
+                        {deletingDraftId === draft.id ? (
+                          <>
+                            <button
+                              onClick={() => void deleteDraft(draft.id)}
+                              disabled={draftBusy || busy}
+                            >
+                              确认删除？
+                            </button>
+                            <button
+                              onClick={() => setDeletingDraftId(null)}
+                              disabled={draftBusy || busy}
+                            >
+                              取消
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => setDeletingDraftId(draft.id)}
+                            disabled={draftBusy || busy}
+                          >
+                            删除
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {detail && (

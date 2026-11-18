@@ -688,3 +688,98 @@ def test_real_exported_api_workflow_full_writeback_roundtrip(tmp_path):
     assert len(versions) == 1
     snapshot = json.loads(versions[0].read_text(encoding="utf-8"))
     assert snapshot == source
+
+
+def test_draft_create_list_read_does_not_touch_working(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+
+    before_working = (
+        tmp_path / "workflows" / workflow_id / "working.json"
+    ).read_text(encoding="utf-8")
+
+    draft = store.save_draft(
+        workflow_id,
+        draft_id=None,
+        name="日常头像",
+        positive="1girl, soft light",
+        negative="blurry, lowres",
+        note="备用方向",
+    )
+    assert draft["id"]
+    assert draft["name"] == "日常头像"
+
+    listed = store.list_drafts(workflow_id)
+    assert len(listed) == 1
+    assert listed[0]["positive"] == "1girl, soft light"
+    assert listed[0]["negative"] == "blurry, lowres"
+
+    fetched = store.get_draft(workflow_id, draft["id"])
+    assert fetched["note"] == "备用方向"
+
+    # Working copy and version snapshots are untouched by draft saving.
+    after_working = (
+        tmp_path / "workflows" / workflow_id / "working.json"
+    ).read_text(encoding="utf-8")
+    assert after_working == before_working
+    assert not (tmp_path / "workflows" / workflow_id / "versions").exists()
+
+
+def test_draft_update_rejects_duplicate_name_and_missing(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+
+    first = store.save_draft(
+        workflow_id, None, "头像 A", "positive A", None, ""
+    )
+    store.save_draft(workflow_id, None, "头像 B", "positive B", None, "")
+
+    # Updating the first draft keeps its own name; a second draft cannot reuse it.
+    updated = store.save_draft(
+        workflow_id, first["id"], "头像 A 改", "positive A2", "neg A2", "备注"
+    )
+    assert updated["positive"] == "positive A2"
+    assert updated["negative"] == "neg A2"
+
+    with pytest.raises(WorkflowError, match="同名"):
+        store.save_draft(
+            workflow_id, first["id"], "头像 B", "x", None, ""
+        )
+
+    with pytest.raises(WorkflowError, match="无效的草稿标识"):
+        store.get_draft(workflow_id, "not-a-uuid")
+
+    with pytest.raises(WorkflowError, match="草稿不存在"):
+        store.get_draft(workflow_id, "11111111-1111-4111-8111-111111111111")
+
+
+def test_draft_delete_and_isolation_between_workflows(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    first = store.import_workflow("a.json", sample_api_workflow())
+    second = store.import_workflow("b.json", sample_api_workflow())
+
+    draft = store.save_draft(
+        first["id"], None, "草稿一", "positive", None, ""
+    )
+    # Drafts are scoped to their own workflow.
+    assert store.list_drafts(second["id"]) == []
+
+    store.delete_draft(first["id"], draft["id"])
+    assert store.list_drafts(first["id"]) == []
+
+    with pytest.raises(WorkflowError, match="草稿不存在"):
+        store.delete_draft(first["id"], draft["id"])
+
+
+def test_draft_rejects_empty_prompt_and_blank_name(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+
+    with pytest.raises(WorkflowError, match="至少需要一段"):
+        store.save_draft(workflow_id, None, "空草稿", "", "", "")
+
+    with pytest.raises(WorkflowError, match="名称不能为空"):
+        store.save_draft(workflow_id, None, "   ", "positive", None, "")

@@ -114,6 +114,21 @@ class PromptCandidateRequest(BaseModel):
         return value.strip()
 
 
+class DraftSave(BaseModel):
+    draft_id: str | None = None
+    name: str = Field(min_length=1, max_length=120)
+    positive: str | None = None
+    negative: str | None = None
+    note: str = Field(default="", max_length=1000)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("草稿名称不能为空")
+        return value.strip()
+
+
 def _ollama_url() -> str:
     """Read the configured local Ollama URL, falling back to the default."""
     root = datadir.default_data_root()
@@ -231,6 +246,49 @@ def restore_version(workflow_id: str, stamp: str):
     """
     try:
         return store().restore_version(workflow_id, stamp)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
+@router.get("/{workflow_id}/drafts")
+def list_drafts(workflow_id: str):
+    """List the named drafts saved for this workflow, newest update first."""
+    try:
+        return {"items": store().list_drafts(workflow_id)}
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
+@router.post("/{workflow_id}/drafts")
+def save_draft(workflow_id: str, payload: DraftSave):
+    """Create or update a named draft. Does not touch the working copy."""
+    try:
+        return store().save_draft(
+            workflow_id,
+            payload.draft_id,
+            payload.name,
+            payload.positive,
+            payload.negative,
+            payload.note,
+        )
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
+@router.get("/{workflow_id}/drafts/{draft_id}")
+def get_draft(workflow_id: str, draft_id: str):
+    """Read one named draft in full."""
+    try:
+        return store().get_draft(workflow_id, draft_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
+@router.delete("/{workflow_id}/drafts/{draft_id}")
+def delete_draft(workflow_id: str, draft_id: str):
+    """Delete one named draft. Generation history and images are untouched."""
+    try:
+        return store().delete_draft(workflow_id, draft_id)
     except (WorkflowError, FileNotFoundError, OSError) as exc:
         _raise_api_error(exc)
 

@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 MAX_WORKFLOW_BYTES = 20 * 1024 * 1024
 MAX_PROMPT_CHARS = 200_000
+MAX_DRAFT_NAME_CHARS = 120
+MAX_DRAFT_NOTE_CHARS = 1000
 TEXT_ENCODER_MARKERS = ("CLIPTextEncode", "TextEncode")
 SAMPLER_MARKERS = ("KSampler", "SamplerCustom", "SamplerAdvanced")
 LATENT_MARKERS = ("LatentImage",)
@@ -1014,3 +1016,156 @@ class WorkflowStore:
             "working_fingerprint": manifest["working_fingerprint"],
             "workflow": self.get_workflow(workflow_id),
         }
+
+    # ---- Named drafts (M5, multi-draft per workflow) ---------------------
+    #
+    # A draft is a user-saved Prompt combination kept apart from the single
+    # working copy and the automatic ``versions/`` snapshots. Saving a draft
+    # never touches ``working.json`` and never writes a version snapshot;
+    # adopting a draft back into the working copy still goes through the
+    # guarded ``write_prompts`` path.
+
+    def _drafts_dir(self, workflow_id: str) -> Path:
+        folder = self._folder(workflow_id)
+        if not folder.is_dir():
+            raise FileNotFoundError("工作流不存在")
+        drafts_dir = (folder / "drafts").resolve()
+        try:
+            drafts_dir.relative_to(folder.resolve())
+        except ValueError as exc:
+            raise WorkflowError("草稿目录越界") from exc
+        return drafts_dir
+
+    def _draft_path(self, drafts_dir: Path, draft_id: str) -> Path:
+        try:
+            safe_id = str(uuid.UUID(str(draft_id)))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise WorkflowError("无效的草稿标识") from exc
+        path = (drafts_dir / f"{safe_id}.json").resolve()
+        try:
+            path.relative_to(drafts_dir)
+        except ValueError as exc:
+            raise WorkflowError("草稿路径越界") from exc
+        return path
+
+    def _read_draft_file(self, path: Path) -> dict[str, Any]:
+        record = _read_json(path)
+        if not isinstance(record, dict):
+            raise WorkflowError("草稿记录结构无效")
+        return record
+
+    def list_drafts(self, workflow_id: str) -> list[dict[str, Any]]:
+        """List named drafts for one workflow, newest update first.
+
+        Corrupt draft files are skipped conservatively; the list exposes the
+        whitelist Prompt texts and note, not the working copy.
+        """
+        drafts_dir = self._drafts_dir(workflow_id)
+        entries: list[dict[str, Any]] = []
+        if not drafts_dir.is_dir():
+            return entries
+        for file in drafts_dir.glob("*.json"):
+            try:
+                record = self._read_draft_file(file)
+            except WorkflowError:
+                continue
+            entries.append(
+                {
+                    "id": record.get("id") or file.stem,
+                    "name": record.get("name") or "未命名草稿",
+                    "note": record.get("note") or "",
+                    "positive": record.get("positive") or "",
+                    "negative": record.get("negative") or "",
+                    "created_at": record.get("created_at"),
+                    "updated_at": record.get("updated_at"),
+                }
+            )
+        return sorted(
+            entries,
+            key=lambda item: item.get("updated_at") or "",
+            reverse=True,
+        )
+
+    def save_draft(
+        self,
+        workflow_id: str,
+        draft_id: str | None,
+        name: str,
+        positive: str | None,
+        negative: str | None,
+        note: str | None,
+    ) -> dict[str, Any]:
+        """Create or update a named draft under this workflow's draft box.
+
+        An existing ``draft_id`` updates that draft; otherwise a new draft is
+        created. Duplicate names within the same workflow are refused. The
+        working copy and version snapshots are left untouched.
+        """
+        drafts_dir = self._drafts_dir(workflow_id)
+        drafts_dir.mkdir(parents=True, exist_ok=True)
+
+        clean_name = (name or "").strip()
+        if not clean_name:
+            raise WorkflowError("草稿名称不能为空")
+        if len(clean_name) > MAX_DRAFT_NAME_CHARS:
+            raise WorkflowError("草稿名称超过 120 字符限制")
+        clean_positive = positive or ""
+        clean_negative = negative or ""
+        if len(clean_positive) > MAX_PROMPT_CHARS or len(clean_negative) > MAX_PROMPT_CHARS:
+            raise WorkflowError("Prompt 文本超过 200,000 字符限制")
+        if not clean_positive.strip() and not clean_negative.strip():
+            raise WorkflowError("草稿至少需要一段正向或负向 Prompt")
+        clean_note = (note or "").strip()
+        if len(clean_note) > MAX_DRAFT_NOTE_CHARS:
+            raise WorkflowError("草稿备注超过 1000 字符限制")
+
+        existing = {
+            entry["id"]: entry
+            for entry in self.list_drafts(workflow_id)
+        }
+
+        if draft_id:
+            path = self._draft_path(drafts_dir, draft_id)
+            if not path.is_file():
+                raise WorkflowError("指定的草稿不存在")
+            record = self._read_draft_file(path)
+            record["name"] = clean_name
+            record["positive"] = clean_positive
+            record["negative"] = clean_negative
+            record["note"] = clean_note
+            record["updated_at"] = _now()
+            record.setdefault("created_at", record.get("updated_at"))
+        else:
+            safe_id = str(uuid.uuid4())
+            path = drafts_dir / f"{safe_id}.json"
+            record = {
+                "id": safe_id,
+                "name": clean_name,
+                "positive": clean_positive,
+                "negative": clean_negative,
+                "note": clean_note,
+                "created_at": _now(),
+                "updated_at": _now(),
+            }
+
+        for other in existing.values():
+            if other["id"] != record["id"] and other["name"] == clean_name:
+                raise WorkflowError("已存在同名草稿，请更换名称")
+
+        _atomic_json(path, record)
+        return record
+
+    def get_draft(self, workflow_id: str, draft_id: str) -> dict[str, Any]:
+        drafts_dir = self._drafts_dir(workflow_id)
+        path = self._draft_path(drafts_dir, draft_id)
+        if not path.is_file():
+            raise WorkflowError("指定的草稿不存在")
+        return self._read_draft_file(path)
+
+    def delete_draft(self, workflow_id: str, draft_id: str) -> dict[str, Any]:
+        drafts_dir = self._drafts_dir(workflow_id)
+        path = self._draft_path(drafts_dir, draft_id)
+        if not path.is_file():
+            raise WorkflowError("指定的草稿不存在")
+        path.unlink()
+        return {"ok": True, "id": draft_id}

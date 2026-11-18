@@ -8,8 +8,8 @@
 ## 1. 当前所处阶段
 
 - 阶段：**多模块主体落地，确定性辅助切片收尾**（M0 骨架与安全基线完成；工作流解析/白名单、规则库与参数比对、本地 LLM 候选审核、任务队列、生成历史、只读诊断/设置/备份导出主体已落地；剩余大头为口径未决、缺依赖、高风险写入或空数据项，见各节 backlog）。
-- 当前任务：**TASK-003.1-R72** —— 候选放弃/清除入口；R70 工作副本复制、R71 Prompt 导出 TXT/JSON、R72 候选放弃已收口推送 dev。
-- 开发分支：`dev`，本地 = origin/dev `9619d9f661ca10ae17fecf0700ab05c92b6df4f6`；main `3084866aa85595133c7a1179b15ddd71e659d8f3` 未改、未合并。
+- 当前任务：**TASK-003.1-R75** —— 前端命名草稿箱；R74 多命名草稿后端、R75 草稿箱 UI 已收口（后端 237 passed，前端构建绿，真机闭环通过），待提交 dev。
+- 开发分支：`dev`，本地 = origin/dev `41a70b62496888632bc9d83cf40cade1120e8345`；main `3084866aa85595133c7a1179b15ddd71e659d8f3` 未改、未合并。
 - 版本：`0.1.0-dev.5`。
 - 注：第 3.1 节 Rust/Tauri 编译与桌面壳条目为 ADR-0001 废弃路线的历史记录；ADR-0002 已改为免安装本机浏览器 Web 应用，该遗留不再阻塞当前 Web 路线。
 - **方向（ADR-0002，2026-11-18）**：免安装本机浏览器 Web 应用；默认 `http://127.0.0.1:17890`（原 8000 与本机酒馆冲突，已改），只绑定回环；不做 EXE/NSIS 安装包，不开发 Tauri/Rust 宿主。ADR-0001 旧路线已废弃，仅作历史记录。
@@ -1797,3 +1797,78 @@
 
 - 放弃仅清除当前单候选显示；多候选列表、比较、逐候选驳回留后。候选采用仍只写入正向。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R72/`。
+
+## 81. 拍板口径确认（2026-11-18，用户答复）
+
+用户就三项此前未决口径给出明确答复，固化如下；实现不得反向解释。
+
+### 81.1 草稿模型：留多份命名草稿
+
+- 口径：每个工作流保留**多份独立命名草稿**（独立草稿箱），不采用"单草稿 + 版本回溯"模型。
+- 与既有 `versions/` 自动快照的关系：`versions/` 仍是每次写入前自动留存的只读历史快照；新增的命名草稿是用户手动保存的 Prompt 组合，二者独立。候选接受、工作流写入、草稿保存互相独立。
+- 落地分批：先做最小闭环（新建/列出/载入编辑框/删除，存正/负向 Prompt 与备注）；收藏、标签、搜索、跨工作流复制、回收站、模型环境快照、对话上下文/锁定片段、双向索引按 F 段后续切片补齐，范围不砍。
+
+### 81.2 规则与套组冲突：听专用的
+
+- 口径：冲突时**专用优先**——具体 Checkpoint（模型级）规则覆盖架构级、全局级；专用套组优先于通用套组。
+- 现状符合度：`rule_engine` 三级继承搜索顺序已是 `checkpoint → architecture → global`，首个覆盖层级胜出（程序判定，不经 LLM）；同层级对同一字段取值不一致仍标记 `conflict` 交人工核对，不擅自选值。
+- 待落地：sets 专用套/通用套的优先级判定仍待实现（任一子套解析失败整体保守归 unknown）；跨层级专用覆盖已具备。
+
+### 81.3 出图前必须卸载本地 LLM（8GB 显存）
+
+- 口径：本机为 RTX 4060 Laptop 8GB 显存；**提交出图前必须确认本地 LLM 已卸载、显存释放**，卸载失败/超时/无法确认一律禁止提交（fail-closed）。
+- 现状符合度：`_submit_guarded` 闸门已对接 Ollama `/api/ps`：Ollama 不可达记 unknown 拒绝；仍有驻留模型返回 409 拒绝；无驻留才放行。ComfyUI `system_stats` 已只读上报各设备显存总量/空闲。
+- 待落地：显存空闲阈值的具体数值用户未给定，不臆造业务阈值；当前保持"卸载确认 + 只读显存展示"，阈值口径待后续拍板。队列待执行时不自动恢复 LLM、提交前复检卸载状态属 M6 后续切片。
+
+## 82. TASK-003.1-R74 多命名草稿后端模型与接口（2026-11-18）
+
+### 82.1 落地内容
+
+- 按 81.1 口径，`WorkflowStore` 新增 `drafts/` 子目录模型：每工作流 UUID 文件夹下
+  `drafts/<draft_uuid>.json`，记录 `{id, name, positive, negative, note, created_at, updated_at}`。
+- 草稿与 `working.json`、`versions/` 自动快照三者独立：保存草稿不触碰工作副本、不写版本快照；
+  载入工作副本仍走既有受保护 `write_prompts`。
+- 常量 `MAX_DRAFT_NAME_CHARS=120`、`MAX_DRAFT_NOTE_CHARS=1000`；正/负向沿用 `MAX_PROMPT_CHARS`。
+- 服务层：`_drafts_dir`/`_draft_path`（UUID 校验 + 路径越界防护）、`_read_draft_file`、
+  `list_drafts`（损坏跳过、updated_at 倒序）、`save_draft`（新建/更新、名称 strip 非空、
+  同名去重、两侧均空拒绝）、`get_draft`、`delete_draft`。
+- API：`DraftSave`（`draft_id?/name/positive?/negative?/note?`）；四个端点
+  `GET/POST /{workflow_id}/drafts`、`GET/DELETE /{workflow_id}/drafts/{draft_id}`；
+  错误映射 400/404/500，鉴权与 CSRF 沿用既有中间件。
+
+### 82.2 测试与回归
+
+- 服务层 4 例 + API 层 2 例（建/列/读不改 working 与 versions；更新/同名拒绝/非法 UUID/不存在；
+  删除与跨流隔离；空 Prompt 与空名拒绝；往返与 400/404 边界）。
+- 全量回归：**237 passed, 1 warning**（StarletteDeprecationWarning 遗留，与本项目无关）。
+
+### 82.3 边界与 backlog
+
+- 最小闭环仅新建/列出/载入/删除 + 备注；收藏、标签、搜索、跨流复制、回收站、环境快照、
+  上下文/锁定片段、历史双向索引留后续切片，范围不砍。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R74/`。
+
+## 83. TASK-003.1-R75 前端命名草稿箱 UI（2026-11-18）
+
+### 83.1 落地内容
+
+- `WorkflowWorkbench.tsx`：`DraftEntry` 类型与 `drafts/draftName/draftNote/draftBusy/
+  deletingDraftId` 状态；补 `apiDelete` 导入。
+- `loadDrafts/saveDraft/adoptDraft/deleteDraft`；打开/导入工作流时重置并刷新草稿箱。
+  保存不写工作副本；载入只回填编辑框，仍需用户点「写入工作副本并校验」。删除为两步态。
+- 面板挂在可写编辑面板之后、ComfyUI 任务面板之前；复用既有 class，未新增 CSS。
+
+### 83.2 真机闭环与回归
+
+- PID 17816，`r31-compare.json`（已确认白名单）：空态面板在位；保存草稿「头像方向一」
+  （备注「R75 验收草稿」）后列表出现名称/正/负向摘要/备注；编辑框留标记后载入回填草稿原文；
+  两步态确认删除后回到空态。
+- 文件核对：`working.json` SHA256 保存/载入/删除全程不变；`versions/` 始终 1 份未新增；
+  删除后 `drafts/` 文件数为 0。
+- 后端 **237 passed, 1 warning**；前端 `tsc -b && vite build` 绿，产物
+  `index-CIw_k3nE.js` 185.93 kB / gzip 59.05 kB，`index-CE0WX0Hl.css` 9.75 kB / gzip 2.38 kB。
+
+### 83.3 边界与 backlog
+
+- 载入仅回填编辑框；写入仍走既有白名单与校验路径。草稿收藏/标签/搜索/跨流复制/回收站等
+  留后续切片。证据：`docs/TASK_EVIDENCE/TASK-003.1-R75/`。

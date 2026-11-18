@@ -628,3 +628,77 @@ def test_candidate_allowed_when_comfyui_offline(client, monkeypatch):
     )
     assert response.status_code == 200
     assert called.get("chat") is True
+
+
+def test_draft_create_read_update_delete_roundtrip(client):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+
+    create = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"name": "草稿一", "positive": "1girl", "negative": "blurry", "note": "备注"},
+    )
+    assert create.status_code == 200
+    draft_id = create.json()["id"]
+
+    listed = test_client.get(
+        f"/api/workflows/{workflow_id}/drafts", headers=AUTH
+    ).json()["items"]
+    assert len(listed) == 1
+    assert listed[0]["name"] == "草稿一"
+
+    fetched = test_client.get(
+        f"/api/workflows/{workflow_id}/drafts/{draft_id}", headers=AUTH
+    ).json()
+    assert fetched["positive"] == "1girl"
+    assert fetched["negative"] == "blurry"
+
+    updated = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"draft_id": draft_id, "name": "草稿一改", "positive": "1girl, smile", "negative": ""},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["positive"] == "1girl, smile"
+
+    deleted = test_client.delete(
+        f"/api/workflows/{workflow_id}/drafts/{draft_id}", headers=AUTH
+    )
+    assert deleted.status_code == 200
+    after = test_client.get(
+        f"/api/workflows/{workflow_id}/drafts", headers=AUTH
+    ).json()["items"]
+    assert after == []
+
+
+def test_draft_rejects_empty_prompt_duplicate_name_and_missing(client):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+
+    empty = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"name": "空", "positive": "", "negative": ""},
+    )
+    assert empty.status_code == 400
+
+    first = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"name": "同名", "positive": "a"},
+    )
+    assert first.status_code == 200
+    duplicate = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"name": "同名", "positive": "b"},
+    )
+    assert duplicate.status_code == 400
+
+    missing_wf = test_client.post(
+        "/api/workflows/00000000-0000-4000-8000-000000000000/drafts",
+        headers=AUTH,
+        json={"name": "x", "positive": "a"},
+    )
+    assert missing_wf.status_code == 404
