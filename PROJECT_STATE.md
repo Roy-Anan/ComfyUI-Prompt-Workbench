@@ -1380,3 +1380,18 @@
 
 - WebSocket 实时进度、队列暂停/恢复、通知、Ollama unload 状态与显存阈值验证留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R50/`。
+
+## 61. TASK-003.1-R51 历史记录当前筛选结果导出 JSON（2026-11-18）
+
+### 61.1 落地内容
+
+- 历史面板加「导出 JSON」按钮，将当前状态/工作流/关键词筛选后的记录整体导出为本地 JSON
+  （`workbench-history-<时间戳>.json`），含导出时间、条数与完整记录；仅记录文件名与存在性，
+  不复制原图。纯前端 Blob 下载，无新增后端端点。
+- 前端 `tsc -b && vite build` 绿（`index-DHO60mp6.js 174.51 kB gzip 55.66 kB`）；后端无改动，
+  沿用 220 passed 基线。
+
+### 61.2 边界与 backlog
+
+- 缩略图索引、图库网格视图、日期范围导出、历史反向创建草稿留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R51/`。

@@ -94,6 +94,26 @@ export default function HistoryPanel() {
     new Set((items || []).map((record) => record.workflow_id)),
   );
 
+  function exportHistory() {
+    const payload = {
+      exported_at: new Date().toISOString(),
+      count: filtered.length,
+      records: filtered,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `workbench-history-${stamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   const keywordTerm = keyword.trim().toLowerCase();
   const filtered = (items || []).filter((record) => {
     if (statusFilter && record.task_status !== statusFilter) return false;
@@ -118,9 +138,14 @@ export default function HistoryPanel() {
           <h2>生成历史</h2>
           <p>提交时刻固化的 Prompt 与模型快照；图片只记录文件名与存在性，不复制原图。</p>
         </div>
-        <button onClick={() => void load()} disabled={items === null}>
-          刷新
-        </button>
+        <div className="actions">
+          <button onClick={exportHistory} disabled={filtered.length === 0}>
+            导出 JSON
+          </button>
+          <button onClick={() => void load()} disabled={items === null}>
+            刷新
+          </button>
+        </div>
       </div>
 
       {error && <p className="workflow-warning">{error}</p>}
