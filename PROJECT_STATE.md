@@ -860,3 +860,25 @@
 - 仅取首个 CLIPSetLastLayer 节点；符号换算固定为 `clip_skip = -stop_at_clip_layer`（节点取值域 -24…-1），非标准值不猜。
 - 真机暂无原生含该节点的工作流样本，本轮闭环基于构造 API 样本；多 CLIP 链路与双 CLIP 模型的跳过层数取舍未实现。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R24/`。
+
+## 35. TASK-003.1-R25 M3 第二十切片：多采样器组 actuals 保守标注（2026-11-18）
+
+### 35.1 当前状态
+
+- `_sampler_actuals` 遍历全部采样器组，actuals 顶层仍取首个有参数的组；新增 `sampler_group_count` 与 `sampler_groups`（每组 node_id + params 摘要）。
+- 多组参数不合并、不替选；逐组比对在后续切片。
+- 后端测试 **164 passed**；前端构建 exit 0。
+
+### 35.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 多组标注 | 通过 | 单测：双组样本顶层 steps=20，`sampler_groups` 含 20/30 两组 |
+| 真机闭环 | 通过 | `samples/smoke-multi-groups.json`：count=2，首组 25/7.0，次组 30/6.0；清理归零 |
+| Python pytest | 通过 | **164 passed, 1 warning in 5.87s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0 |
+
+### 35.3 边界与 backlog
+
+- 逐采样器组独立比对、组间参数冲突提示未实现；当前判定仅对应首组。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R25/`。

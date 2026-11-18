@@ -1,0 +1,39 @@
+{
+  "actuals": {
+    "steps": 25,
+    "cfg": 7.0,
+    "sampler_name": null,
+    "scheduler": null,
+    "denoise": null,
+    "sampler_group_count": 2,
+    "sampler_groups": [
+      {
+        "sampler_node_id": "7",
+        "params": {
+          "steps": 25,
+          "cfg": 7.0,
+          "sampler_name": null,
+          "scheduler": null,
+          "denoise": null
+        }
+      },
+      {
+        "sampler_node_id": "9",
+        "params": {
+          "steps": 30,
+          "cfg": 6.0,
+          "sampler_name": null,
+          "scheduler": null,
+          "denoise": null
+        }
+      }
+    ],
+    "width": 832,
+    "height": 1216
+  },
+  "counts": {
+    "unknown": 19,
+    "match": 1
+  },
+  "after_cleanup": 0
+}

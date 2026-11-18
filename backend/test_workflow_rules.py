@@ -161,6 +161,30 @@ def test_workflow_rule_compare_against_sampler_actuals(client):
     assert "counts" in body
 
 
+def test_workflow_rule_compare_lists_multiple_sampler_groups(client):
+    test_client, main = client
+    db = main.DATA_ROOT / "database" / "workbench.sqlite3"
+    _seed_context_rules(db)
+
+    workflow = {
+        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sample_checkpoint.safetensors"}},
+        "6": {"class_type": "KSampler", "inputs": {"steps": 20, "positive": ["1", 0], "negative": ["2", 0]}},
+        "9": {"class_type": "KSampler", "inputs": {"steps": 30, "positive": ["1", 0], "negative": ["2", 0]}},
+    }
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    response = test_client.get(
+        f"/api/workflows/{workflow_id}/rules/compare",
+        headers={"Authorization": "Bearer test-session-token"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    actuals = body["actuals"]
+    assert actuals["sampler_group_count"] == 2
+    assert actuals["steps"] == 20
+    assert [g["params"].get("steps") for g in actuals["sampler_groups"]] == [20, 30]
+
+
 def test_workflow_rule_compare_unregistered_without_checkpoint(client):
     test_client, main = client
     db = main.DATA_ROOT / "database" / "workbench.sqlite3"

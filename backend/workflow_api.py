@@ -15,13 +15,26 @@ def store() -> WorkflowStore:
 def _database_path() -> Path:
     return datadir.database_path(datadir.default_data_root())
 def _sampler_actuals(report: dict[str, Any]) -> dict[str, Any]:
-    """Merge the first sampler group's scalar params and latent size for comparison."""
+    """Merge the first sampler group's scalar params and latent size for comparison.
+
+    Multi-group workflows are reported conservatively: the top-level actuals
+    keep the first group's params, while every group's params are listed under
+    ``sampler_groups``. Later groups are never merged into the first group's
+    verdict; a per-group comparison is a later slice.
+    """
     actuals: dict[str, Any] = {}
+    sampler_groups: list[dict[str, Any]] = []
     for group in report.get("prompt_groups", []):
         params = group.get("params")
-        if isinstance(params, dict) and params:
+        if not isinstance(params, dict):
+            params = {}
+        sampler_groups.append(
+            {"sampler_node_id": group.get("sampler_node_id"), "params": params}
+        )
+        if params and not actuals:
             actuals.update(params)
-            break
+    actuals["sampler_group_count"] = len(sampler_groups)
+    actuals["sampler_groups"] = sampler_groups
     latent = report.get("latent")
     if isinstance(latent, dict):
         if latent.get("width") is not None:

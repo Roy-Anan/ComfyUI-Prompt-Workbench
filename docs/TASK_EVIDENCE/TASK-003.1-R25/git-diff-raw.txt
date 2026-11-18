@@ -1,0 +1,69 @@
+diff --git a/backend/test_workflow_rules.py b/backend/test_workflow_rules.py
+index 78ce6b7..b124e98 100644
+--- a/backend/test_workflow_rules.py
++++ b/backend/test_workflow_rules.py
+@@ -161,6 +161,30 @@ def test_workflow_rule_compare_against_sampler_actuals(client):
+     assert "counts" in body
+ 
+ 
++def test_workflow_rule_compare_lists_multiple_sampler_groups(client):
++    test_client, main = client
++    db = main.DATA_ROOT / "database" / "workbench.sqlite3"
++    _seed_context_rules(db)
++
++    workflow = {
++        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sample_checkpoint.safetensors"}},
++        "6": {"class_type": "KSampler", "inputs": {"steps": 20, "positive": ["1", 0], "negative": ["2", 0]}},
++        "9": {"class_type": "KSampler", "inputs": {"steps": 30, "positive": ["1", 0], "negative": ["2", 0]}},
++    }
++    workflow_id = _import_sample(test_client, main, workflow)
++
++    response = test_client.get(
++        f"/api/workflows/{workflow_id}/rules/compare",
++        headers={"Authorization": "Bearer test-session-token"},
++    )
++    assert response.status_code == 200
++    body = response.json()
++    actuals = body["actuals"]
++    assert actuals["sampler_group_count"] == 2
++    assert actuals["steps"] == 20
++    assert [g["params"].get("steps") for g in actuals["sampler_groups"]] == [20, 30]
++
++
+ def test_workflow_rule_compare_unregistered_without_checkpoint(client):
+     test_client, main = client
+     db = main.DATA_ROOT / "database" / "workbench.sqlite3"
+diff --git a/backend/workflow_api.py b/backend/workflow_api.py
+index 651ea71..618a269 100644
+--- a/backend/workflow_api.py
++++ b/backend/workflow_api.py
+@@ -15,13 +15,26 @@ def store() -> WorkflowStore:
+ def _database_path() -> Path:
+     return datadir.database_path(datadir.default_data_root())
+ def _sampler_actuals(report: dict[str, Any]) -> dict[str, Any]:
+-    """Merge the first sampler group's scalar params and latent size for comparison."""
++    """Merge the first sampler group's scalar params and latent size for comparison.
++
++    Multi-group workflows are reported conservatively: the top-level actuals
++    keep the first group's params, while every group's params are listed under
++    ``sampler_groups``. Later groups are never merged into the first group's
++    verdict; a per-group comparison is a later slice.
++    """
+     actuals: dict[str, Any] = {}
++    sampler_groups: list[dict[str, Any]] = []
+     for group in report.get("prompt_groups", []):
+         params = group.get("params")
+-        if isinstance(params, dict) and params:
++        if not isinstance(params, dict):
++            params = {}
++        sampler_groups.append(
++            {"sampler_node_id": group.get("sampler_node_id"), "params": params}
++        )
++        if params and not actuals:
+             actuals.update(params)
+-            break
++    actuals["sampler_group_count"] = len(sampler_groups)
++    actuals["sampler_groups"] = sampler_groups
+     latent = report.get("latent")
+     if isinstance(latent, dict):
+         if latent.get("width") is not None:
