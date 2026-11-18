@@ -224,6 +224,66 @@ def test_ui_workflow_is_parsed_but_not_writable():
     assert report["safe_prompt_write_supported"] is False
     assert report["prompt_nodes"][0]["node_id"] == "1"
     assert report["prompt_nodes"][0]["editable"] is False
+def test_ui_parser_reads_loader_and_lora_widget_values():
+    ui_workflow = {
+        "nodes": [
+            {
+                "id": 1,
+                "type": "CheckpointLoaderSimple",
+                "inputs": [
+                    {
+                        "name": "ckpt_name",
+                        "type": "COMBO",
+                        "widget": {"name": "ckpt_name"},
+                        "link": None,
+                    }
+                ],
+                "widgets_values": ["intorealismUltra_v80.safetensors"],
+            },
+            {
+                "id": 10,
+                "type": "LoraLoader",
+                "inputs": [
+                    {"name": "model", "type": "MODEL", "link": 1},
+                    {"name": "clip", "type": "CLIP", "link": 2},
+                    {
+                        "name": "lora_name",
+                        "type": "COMBO",
+                        "widget": {"name": "lora_name"},
+                        "link": None,
+                    },
+                    {
+                        "name": "strength_model",
+                        "type": "FLOAT",
+                        "widget": {"name": "strength_model"},
+                        "link": None,
+                    },
+                    {
+                        "name": "strength_clip",
+                        "type": "FLOAT",
+                        "widget": {"name": "strength_clip"},
+                        "link": None,
+                    },
+                ],
+                "widgets_values": [
+                    "suyuexifull_c1-st6000.safetensors",
+                    0.7,
+                    0.85,
+                ],
+            },
+        ],
+        "links": [],
+    }
+    report = analyze_workflow(ui_workflow)
+    assert report["format"] == "ui"
+    assert report["model_nodes"][0]["inputs"] == {
+        "ckpt_name": "intorealismUltra_v80.safetensors"
+    }
+    assert report["lora_nodes"][0]["inputs"] == {
+        "lora_name": "suyuexifull_c1-st6000.safetensors",
+        "strength_model": 0.7,
+        "strength_clip": 0.85,
+    }
 def test_detect_api_workflow_wrapped_in_nodes():
     wrapped = {"nodes": sample_api_workflow()}
     assert detect_format(wrapped) == "api"

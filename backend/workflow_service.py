@@ -371,6 +371,66 @@ def _trace_ui_encoders(
             if upstream:
                 stack.append(upstream["origin_id"])
     return sorted(set(found))
+# Widget order for common loaders, used to label read-only scalar values when
+# the UI node exposes no per-input widget descriptor. Kept informational only;
+# the UI workflow remains read-only and these values are never written back.
+_UI_LOADER_WIDGET_ORDER: dict[str, tuple[str, ...]] = {
+    "CheckpointLoaderSimple": ("ckpt_name",),
+    "CheckpointLoader": ("ckpt_name",),
+    "UNETLoader": ("unet_name",),
+    "DualCLIPLoader": ("clip_name1", "clip_name2"),
+    "CLIPLoader": ("clip_name",),
+    "VAELoader": ("vae_name",),
+    "LoraLoader": ("lora_name", "strength_model", "strength_clip"),
+}
+
+
+def _ui_widget_input_names(node: dict[str, Any]) -> list[str | None]:
+    """Map ``widgets_values`` positions to input/control names for a UI node.
+
+    Inputs already bound to a link hold no widget value; linked slots are
+    skipped so scalar widgets stay aligned with their control names.
+    """
+    names: list[str | None] = []
+    for item in node.get("inputs", []):
+        if not isinstance(item, dict):
+            continue
+        if item.get("link") is not None:
+            continue
+        widget = item.get("widget")
+        if isinstance(widget, dict) and widget.get("name"):
+            names.append(str(widget["name"]))
+        elif isinstance(item.get("name"), str):
+            names.append(item["name"])
+        else:
+            names.append(None)
+
+    if not names:
+        node_type = str(node.get("type", ""))
+        names = [None] * len(node.get("widgets_values", []))
+        order = _UI_LOADER_WIDGET_ORDER.get(node_type, ())
+        for index, field in enumerate(order[: len(names)]):
+            names[index] = field
+    return names
+
+
+def _ui_inputs(node: dict[str, Any]) -> dict[str, Any]:
+    """Extract read-only scalar widget values from a UI node."""
+    widgets = node.get("widgets_values", [])
+    if not isinstance(widgets, list):
+        return {}
+    names = _ui_widget_input_names(node)
+    inputs: dict[str, Any] = {}
+    for index, value in enumerate(widgets):
+        if not isinstance(value, (str, int, float, bool)) and value is not None:
+            continue
+        key = names[index] if index < len(names) else None
+        if not key:
+            key = f"widget_{index + 1}"
+        inputs[key] = value
+    return inputs
+
+
 def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
     node_list = workflow.get("nodes", [])
     nodes = {
@@ -391,13 +451,13 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
             model_nodes.append({
                 "node_id": node_id,
                 "class_type": node_type,
-                "inputs": {},
+                "inputs": _ui_inputs(node),
             })
         if "LoraLoader" in node_type:
             lora_nodes.append({
                 "node_id": node_id,
                 "class_type": node_type,
-                "inputs": {},
+                "inputs": _ui_inputs(node),
             })
         input_items = node.get("inputs", [])
         input_names = {
