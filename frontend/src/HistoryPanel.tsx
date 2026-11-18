@@ -74,6 +74,8 @@ export default function HistoryPanel() {
   const [statusFilter, setStatusFilter] = useState("");
   const [workflowFilter, setWorkflowFilter] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
 
   async function load() {
@@ -119,6 +121,9 @@ export default function HistoryPanel() {
   const filtered = (items || []).filter((record) => {
     if (statusFilter && record.task_status !== statusFilter) return false;
     if (workflowFilter && record.workflow_id !== workflowFilter) return false;
+    const day = record.created_at.slice(0, 10);
+    if (fromDate && day < fromDate) return false;
+    if (toDate && day > toDate) return false;
     if (keywordTerm) {
       const haystack = [
         record.positive_prompt,
@@ -273,6 +278,22 @@ export default function HistoryPanel() {
               value={keyword}
               placeholder="Prompt 或模型文件名"
               onChange={(event) => setKeyword(event.target.value)}
+            />
+          </label>
+          <label>
+            开始日期
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+            />
+          </label>
+          <label>
+            结束日期
+            <input
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
             />
           </label>
         </div>
