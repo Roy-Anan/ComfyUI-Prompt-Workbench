@@ -445,6 +445,11 @@ export default function WorkflowWorkbench() {
     }
   }
 
+  function dismissCandidate() {
+    setCandidate(null);
+    setMessage("候选已放弃（未写入工作副本）。");
+  }
+
   async function copyPromptText(text: string, label: string) {
     if (!text.trim()) {
       setMessage(`${label}为空，无需复制。`);
@@ -1008,6 +1013,7 @@ export default function WorkflowWorkbench() {
                       <div className="actions">
                         <button onClick={adoptCandidate}>采用到正向 Prompt</button>
                         <button onClick={() => void copyCandidate()}>复制候选</button>
+                        <button onClick={dismissCandidate}>放弃候选</button>
                         <span className="muted">
                           候选不会自动写入工作副本，需在下方确认写入。
                         </span>
