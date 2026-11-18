@@ -80,6 +80,12 @@ type ComparisonEntry = {
   reason?: string;
   rule?: unknown;
 };
+type GroupComparison = {
+  sampler_node_id: string | null;
+  params: Record<string, unknown>;
+  comparisons: ComparisonEntry[];
+  counts: Record<string, number>;
+};
 type ComparePayload = {
   status: string;
   checkpoint: string | null;
@@ -89,6 +95,7 @@ type ComparePayload = {
   actuals: Record<string, unknown>;
   comparisons: ComparisonEntry[];
   counts: Record<string, number>;
+  sampler_group_comparisons?: GroupComparison[];
 };
 type RoleChoice = "" | "positive" | "negative";
 
@@ -446,6 +453,70 @@ export default function WorkflowWorkbench() {
                       ))
                     )}
                   </div>
+                  {compare.sampler_group_comparisons &&
+                    compare.sampler_group_comparisons.length > 1 && (
+                      <>
+                        <h4>逐采样器组比对</h4>
+                        <p className="muted">
+                          多组采样器各自独立比对，不合并、不替选；顶层结论对应首组。
+                        </p>
+                        <div className="compare-groups">
+                          {compare.sampler_group_comparisons.map((group, idx) => (
+                            <div className="compare-group" key={idx}>
+                              <div className="compare-group-head">
+                                <strong>
+                                  采样器组 {idx + 1}
+                                  {group.sampler_node_id
+                                    ? ` · 节点 ${group.sampler_node_id}`
+                                    : ""}
+                                </strong>
+                                <span className="compare-counts">
+                                  {Object.entries(group.counts).map(([status, count]) => (
+                                    <span
+                                      key={status}
+                                      className={`compare-badge ${status}`}
+                                    >
+                                      {STATUS_LABEL[status] ?? status} · {count}
+                                    </span>
+                                  ))}
+                                </span>
+                              </div>
+                              <div className="compare-actuals">
+                                <span className="workflow-meta">
+                                  步数: {formatActual(group.params.steps)}
+                                </span>
+                                <span className="workflow-meta">
+                                  CFG: {formatActual(group.params.cfg)}
+                                </span>
+                                <span className="workflow-meta">
+                                  采样器: {formatActual(group.params.sampler_name)}
+                                </span>
+                                <span className="workflow-meta">
+                                  调度器: {formatActual(group.params.scheduler)}
+                                </span>
+                              </div>
+                              <div className="compare-table">
+                                {group.comparisons.map((entry) => (
+                                  <div className="compare-row" key={entry.key}>
+                                    <div className="compare-row-main">
+                                      <strong>{entry.key}</strong>
+                                      <small>
+                                        规则：{formatActual(entry.rule)} · 实际：
+                                        {formatActual(entry.actual)}
+                                      </small>
+                                    </div>
+                                    <span className={`compare-badge ${entry.status}`}>
+                                      {STATUS_LABEL[entry.status] ?? entry.status}
+                                      {entry.reason ? `（${entry.reason}）` : ""}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                 </>
               )}
             </div>

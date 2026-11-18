@@ -181,25 +181,59 @@ def compare_rule(rule: dict[str, Any], actuals: dict[str, Any]) -> dict[str, Any
     return result
 
 
+def _count(entries: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for entry in entries:
+        counts[entry["status"]] = counts.get(entry["status"], 0) + 1
+    return counts
+
+
 def compare_workflow(
     payload: dict[str, Any],
     actuals: dict[str, Any],
 ) -> dict[str, Any]:
     """Compare every resolved field in one prompt payload against actuals.
 
-    ``actuals`` is the sampler params snapshot of the workflow's sampler group.
-    Fields without a comparable actual, or non-numeric actuals, stay ``unknown``;
-    no match is inferred from prose.
+    ``actuals`` is the sampler params snapshot of the workflow's first sampler
+    group plus shared facts (latent size, clip skip). Fields without a
+    comparable actual, or non-numeric actuals, stay ``unknown``; no match is
+    inferred from prose.
+
+    For multi-group workflows, each sampler group is compared independently
+    under ``sampler_group_comparisons``: group params override the shared
+    snapshot, groups are never merged or picked for one another. The top-level
+    verdict still reflects the first group only.
     """
     entries = [compare_rule(field, actuals) for field in payload.get("fields", [])]
-    counts: dict[str, int] = {}
-    for entry in entries:
-        counts[entry["status"]] = counts.get(entry["status"], 0) + 1
+
+    shared = {
+        key: value
+        for key, value in actuals.items()
+        if key not in ("sampler_groups", "sampler_group_count")
+    }
+    group_comparisons: list[dict[str, Any]] = []
+    for group in actuals.get("sampler_groups", []):
+        params = group.get("params") if isinstance(group, dict) else None
+        if not isinstance(params, dict):
+            params = {}
+        group_actuals = dict(shared)
+        group_actuals.update(params)
+        group_entries = [compare_rule(field, group_actuals) for field in payload.get("fields", [])]
+        group_comparisons.append(
+            {
+                "sampler_node_id": group.get("sampler_node_id") if isinstance(group, dict) else None,
+                "params": params,
+                "comparisons": group_entries,
+                "counts": _count(group_entries),
+            }
+        )
+
     return {
         "status": payload.get("status"),
         "checkpoint": payload.get("checkpoint"),
         "architecture": payload.get("architecture"),
         "actuals": actuals,
         "comparisons": entries,
-        "counts": counts,
+        "counts": _count(entries),
+        "sampler_group_comparisons": group_comparisons,
     }

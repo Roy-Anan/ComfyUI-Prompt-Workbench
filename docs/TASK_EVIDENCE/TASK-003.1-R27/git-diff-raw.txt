@@ -1,0 +1,230 @@
+diff --git a/backend/rule_compare.py b/backend/rule_compare.py
+index e463d3a..e8ddb6f 100644
+--- a/backend/rule_compare.py
++++ b/backend/rule_compare.py
+@@ -181,25 +181,59 @@ def compare_rule(rule: dict[str, Any], actuals: dict[str, Any]) -> dict[str, Any
+     return result
+ 
+ 
++def _count(entries: list[dict[str, Any]]) -> dict[str, int]:
++    counts: dict[str, int] = {}
++    for entry in entries:
++        counts[entry["status"]] = counts.get(entry["status"], 0) + 1
++    return counts
++
++
+ def compare_workflow(
+     payload: dict[str, Any],
+     actuals: dict[str, Any],
+ ) -> dict[str, Any]:
+     """Compare every resolved field in one prompt payload against actuals.
+ 
+-    ``actuals`` is the sampler params snapshot of the workflow's sampler group.
+-    Fields without a comparable actual, or non-numeric actuals, stay ``unknown``;
+-    no match is inferred from prose.
++    ``actuals`` is the sampler params snapshot of the workflow's first sampler
++    group plus shared facts (latent size, clip skip). Fields without a
++    comparable actual, or non-numeric actuals, stay ``unknown``; no match is
++    inferred from prose.
++
++    For multi-group workflows, each sampler group is compared independently
++    under ``sampler_group_comparisons``: group params override the shared
++    snapshot, groups are never merged or picked for one another. The top-level
++    verdict still reflects the first group only.
+     """
+     entries = [compare_rule(field, actuals) for field in payload.get("fields", [])]
+-    counts: dict[str, int] = {}
+-    for entry in entries:
+-        counts[entry["status"]] = counts.get(entry["status"], 0) + 1
++
++    shared = {
++        key: value
++        for key, value in actuals.items()
++        if key not in ("sampler_groups", "sampler_group_count")
++    }
++    group_comparisons: list[dict[str, Any]] = []
++    for group in actuals.get("sampler_groups", []):
++        params = group.get("params") if isinstance(group, dict) else None
++        if not isinstance(params, dict):
++            params = {}
++        group_actuals = dict(shared)
++        group_actuals.update(params)
++        group_entries = [compare_rule(field, group_actuals) for field in payload.get("fields", [])]
++        group_comparisons.append(
++            {
++                "sampler_node_id": group.get("sampler_node_id") if isinstance(group, dict) else None,
++                "params": params,
++                "comparisons": group_entries,
++                "counts": _count(group_entries),
++            }
++        )
++
+     return {
+         "status": payload.get("status"),
+         "checkpoint": payload.get("checkpoint"),
+         "architecture": payload.get("architecture"),
+         "actuals": actuals,
+         "comparisons": entries,
+-        "counts": counts,
++        "counts": _count(entries),
++        "sampler_group_comparisons": group_comparisons,
+     }
+diff --git a/backend/test_workflow_rules.py b/backend/test_workflow_rules.py
+index b124e98..c3580fd 100644
+--- a/backend/test_workflow_rules.py
++++ b/backend/test_workflow_rules.py
+@@ -16,6 +16,7 @@ def _seed_context_rules(database_path):
+         connection, "checkpoint", "sample_checkpoint.safetensors",
+         "GENERATION SETTINGS::Steps", "20",
+         provenance="author", confidence="authoritative",
++        structured={"kind": "value", "value": 20},
+     )
+     rule_store.upsert_rule(
+         connection, "architecture", "SD1.5",
+@@ -184,6 +185,18 @@ def test_workflow_rule_compare_lists_multiple_sampler_groups(client):
+     assert actuals["steps"] == 20
+     assert [g["params"].get("steps") for g in actuals["sampler_groups"]] == [20, 30]
+ 
++    groups = body["sampler_group_comparisons"]
++    assert len(groups) == 2
++    step_by_group = []
++    for group in groups:
++        step_entry = next(c for c in group["comparisons"] if c["key"] == "GENERATION SETTINGS::Steps")
++        step_by_group.append(step_entry["status"])
++    assert step_by_group == ["match", "out_of_range"]
++    # Per-group counts stay independent; the second group's mismatch must not
++    # leak into the first group's verdict.
++    assert groups[0]["counts"].get("match") == 1
++    assert groups[1]["counts"].get("out_of_range") == 1
++
+ 
+ def test_workflow_rule_compare_unregistered_without_checkpoint(client):
+     test_client, main = client
+diff --git a/frontend/src/WorkflowWorkbench.tsx b/frontend/src/WorkflowWorkbench.tsx
+index 69fb66a..478d127 100644
+--- a/frontend/src/WorkflowWorkbench.tsx
++++ b/frontend/src/WorkflowWorkbench.tsx
+@@ -80,6 +80,12 @@ type ComparisonEntry = {
+   reason?: string;
+   rule?: unknown;
+ };
++type GroupComparison = {
++  sampler_node_id: string | null;
++  params: Record<string, unknown>;
++  comparisons: ComparisonEntry[];
++  counts: Record<string, number>;
++};
+ type ComparePayload = {
+   status: string;
+   checkpoint: string | null;
+@@ -89,6 +95,7 @@ type ComparePayload = {
+   actuals: Record<string, unknown>;
+   comparisons: ComparisonEntry[];
+   counts: Record<string, number>;
++  sampler_group_comparisons?: GroupComparison[];
+ };
+ type RoleChoice = "" | "positive" | "negative";
+ 
+@@ -446,6 +453,70 @@ export default function WorkflowWorkbench() {
+                       ))
+                     )}
+                   </div>
++                  {compare.sampler_group_comparisons &&
++                    compare.sampler_group_comparisons.length > 1 && (
++                      <>
++                        <h4>逐采样器组比对</h4>
++                        <p className="muted">
++                          多组采样器各自独立比对，不合并、不替选；顶层结论对应首组。
++                        </p>
++                        <div className="compare-groups">
++                          {compare.sampler_group_comparisons.map((group, idx) => (
++                            <div className="compare-group" key={idx}>
++                              <div className="compare-group-head">
++                                <strong>
++                                  采样器组 {idx + 1}
++                                  {group.sampler_node_id
++                                    ? ` · 节点 ${group.sampler_node_id}`
++                                    : ""}
++                                </strong>
++                                <span className="compare-counts">
++                                  {Object.entries(group.counts).map(([status, count]) => (
++                                    <span
++                                      key={status}
++                                      className={`compare-badge ${status}`}
++                                    >
++                                      {STATUS_LABEL[status] ?? status} · {count}
++                                    </span>
++                                  ))}
++                                </span>
++                              </div>
++                              <div className="compare-actuals">
++                                <span className="workflow-meta">
++                                  步数: {formatActual(group.params.steps)}
++                                </span>
++                                <span className="workflow-meta">
++                                  CFG: {formatActual(group.params.cfg)}
++                                </span>
++                                <span className="workflow-meta">
++                                  采样器: {formatActual(group.params.sampler_name)}
++                                </span>
++                                <span className="workflow-meta">
++                                  调度器: {formatActual(group.params.scheduler)}
++                                </span>
++                              </div>
++                              <div className="compare-table">
++                                {group.comparisons.map((entry) => (
++                                  <div className="compare-row" key={entry.key}>
++                                    <div className="compare-row-main">
++                                      <strong>{entry.key}</strong>
++                                      <small>
++                                        规则：{formatActual(entry.rule)} · 实际：
++                                        {formatActual(entry.actual)}
++                                      </small>
++                                    </div>
++                                    <span className={`compare-badge ${entry.status}`}>
++                                      {STATUS_LABEL[entry.status] ?? entry.status}
++                                      {entry.reason ? `（${entry.reason}）` : ""}
++                                    </span>
++                                  </div>
++                                ))}
++                              </div>
++                            </div>
++                          ))}
++                        </div>
++                      </>
++                    )}
+                 </>
+               )}
+             </div>
+diff --git a/frontend/src/styles.css b/frontend/src/styles.css
+index 6d97fcb..d5c1ca3 100644
+--- a/frontend/src/styles.css
++++ b/frontend/src/styles.css
+@@ -529,6 +529,27 @@ button.secondary {
+   color: #9ca8ba;
+   overflow-wrap: anywhere;
+ }
++.compare-groups {
++  display: grid;
++  gap: 14px;
++}
++.compare-group {
++  border: 1px solid #344052;
++  border-radius: 10px;
++  padding: 13px 14px;
++  background: #111722;
++}
++.compare-group-head {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  justify-content: space-between;
++  gap: 10px;
++  margin-bottom: 10px;
++}
++.compare-group-head .compare-counts {
++  margin-bottom: 0;
++}
+ @media (max-width: 760px) {
+   .compare-row {
+     grid-template-columns: minmax(0, 1fr);

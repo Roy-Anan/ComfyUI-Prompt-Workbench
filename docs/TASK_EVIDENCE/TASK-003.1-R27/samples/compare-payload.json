@@ -1,0 +1,568 @@
+{
+  "status": "registered",
+  "checkpoint": "ponyDiffusionV6XL_v6.safetensors",
+  "architecture": "Pony / SDXL 系",
+  "actuals": {
+    "steps": 25,
+    "cfg": 7.0,
+    "sampler_name": null,
+    "scheduler": null,
+    "denoise": null,
+    "sampler_group_count": 2,
+    "sampler_groups": [
+      {
+        "sampler_node_id": "7",
+        "params": {
+          "steps": 25,
+          "cfg": 7.0,
+          "sampler_name": null,
+          "scheduler": null,
+          "denoise": null
+        }
+      },
+      {
+        "sampler_node_id": "9",
+        "params": {
+          "steps": 30,
+          "cfg": 6.0,
+          "sampler_name": null,
+          "scheduler": null,
+          "denoise": null
+        }
+      }
+    ],
+    "width": 832,
+    "height": 1216,
+    "clip_skip": 2
+  },
+  "comparisons": [
+    {
+      "key": "ARCHITECTURE::Base Architecture",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "ARCHITECTURE::Clip Skip",
+      "rule_status": "resolved",
+      "actual_key": "clip_skip",
+      "actual": 2,
+      "status": "match",
+      "rule": 2
+    },
+    {
+      "key": "ARCHITECTURE::Model Type",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "ARCHITECTURE::Trigger Words",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "ARCHITECTURE::VAE",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "CONFIDENCE::Last Updated",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "CONFIDENCE::Uncertain fields",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "CONFIDENCE::Verified by author documentation",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "GENERATION SETTINGS::Parameter Source",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "GENERATION SETTINGS::Resolution",
+      "rule_status": "resolved",
+      "actual_key": "resolution",
+      "actual": {
+        "width": 832,
+        "height": 1216
+      },
+      "status": "unknown",
+      "reason": "rule_not_structured"
+    },
+    {
+      "key": "GENERATION SETTINGS::Sampler",
+      "rule_status": "resolved",
+      "actual_key": "sampler_name",
+      "actual": null,
+      "status": "unknown",
+      "reason": "actual_missing"
+    },
+    {
+      "key": "GENERATION SETTINGS::Source Note",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "GENERATION SETTINGS::Steps",
+      "rule_status": "resolved",
+      "actual_key": "steps",
+      "actual": 25,
+      "status": "match",
+      "rule": 25
+    },
+    {
+      "key": "IDENTITY::Base Architecture",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "MODEL BEHAVIOR::Known Weaknesses",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "MODEL BEHAVIOR::NSFW / Mature Content Statement",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "MODEL BEHAVIOR::Strengths",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "PROMPT STYLE::Author Negative Example",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "PROMPT STYLE::Author Positive Example",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    },
+    {
+      "key": "PROMPT STYLE::Preferred Prompt Format",
+      "rule_status": "resolved",
+      "actual_key": null,
+      "actual": null,
+      "status": "unknown",
+      "reason": "field_not_compared"
+    }
+  ],
+  "counts": {
+    "unknown": 18,
+    "match": 2
+  },
+  "sampler_group_comparisons": [
+    {
+      "sampler_node_id": "7",
+      "params": {
+        "steps": 25,
+        "cfg": 7.0,
+        "sampler_name": null,
+        "scheduler": null,
+        "denoise": null
+      },
+      "comparisons": [
+        {
+          "key": "ARCHITECTURE::Base Architecture",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "ARCHITECTURE::Clip Skip",
+          "rule_status": "resolved",
+          "actual_key": "clip_skip",
+          "actual": 2,
+          "status": "match",
+          "rule": 2
+        },
+        {
+          "key": "ARCHITECTURE::Model Type",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "ARCHITECTURE::Trigger Words",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "ARCHITECTURE::VAE",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "CONFIDENCE::Last Updated",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "CONFIDENCE::Uncertain fields",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "CONFIDENCE::Verified by author documentation",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "GENERATION SETTINGS::Parameter Source",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "GENERATION SETTINGS::Resolution",
+          "rule_status": "resolved",
+          "actual_key": "resolution",
+          "actual": {
+            "width": 832,
+            "height": 1216
+          },
+          "status": "unknown",
+          "reason": "rule_not_structured"
+        },
+        {
+          "key": "GENERATION SETTINGS::Sampler",
+          "rule_status": "resolved",
+          "actual_key": "sampler_name",
+          "actual": null,
+          "status": "unknown",
+          "reason": "actual_missing"
+        },
+        {
+          "key": "GENERATION SETTINGS::Source Note",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "GENERATION SETTINGS::Steps",
+          "rule_status": "resolved",
+          "actual_key": "steps",
+          "actual": 25,
+          "status": "match",
+          "rule": 25
+        },
+        {
+          "key": "IDENTITY::Base Architecture",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "MODEL BEHAVIOR::Known Weaknesses",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "MODEL BEHAVIOR::NSFW / Mature Content Statement",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "MODEL BEHAVIOR::Strengths",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "PROMPT STYLE::Author Negative Example",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "PROMPT STYLE::Author Positive Example",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "PROMPT STYLE::Preferred Prompt Format",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        }
+      ],
+      "counts": {
+        "unknown": 18,
+        "match": 2
+      }
+    },
+    {
+      "sampler_node_id": "9",
+      "params": {
+        "steps": 30,
+        "cfg": 6.0,
+        "sampler_name": null,
+        "scheduler": null,
+        "denoise": null
+      },
+      "comparisons": [
+        {
+          "key": "ARCHITECTURE::Base Architecture",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "ARCHITECTURE::Clip Skip",
+          "rule_status": "resolved",
+          "actual_key": "clip_skip",
+          "actual": 2,
+          "status": "match",
+          "rule": 2
+        },
+        {
+          "key": "ARCHITECTURE::Model Type",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "ARCHITECTURE::Trigger Words",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "ARCHITECTURE::VAE",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "CONFIDENCE::Last Updated",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "CONFIDENCE::Uncertain fields",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "CONFIDENCE::Verified by author documentation",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "GENERATION SETTINGS::Parameter Source",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "GENERATION SETTINGS::Resolution",
+          "rule_status": "resolved",
+          "actual_key": "resolution",
+          "actual": {
+            "width": 832,
+            "height": 1216
+          },
+          "status": "unknown",
+          "reason": "rule_not_structured"
+        },
+        {
+          "key": "GENERATION SETTINGS::Sampler",
+          "rule_status": "resolved",
+          "actual_key": "sampler_name",
+          "actual": null,
+          "status": "unknown",
+          "reason": "actual_missing"
+        },
+        {
+          "key": "GENERATION SETTINGS::Source Note",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "GENERATION SETTINGS::Steps",
+          "rule_status": "resolved",
+          "actual_key": "steps",
+          "actual": 30,
+          "status": "out_of_range",
+          "rule": 25
+        },
+        {
+          "key": "IDENTITY::Base Architecture",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "MODEL BEHAVIOR::Known Weaknesses",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "MODEL BEHAVIOR::NSFW / Mature Content Statement",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "MODEL BEHAVIOR::Strengths",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "PROMPT STYLE::Author Negative Example",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "PROMPT STYLE::Author Positive Example",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        },
+        {
+          "key": "PROMPT STYLE::Preferred Prompt Format",
+          "rule_status": "resolved",
+          "actual_key": null,
+          "actual": null,
+          "status": "unknown",
+          "reason": "field_not_compared"
+        }
+      ],
+      "counts": {
+        "unknown": 18,
+        "match": 1,
+        "out_of_range": 1
+      }
+    }
+  ]
+}

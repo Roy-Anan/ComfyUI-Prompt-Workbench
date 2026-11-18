@@ -905,3 +905,25 @@
 
 - 未实现规则候选勾选/驳回、差异预览、冲突人工裁决入口；当前面板只展示后端比对结论。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R26/`。
+
+## 37. TASK-003.1-R27 M3 第二十二切片：多采样器组逐组比对（2026-11-18）
+
+### 37.1 当前状态
+
+- 后端 `compare_workflow` 在顶层首组结论之外，新增 `sampler_group_comparisons`：每个采样器组用公共事实（latent 尺寸、Clip Skip）叠加本组 params 独立比对，返回节点 id、params、逐条结论与分组计数；组间不合并不替选。
+- 前端比对面板在多组工作流下展开「逐采样器组比对」小节，逐组卡片展示节点、参数摘要、分组计数与条目结论；顶层结论仍对应首组。
+- 后端测试 **164 passed**；前端 `tsc -b && vite build` exit 0。
+
+### 37.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 逐组比对 | 通过 | 组 7（steps 25 / cfg 7.0）Steps 匹配；组 9（steps 30 / cfg 6.0）Steps 超出范围；分组计数独立 |
+| 前端分组卡片 | 通过 | `screenshots/compare-group1.png`、`compare-group2.png`；载荷 `samples/compare-payload.json` |
+| Python pytest | 通过 | **164 passed, 1 warning in 6.03s** |
+| TypeScript / Vite 构建 | 通过 | exit 0；`index-DX9kN6tt.js 160.40 kB` |
+
+### 37.3 边界与 backlog
+
+- 多组间参数冲突只逐组呈现，未做跨组冲突裁决或推荐取值。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R27/`。

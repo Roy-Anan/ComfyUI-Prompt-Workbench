@@ -16,6 +16,7 @@ def _seed_context_rules(database_path):
         connection, "checkpoint", "sample_checkpoint.safetensors",
         "GENERATION SETTINGS::Steps", "20",
         provenance="author", confidence="authoritative",
+        structured={"kind": "value", "value": 20},
     )
     rule_store.upsert_rule(
         connection, "architecture", "SD1.5",
@@ -183,6 +184,18 @@ def test_workflow_rule_compare_lists_multiple_sampler_groups(client):
     assert actuals["sampler_group_count"] == 2
     assert actuals["steps"] == 20
     assert [g["params"].get("steps") for g in actuals["sampler_groups"]] == [20, 30]
+
+    groups = body["sampler_group_comparisons"]
+    assert len(groups) == 2
+    step_by_group = []
+    for group in groups:
+        step_entry = next(c for c in group["comparisons"] if c["key"] == "GENERATION SETTINGS::Steps")
+        step_by_group.append(step_entry["status"])
+    assert step_by_group == ["match", "out_of_range"]
+    # Per-group counts stay independent; the second group's mismatch must not
+    # leak into the first group's verdict.
+    assert groups[0]["counts"].get("match") == 1
+    assert groups[1]["counts"].get("out_of_range") == 1
 
 
 def test_workflow_rule_compare_unregistered_without_checkpoint(client):
