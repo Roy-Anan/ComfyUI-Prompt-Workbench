@@ -113,6 +113,35 @@ def test_api_parser_without_latent_reports_none():
     assert report["latent"] is None
 
 
+def test_api_parser_lists_all_latent_and_clip_skip_nodes():
+    workflow = sample_api_workflow()
+    workflow["7"] = {
+        "class_type": "EmptyLatentImage",
+        "inputs": {"width": 832, "height": 1216, "batch_size": 1},
+    }
+    workflow["10"] = {
+        "class_type": "EmptyLatentImage",
+        "inputs": {"width": 768, "height": 1152, "batch_size": 1},
+    }
+    workflow["8"] = {
+        "class_type": "CLIPSetLastLayer",
+        "inputs": {"clip": ["3", 0], "stop_at_clip_layer": -2},
+    }
+    workflow["11"] = {
+        "class_type": "CLIPSetLastLayer",
+        "inputs": {"clip": ["3", 0], "stop_at_clip_layer": -3},
+    }
+    report = analyze_workflow(workflow)
+
+    # Top-level facts keep the first node; the remaining nodes are listed,
+    # never merged or silently dropped.
+    assert report["latent"] == {"node_id": "7", "width": 832, "height": 1216}
+    assert [n["node_id"] for n in report["latent_nodes"]] == ["7", "10"]
+    assert report["clip_skip"] == {"node_id": "8", "clip_skip": 2, "stop_at_clip_layer": -2}
+    assert [n["node_id"] for n in report["clip_skip_nodes"]] == ["8", "11"]
+    assert [n["clip_skip"] for n in report["clip_skip_nodes"]] == [2, 3]
+
+
 def test_prompt_write_changes_only_confirmed_text_fields(tmp_path):
     store = WorkflowStore(tmp_path / "workflows")
     source = sample_api_workflow()

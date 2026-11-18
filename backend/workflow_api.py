@@ -44,6 +44,30 @@ def _sampler_actuals(report: dict[str, Any]) -> dict[str, Any]:
     clip_skip = report.get("clip_skip")
     if isinstance(clip_skip, dict) and clip_skip.get("clip_skip") is not None:
         actuals["clip_skip"] = clip_skip["clip_skip"]
+
+    latent_nodes = report.get("latent_nodes")
+    if isinstance(latent_nodes, list):
+        actuals["latent_node_count"] = len(latent_nodes)
+        actuals["latent_nodes"] = [
+            {
+                "node_id": node.get("node_id"),
+                "width": node.get("width"),
+                "height": node.get("height"),
+            }
+            for node in latent_nodes
+            if isinstance(node, dict)
+        ]
+    clip_nodes = report.get("clip_skip_nodes")
+    if isinstance(clip_nodes, list):
+        actuals["clip_skip_node_count"] = len(clip_nodes)
+        actuals["clip_skip_nodes"] = [
+            {
+                "node_id": node.get("node_id"),
+                "clip_skip": node.get("clip_skip"),
+            }
+            for node in clip_nodes
+            if isinstance(node, dict)
+        ]
     return actuals
 
 

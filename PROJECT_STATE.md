@@ -949,3 +949,28 @@
 
 - 规则新增/编辑/删除、档案候选审核导入入口仍在后端接口层，前端未开放写操作。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R28/`。
+
+## 39. TASK-003.1-R29 M3 第二十四切片：多 latent/CLIP 节点保守标注（2026-11-18）
+
+### 39.1 当前状态
+
+- `workflow_service.py` 的 API/UI 两段解析在保留顶层 `latent`、`clip_skip`（取首个节点）的同时，新增 `latent_nodes`、`clip_skip_nodes` 全量列表；多节点不合并、不替选，其余节点如实列出。
+- `workflow_api._sampler_actuals` 透传 `latent_node_count`/`latent_nodes`、`clip_skip_node_count`/`clip_skip_nodes`；比对结论仍对应首节点。
+- 前端比对面板在摘要区对多节点给出保守提示：结论取首个，其余节点未参与比对。
+- 后端测试 **165 passed**；前端 `tsc -b && vite build` exit 0。
+
+### 39.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 多 latent 列表 | 通过 | 节点 6（832×1216）、10（768×1152）；顶层取节点 6；`samples/compare-payload.json` |
+| 多 CLIP 跳过层列表 | 通过 | 节点 8（clip_skip 2）、11（clip_skip 3）；顶层取节点 8 |
+| 前端多节点提示 | 通过 | `screenshots/compare-multi-nodes.png`：两条「结论取首个；其余节点未参与比对」提示 |
+| 比对结论 | 通过 | registered；计数 无法判定 17 / 匹配 2 / 不在集合 1；Clip Skip 2=2、Steps 25=25 匹配 |
+| Python pytest | 通过 | **165 passed, 1 warning in 6.03s** |
+| TypeScript / Vite 构建 | 通过 | exit 0；`index-BaTB97FZ.js 162.27 kB` |
+
+### 39.3 边界与 backlog
+
+- 多 latent / 多 CLIP 链路目前只标注事实并取首节点比对；逐节点取舍、跨节点冲突裁决与逐节点比对留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R29/`。

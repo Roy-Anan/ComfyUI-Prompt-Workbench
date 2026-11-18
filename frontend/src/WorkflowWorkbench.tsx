@@ -431,6 +431,18 @@ export default function WorkflowWorkbench() {
                       {formatActual(compare.actuals.height)}
                     </span>
                   </div>
+                  {(Number(compare.actuals.latent_node_count) ?? 0) > 1 && (
+                    <p className="muted">
+                      检测到 {formatActual(compare.actuals.latent_node_count)} 个
+                      latent 节点，分辨率结论取首个；其余节点未参与比对。
+                    </p>
+                  )}
+                  {(Number(compare.actuals.clip_skip_node_count) ?? 0) > 1 && (
+                    <p className="muted">
+                      检测到 {formatActual(compare.actuals.clip_skip_node_count)} 个
+                      CLIP 跳过层节点，Clip Skip 结论取首个；其余节点未参与比对。
+                    </p>
+                  )}
                   <h4>比对条目</h4>
                   <div className="compare-table">
                     {compare.comparisons.length === 0 ? (

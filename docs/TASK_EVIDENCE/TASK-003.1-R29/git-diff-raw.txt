@@ -1,0 +1,181 @@
+diff --git a/backend/test_workflow_service.py b/backend/test_workflow_service.py
+index 4158a11..cf793a4 100644
+--- a/backend/test_workflow_service.py
++++ b/backend/test_workflow_service.py
+@@ -113,6 +113,35 @@ def test_api_parser_without_latent_reports_none():
+     assert report["latent"] is None
+ 
+ 
++def test_api_parser_lists_all_latent_and_clip_skip_nodes():
++    workflow = sample_api_workflow()
++    workflow["7"] = {
++        "class_type": "EmptyLatentImage",
++        "inputs": {"width": 832, "height": 1216, "batch_size": 1},
++    }
++    workflow["10"] = {
++        "class_type": "EmptyLatentImage",
++        "inputs": {"width": 768, "height": 1152, "batch_size": 1},
++    }
++    workflow["8"] = {
++        "class_type": "CLIPSetLastLayer",
++        "inputs": {"clip": ["3", 0], "stop_at_clip_layer": -2},
++    }
++    workflow["11"] = {
++        "class_type": "CLIPSetLastLayer",
++        "inputs": {"clip": ["3", 0], "stop_at_clip_layer": -3},
++    }
++    report = analyze_workflow(workflow)
++
++    # Top-level facts keep the first node; the remaining nodes are listed,
++    # never merged or silently dropped.
++    assert report["latent"] == {"node_id": "7", "width": 832, "height": 1216}
++    assert [n["node_id"] for n in report["latent_nodes"]] == ["7", "10"]
++    assert report["clip_skip"] == {"node_id": "8", "clip_skip": 2, "stop_at_clip_layer": -2}
++    assert [n["node_id"] for n in report["clip_skip_nodes"]] == ["8", "11"]
++    assert [n["clip_skip"] for n in report["clip_skip_nodes"]] == [2, 3]
++
++
+ def test_prompt_write_changes_only_confirmed_text_fields(tmp_path):
+     store = WorkflowStore(tmp_path / "workflows")
+     source = sample_api_workflow()
+diff --git a/backend/workflow_api.py b/backend/workflow_api.py
+index 618a269..d929016 100644
+--- a/backend/workflow_api.py
++++ b/backend/workflow_api.py
+@@ -44,6 +44,30 @@ def _sampler_actuals(report: dict[str, Any]) -> dict[str, Any]:
+     clip_skip = report.get("clip_skip")
+     if isinstance(clip_skip, dict) and clip_skip.get("clip_skip") is not None:
+         actuals["clip_skip"] = clip_skip["clip_skip"]
++
++    latent_nodes = report.get("latent_nodes")
++    if isinstance(latent_nodes, list):
++        actuals["latent_node_count"] = len(latent_nodes)
++        actuals["latent_nodes"] = [
++            {
++                "node_id": node.get("node_id"),
++                "width": node.get("width"),
++                "height": node.get("height"),
++            }
++            for node in latent_nodes
++            if isinstance(node, dict)
++        ]
++    clip_nodes = report.get("clip_skip_nodes")
++    if isinstance(clip_nodes, list):
++        actuals["clip_skip_node_count"] = len(clip_nodes)
++        actuals["clip_skip_nodes"] = [
++            {
++                "node_id": node.get("node_id"),
++                "clip_skip": node.get("clip_skip"),
++            }
++            for node in clip_nodes
++            if isinstance(node, dict)
++        ]
+     return actuals
+ 
+ 
+diff --git a/backend/workflow_service.py b/backend/workflow_service.py
+index c3e71e3..d6dadaf 100644
+--- a/backend/workflow_service.py
++++ b/backend/workflow_service.py
+@@ -287,19 +287,27 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
+     lora_nodes: list[dict[str, Any]] = []
+     latent: dict[str, Any] | None = None
+     clip_skip: dict[str, Any] | None = None
++    latent_nodes: list[dict[str, Any]] = []
++    clip_skip_nodes: list[dict[str, Any]] = []
+     for node_id, node in nodes.items():
+         class_type = str(node.get("class_type", ""))
+         inputs = node.get("inputs", {})
+         if not isinstance(inputs, dict):
+             inputs = {}
+-        if latent is None and any(marker in class_type for marker in LATENT_MARKERS):
++        if any(marker in class_type for marker in LATENT_MARKERS):
+             latent_size = _latent_size(inputs)
+             if latent_size is not None:
+-                latent = {"node_id": node_id, **latent_size}
+-        if clip_skip is None and any(marker in class_type for marker in CLIP_SKIP_MARKERS):
++                latent_entry = {"node_id": node_id, **latent_size}
++                latent_nodes.append(latent_entry)
++                if latent is None:
++                    latent = latent_entry
++        if any(marker in class_type for marker in CLIP_SKIP_MARKERS):
+             derived = _clip_skip(inputs)
+             if derived is not None:
+-                clip_skip = {"node_id": node_id, **derived}
++                clip_entry = {"node_id": node_id, **derived}
++                clip_skip_nodes.append(clip_entry)
++                if clip_skip is None:
++                    clip_skip = clip_entry
+         if (
+             class_type in MODEL_NODE_NAMES
+             or ("Loader" in class_type and "Lora" not in class_type)
+@@ -375,6 +383,8 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
+         "lora_nodes": lora_nodes,
+         "latent": latent,
+         "clip_skip": clip_skip,
++        "latent_nodes": latent_nodes,
++        "clip_skip_nodes": clip_skip_nodes,
+         "prompt_groups": prompt_groups,
+         "prompt_nodes": sorted(
+             prompt_nodes,
+@@ -517,16 +527,24 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
+     lora_nodes: list[dict[str, Any]] = []
+     latent: dict[str, Any] | None = None
+     clip_skip: dict[str, Any] | None = None
++    latent_nodes: list[dict[str, Any]] = []
++    clip_skip_nodes: list[dict[str, Any]] = []
+     for node_id, node in nodes.items():
+         node_type = str(node.get("type", ""))
+-        if latent is None and any(marker in node_type for marker in LATENT_MARKERS):
++        if any(marker in node_type for marker in LATENT_MARKERS):
+             latent_size = _latent_size(_ui_inputs(node))
+             if latent_size is not None:
+-                latent = {"node_id": node_id, **latent_size}
+-        if clip_skip is None and any(marker in node_type for marker in CLIP_SKIP_MARKERS):
++                latent_entry = {"node_id": node_id, **latent_size}
++                latent_nodes.append(latent_entry)
++                if latent is None:
++                    latent = latent_entry
++        if any(marker in node_type for marker in CLIP_SKIP_MARKERS):
+             derived = _clip_skip(_ui_inputs(node))
+             if derived is not None:
+-                clip_skip = {"node_id": node_id, **derived}
++                clip_entry = {"node_id": node_id, **derived}
++                clip_skip_nodes.append(clip_entry)
++                if clip_skip is None:
++                    clip_skip = clip_entry
+         if node_type in MODEL_NODE_NAMES or (
+             "Loader" in node_type and "Lora" not in node_type
+         ):
+@@ -589,6 +607,8 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
+         "lora_nodes": lora_nodes,
+         "latent": latent,
+         "clip_skip": clip_skip,
++        "latent_nodes": latent_nodes,
++        "clip_skip_nodes": clip_skip_nodes,
+         "prompt_groups": prompt_groups,
+         "prompt_nodes": prompt_nodes,
+         "safe_prompt_write_supported": False,
+diff --git a/frontend/src/WorkflowWorkbench.tsx b/frontend/src/WorkflowWorkbench.tsx
+index 478d127..ad8205b 100644
+--- a/frontend/src/WorkflowWorkbench.tsx
++++ b/frontend/src/WorkflowWorkbench.tsx
+@@ -431,6 +431,18 @@ export default function WorkflowWorkbench() {
+                       {formatActual(compare.actuals.height)}
+                     </span>
+                   </div>
++                  {(Number(compare.actuals.latent_node_count) ?? 0) > 1 && (
++                    <p className="muted">
++                      检测到 {formatActual(compare.actuals.latent_node_count)} 个
++                      latent 节点，分辨率结论取首个；其余节点未参与比对。
++                    </p>
++                  )}
++                  {(Number(compare.actuals.clip_skip_node_count) ?? 0) > 1 && (
++                    <p className="muted">
++                      检测到 {formatActual(compare.actuals.clip_skip_node_count)} 个
++                      CLIP 跳过层节点，Clip Skip 结论取首个；其余节点未参与比对。
++                    </p>
++                  )}
+                   <h4>比对条目</h4>
+                   <div className="compare-table">
+                     {compare.comparisons.length === 0 ? (

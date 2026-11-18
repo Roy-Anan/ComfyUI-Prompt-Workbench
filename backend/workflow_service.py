@@ -287,19 +287,27 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
     lora_nodes: list[dict[str, Any]] = []
     latent: dict[str, Any] | None = None
     clip_skip: dict[str, Any] | None = None
+    latent_nodes: list[dict[str, Any]] = []
+    clip_skip_nodes: list[dict[str, Any]] = []
     for node_id, node in nodes.items():
         class_type = str(node.get("class_type", ""))
         inputs = node.get("inputs", {})
         if not isinstance(inputs, dict):
             inputs = {}
-        if latent is None and any(marker in class_type for marker in LATENT_MARKERS):
+        if any(marker in class_type for marker in LATENT_MARKERS):
             latent_size = _latent_size(inputs)
             if latent_size is not None:
-                latent = {"node_id": node_id, **latent_size}
-        if clip_skip is None and any(marker in class_type for marker in CLIP_SKIP_MARKERS):
+                latent_entry = {"node_id": node_id, **latent_size}
+                latent_nodes.append(latent_entry)
+                if latent is None:
+                    latent = latent_entry
+        if any(marker in class_type for marker in CLIP_SKIP_MARKERS):
             derived = _clip_skip(inputs)
             if derived is not None:
-                clip_skip = {"node_id": node_id, **derived}
+                clip_entry = {"node_id": node_id, **derived}
+                clip_skip_nodes.append(clip_entry)
+                if clip_skip is None:
+                    clip_skip = clip_entry
         if (
             class_type in MODEL_NODE_NAMES
             or ("Loader" in class_type and "Lora" not in class_type)
@@ -375,6 +383,8 @@ def _parse_api(workflow: dict[str, Any]) -> dict[str, Any]:
         "lora_nodes": lora_nodes,
         "latent": latent,
         "clip_skip": clip_skip,
+        "latent_nodes": latent_nodes,
+        "clip_skip_nodes": clip_skip_nodes,
         "prompt_groups": prompt_groups,
         "prompt_nodes": sorted(
             prompt_nodes,
@@ -517,16 +527,24 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
     lora_nodes: list[dict[str, Any]] = []
     latent: dict[str, Any] | None = None
     clip_skip: dict[str, Any] | None = None
+    latent_nodes: list[dict[str, Any]] = []
+    clip_skip_nodes: list[dict[str, Any]] = []
     for node_id, node in nodes.items():
         node_type = str(node.get("type", ""))
-        if latent is None and any(marker in node_type for marker in LATENT_MARKERS):
+        if any(marker in node_type for marker in LATENT_MARKERS):
             latent_size = _latent_size(_ui_inputs(node))
             if latent_size is not None:
-                latent = {"node_id": node_id, **latent_size}
-        if clip_skip is None and any(marker in node_type for marker in CLIP_SKIP_MARKERS):
+                latent_entry = {"node_id": node_id, **latent_size}
+                latent_nodes.append(latent_entry)
+                if latent is None:
+                    latent = latent_entry
+        if any(marker in node_type for marker in CLIP_SKIP_MARKERS):
             derived = _clip_skip(_ui_inputs(node))
             if derived is not None:
-                clip_skip = {"node_id": node_id, **derived}
+                clip_entry = {"node_id": node_id, **derived}
+                clip_skip_nodes.append(clip_entry)
+                if clip_skip is None:
+                    clip_skip = clip_entry
         if node_type in MODEL_NODE_NAMES or (
             "Loader" in node_type and "Lora" not in node_type
         ):
@@ -589,6 +607,8 @@ def _parse_ui(workflow: dict[str, Any]) -> dict[str, Any]:
         "lora_nodes": lora_nodes,
         "latent": latent,
         "clip_skip": clip_skip,
+        "latent_nodes": latent_nodes,
+        "clip_skip_nodes": clip_skip_nodes,
         "prompt_groups": prompt_groups,
         "prompt_nodes": prompt_nodes,
         "safe_prompt_write_supported": False,
