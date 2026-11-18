@@ -261,6 +261,11 @@ ComfyUI `/prompt`，并在本地 `comfy_task` 表记录 prompt_id 与初始状�
 驻留、节点校验错误均拒绝，失败不写记录、不自动重试。队列调度、WebSocket 进度、状态回读校准与
 断线恢复状态机留后续切片。
 
+M6 第四切片已落地（R42）：`GET /api/workflows/{id}/tasks?refresh=true` 回读 `/queue` 与 `/history`
+详情，按 prompt_id 保守校准本地状态（running/submitted/succeeded/failed/interrupted/unknown）；
+队列与历史均找不到的在途任务记 unknown，不直接判失败、不自动重出；ComfyUI 离线时保留本地状态并
+返回 sync_error。WebSocket 进度、队列调整与断线恢复状态机留后续切片。
+
 下一步继续 M3：global 级规则明确来源后装载、
 结构化参数的前端展示与比对、逐候选勾选/驳回/差异预览、来源/可信度/版本/差异回退、
 多模型与启用 LoRA 规则组合及冲突人工处理界面、云端研究资料导入审核；之后 M4 Ollama 候选生成、

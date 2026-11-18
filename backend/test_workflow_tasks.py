@@ -186,3 +186,133 @@ def test_list_tasks_returns_404_for_unknown_workflow(client):
         headers=AUTH,
     )
     assert response.status_code == 404
+
+
+def _submit_one(test_client, monkeypatch, prompt_id="prompt-1"):
+    workflow_id = _import(test_client, _api_workflow())
+    _confirm(test_client, workflow_id)
+
+    def fake_submit(url, prompt_api, client_id, timeout=10.0):
+        return {
+            "ok": True,
+            "prompt_id": prompt_id,
+            "node_errors": {},
+            "error": None,
+        }
+
+    _patch_gates(monkeypatch, submit=fake_submit)
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks", headers=AUTH
+    )
+    assert response.status_code == 200
+    return workflow_id
+
+
+def test_refresh_maps_history_success(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "fetch_task_states",
+        lambda url: {
+            "online": True,
+            "error": None,
+            "running": [],
+            "pending": [],
+            "history": {
+                "prompt-1": {
+                    "status_str": "success",
+                    "completed": True,
+                    "outputs": {"9": [{"filename": "a.png"}]},
+                }
+            },
+        },
+    )
+
+    body = test_client.get(
+        f"/api/workflows/{workflow_id}/tasks?refresh=true", headers=AUTH
+    ).json()
+    record = body["items"][0]
+    assert record["status"] == "succeeded"
+    assert record["outputs"] == {"9": [{"filename": "a.png"}]}
+    assert body["sync_error"] is None
+
+
+def test_refresh_maps_queue_running(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "fetch_task_states",
+        lambda url: {
+            "online": True,
+            "error": None,
+            "running": ["prompt-1"],
+            "pending": [],
+            "history": {},
+        },
+    )
+
+    body = test_client.get(
+        f"/api/workflows/{workflow_id}/tasks?refresh=true", headers=AUTH
+    ).json()
+    assert body["items"][0]["status"] == "running"
+
+
+def test_refresh_marks_unknown_when_absent_from_queue_and_history(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "fetch_task_states",
+        lambda url: {
+            "online": True,
+            "error": None,
+            "running": [],
+            "pending": [],
+            "history": {},
+        },
+    )
+
+    body = test_client.get(
+        f"/api/workflows/{workflow_id}/tasks?refresh=true", headers=AUTH
+    ).json()
+    record = body["items"][0]
+    assert record["status"] == "unknown"
+    assert record["last_error"]
+
+
+def test_refresh_offline_keeps_local_status(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "fetch_task_states",
+        lambda url: {
+            "online": False,
+            "error": "connection refused",
+            "running": [],
+            "pending": [],
+            "history": {},
+        },
+    )
+
+    body = test_client.get(
+        f"/api/workflows/{workflow_id}/tasks?refresh=true", headers=AUTH
+    ).json()
+    assert body["items"][0]["status"] == "submitted"
+    assert body["sync_error"] == "connection refused"
+
+
+def test_classify_history_status_is_conservative():
+    classify = workflow_api.comfy_tasks.classify_history_status
+    assert classify("success", True) == "succeeded"
+    assert classify("success", None) == "succeeded"
+    assert classify("error", False) == "failed"
+    assert classify("interrupted", None) == "interrupted"
+    assert classify(None, None) == "unknown"
+    assert classify("running", None) == "unknown"

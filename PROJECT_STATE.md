@@ -1219,3 +1219,21 @@
 - 队列先进先出/暂停/恢复/取消/重试、WebSocket 进度订阅、queue/history 回读状态校准、断线恢复、
   中断任务不自动重出的界面与通知留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R41/`。
+
+## 52. TASK-003.1-R42 M6 第四切片：任务状态回读校准（2026-11-18）
+
+### 52.1 落地内容
+
+- `comfy_client.fetch_task_states`：聚合 `/queue` 运行中/待执行与 `/history` 详情（status_str、
+  completed、outputs）；离线 fail-closed 空投影。
+- `comfy_tasks.classify_history_status`：历史条目保守映射 succeeded/failed/interrupted/unknown，
+  未明确报告成功/失败不臆造。
+- `GET /api/workflows/{id}/tasks?refresh=true`：按 prompt_id 校准本地记录；队列/历史均找不到的在途
+  任务记 unknown；ComfyUI 离线保留本地状态并返回 `sync_error`；不自动重出。
+- 新增 5 个单测：历史成功、队列运行中、双找不到记 unknown、离线保留本地状态、状态分类纯函数。
+- 后端测试 **197 passed**。
+
+### 52.2 边界与 backlog
+
+- WebSocket 进度订阅、队列暂停/恢复/取消/重试、断线恢复状态机、中断任务界面与通知留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R42/`。

@@ -429,8 +429,14 @@ def submit_task(workflow_id: str):
 
 
 @router.get("/{workflow_id}/tasks")
-def list_tasks(workflow_id: str):
-    """Return locally recorded tasks for this workflow, newest first."""
+def list_tasks(workflow_id: str, refresh: bool = False):
+    """Return locally recorded tasks for this workflow, newest first.
+
+    With ``refresh=true`` the queue and history are read back and local
+    statuses reconciled conservatively: a task absent from both queue and
+    history while still pending/running is marked ``unknown``, never failed
+    automatically. No task is resubmitted from this endpoint.
+    """
     try:
         store().get_workflow(workflow_id)
     except (WorkflowError, FileNotFoundError, OSError) as exc:
@@ -438,9 +444,42 @@ def list_tasks(workflow_id: str):
 
     with model_identity.connect(_database_path()) as connection:
         comfy_tasks.ensure_schema(connection)
-        return {
-            "items": comfy_tasks.list_for_workflow(connection, workflow_id),
-        }
+        items = comfy_tasks.list_for_workflow(connection, workflow_id)
+        sync_error: str | None = None
+
+        if refresh:
+            states = comfy_client.fetch_task_states(_comfyui_url())
+            if not states["online"]:
+                sync_error = states["error"]
+            else:
+                for record in items:
+                    pid = record["prompt_id"]
+                    if pid in states["running"]:
+                        comfy_tasks.update_status(connection, pid, "running")
+                    elif pid in states["pending"]:
+                        comfy_tasks.update_status(connection, pid, "submitted")
+                    elif pid in states["history"]:
+                        entry = states["history"][pid]
+                        status = comfy_tasks.classify_history_status(
+                            entry.get("status_str"),
+                            entry.get("completed"),
+                        )
+                        comfy_tasks.update_status(
+                            connection,
+                            pid,
+                            status,
+                            outputs=entry.get("outputs"),
+                        )
+                    elif record["status"] in ("submitted", "running"):
+                        comfy_tasks.update_status(
+                            connection,
+                            pid,
+                            "unknown",
+                            last_error="队列与历史均未找到该任务",
+                        )
+                items = comfy_tasks.list_for_workflow(connection, workflow_id)
+
+        return {"items": items, "sync_error": sync_error}
 
 
 @router.get("/{workflow_id}/rules/compare")

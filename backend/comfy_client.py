@@ -59,6 +59,69 @@ def _get_json(
         return None, str(exc)
 
 
+def _queue_ids(items: Any) -> list[str]:
+    ids: list[str] = []
+    if not isinstance(items, list):
+        return ids
+    for item in items:
+        if isinstance(item, list) and item and isinstance(item[0], str):
+            ids.append(item[0])
+    return ids
+
+
+def fetch_task_states(
+    comfyui_url: str,
+    timeout: float = 2.5,
+) -> dict[str, Any]:
+    """Project queue and history details for local task status reconciliation.
+
+    Only identifiers and a conservative status summary are read; nothing is
+    submitted, cancelled, or reordered. A missing queue response fails closed
+    with ``online=False`` and empty projections.
+    """
+    queue_data, queue_error = _get_json(
+        comfyui_url.rstrip("/") + "/queue", timeout
+    )
+    history_data, history_error = _get_json(
+        comfyui_url.rstrip("/") + "/history", timeout
+    )
+
+    if queue_data is None:
+        return {
+            "online": False,
+            "error": queue_error,
+            "running": [],
+            "pending": [],
+            "history": {},
+        }
+
+    history: dict[str, Any] = {}
+    if isinstance(history_data, dict):
+        for prompt_id, entry in history_data.items():
+            if not isinstance(prompt_id, str) or not isinstance(entry, dict):
+                continue
+            status = entry.get("status")
+            status_str: str | None = None
+            completed: Any = None
+            if isinstance(status, dict):
+                raw_str = status.get("status_str")
+                status_str = raw_str if isinstance(raw_str, str) else None
+                completed = status.get("completed")
+            history[prompt_id] = {
+                "status_str": status_str,
+                "completed": completed,
+                "outputs": entry.get("outputs"),
+            }
+
+    return {
+        "online": True,
+        "error": history_error if history_data is None else None,
+        "running": _queue_ids(queue_data.get("queue_running")),
+        "pending": _queue_ids(queue_data.get("queue_pending")),
+        "history": history,
+    }
+
+
 def comfyui_online(comfyui_url: str, timeout: float = 2.5) -> bool:
     """True only if /system_stats answers with a JSON body."""
     data, _ = _get_json(comfyui_url.rstrip("/") + "/system_stats", timeout)

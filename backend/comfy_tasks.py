@@ -40,6 +40,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def classify_history_status(
+    status_str: str | None,
+    completed: Any,
+) -> str:
+    """Map a ComfyUI history entry to a conservative local status.
+
+    Anything not explicitly reported as success/error/interrupted stays
+    ``unknown`` rather than being guessed as finished or failed.
+    """
+    if status_str == "success" or completed is True:
+        return "succeeded"
+    if status_str == "error":
+        return "failed"
+    if status_str in ("interrupted", "stopped", "cancelled"):
+        return "interrupted"
+    return "unknown"
+
+
 def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(_SCHEMA)
     connection.commit()
