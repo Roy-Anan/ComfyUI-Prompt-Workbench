@@ -343,7 +343,7 @@ export default function WorkflowWorkbench() {
             ) : (
               <>
                 <p>
-                  **{detail.manifest.filename}** ·{" "}
+                  <strong>{detail.manifest.filename}</strong> ·{" "}
                   {detail.report.format.toUpperCase()} ·{" "}
                   {detail.report.node_count} 个节点
                 </p>

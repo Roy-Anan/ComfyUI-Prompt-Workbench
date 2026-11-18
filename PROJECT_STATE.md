@@ -1022,3 +1022,25 @@
 
 - 分号两套建议的分组结构化与示例套/推荐套优先级语义留后续切片；本切片摘要只服务既有 kind。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R31/`。
+
+## 42. TASK-003.1-R32 M3 第二十七切片：前端星号 markdown 残留清理（2026-11-18）
+
+### 42.1 当前状态
+
+- 工作流识别结果标题行 `**{filename}**` 字面 markdown 星号改为 `<strong>` 加粗标签，与左侧列表项范式一致。
+- 全前端 `.tsx` 复查无其他 markdown 标记残留；纯前端展示修复，后端零改动。
+- 后端测试 **165 passed**；前端 `tsc -b && vite build` exit 0。
+
+### 42.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 标题行文件名加粗、无字面星号 | 通过 | `screenshots/title-bold.png` |
+| 全前端无其他 markdown 残留 | 通过 | 检索确认 |
+| Python pytest | 通过 | **165 passed, 1 warning in 6.14s** |
+| TypeScript / Vite 构建 | 通过 | exit 0；`index-Bgw4pSpK.js 165.10 kB`，CSS 8.09 kB |
+
+### 42.3 边界与 backlog
+
+- 无功能性遗留；既有 backlog 沿用 R31 清单。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R32/`。

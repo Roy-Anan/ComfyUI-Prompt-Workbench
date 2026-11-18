@@ -1,0 +1,11 @@
+diff --git a/frontend/src/WorkflowWorkbench.tsx b/frontend/src/WorkflowWorkbench.tsx
+index <before>..<after> 100644
+--- a/frontend/src/WorkflowWorkbench.tsx
++++ b/frontend/src/WorkflowWorkbench.tsx
+@@ 当前工作流识别结果 标题行（约 346 行）
+-                  **{detail.manifest.filename}** ·{" "}
++                  <strong>{detail.manifest.filename}</strong> ·{" "}
+
+说明：原 JSX 字面书写 markdown 加粗星号 `**...**`，界面渲染为普通文本星号；
+改为既有的 `<strong>` 加粗标签（与左侧工作流列表项 `item.filename` 同范式）。
+后端零改动；前端其余文件无改动。
