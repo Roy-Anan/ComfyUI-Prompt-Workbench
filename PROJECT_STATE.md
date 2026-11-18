@@ -1271,3 +1271,18 @@
 
 - 队列暂停/恢复、失败重试、WebSocket 实时进度、断线恢复状态机、通知与图库视图留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R44/`。
+
+## 55. TASK-003.1-R45 M6 第七切片：LLM/ComfyUI 互斥反向闸门（2026-11-18）
+
+### 55.1 落地内容
+
+- `comfy_client.queue_has_active_task`：在线且 running/pending 非空记 active；离线记
+  `online=False, active=False`（离线不可能持有在途任务，不阻断）。
+- `POST /api/workflows/{id}/prompt/candidates` 调本地 LLM 前先查队列：有在途任务 409 拒绝加载；
+  队列空闲或 ComfyUI 离线放行。
+- 新增 3 个单测：队列活动拒绝且不调 chat、空闲放行、离线放行。后端 **206 passed**。
+
+### 55.2 边界与 backlog
+
+- 显存数值阈值、Ollama 主动 unload 接口、WebSocket 进度、队列暂停/恢复/重试、断线恢复留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R45/`。

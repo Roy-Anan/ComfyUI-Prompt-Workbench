@@ -122,6 +122,25 @@ def fetch_task_states(
     }
 
 
+def queue_has_active_task(
+    comfyui_url: str,
+    timeout: float = 2.5,
+) -> dict[str, Any]:
+    """Report whether ComfyUI is online with a running or pending task.
+
+    When ComfyUI is unreachable it cannot hold an in-flight task, so the
+    report is ``online=False, active=False`` rather than a blocking unknown.
+    """
+    states = fetch_task_states(comfyui_url, timeout)
+    if not states["online"]:
+        return {"online": False, "active": False, "error": states["error"]}
+    return {
+        "online": True,
+        "active": bool(states["running"] or states["pending"]),
+        "error": None,
+    }
+
+
 def comfyui_online(comfyui_url: str, timeout: float = 2.5) -> bool:
     """True only if /system_stats answers with a JSON body."""
     data, _ = _get_json(comfyui_url.rstrip("/") + "/system_stats", timeout)

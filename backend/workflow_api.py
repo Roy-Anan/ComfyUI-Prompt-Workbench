@@ -336,6 +336,15 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
             "content": _user_message(workflow.get("working_prompts", []), payload.task),
         },
     ]
+    queue = comfy_client.queue_has_active_task(_comfyui_url())
+    if queue["active"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "online": True,
+                "error": "ComfyUI 队列有待执行或运行中任务，请完成后再使用本地 LLM。",
+            },
+        )
     result = llm_client.chat(_ollama_url(), payload.model, messages)
     if not result["ok"]:
         raise HTTPException(

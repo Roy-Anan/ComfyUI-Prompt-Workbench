@@ -1,3 +1,4 @@
+import llm_client
 import workflow_api
 
 AUTH = {"Authorization": "Bearer test-session-token"}
@@ -419,3 +420,71 @@ def test_cancel_unknown_prompt_returns_404(client, monkeypatch):
         f"/api/workflows/{workflow_id}/tasks/does-not-exist/cancel", headers=AUTH
     )
     assert response.status_code == 404
+
+
+def _fake_chat_record(called: dict):
+    def fake_chat(url, model, messages, timeout=30.0):
+        called["chat"] = True
+        return {"ok": True, "content": "candidate", "model": model, "error": None}
+
+    return fake_chat
+
+
+def test_candidate_blocked_when_comfyui_queue_active(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": True, "active": True, "error": None},
+    )
+    called: dict = {}
+    monkeypatch.setattr(llm_client, "chat", _fake_chat_record(called))
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={"model": "qwen3:latest"},
+    )
+    assert response.status_code == 409
+    assert called.get("chat") is not True
+
+
+def test_candidate_allowed_when_queue_idle(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": True, "active": False, "error": None},
+    )
+    called: dict = {}
+    monkeypatch.setattr(llm_client, "chat", _fake_chat_record(called))
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={"model": "qwen3:latest"},
+    )
+    assert response.status_code == 200
+    assert called.get("chat") is True
+
+
+def test_candidate_allowed_when_comfyui_offline(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": False, "active": False, "error": "refused"},
+    )
+    called: dict = {}
+    monkeypatch.setattr(llm_client, "chat", _fake_chat_record(called))
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={"model": "qwen3:latest"},
+    )
+    assert response.status_code == 200
+    assert called.get("chat") is True
