@@ -704,6 +704,57 @@ def test_draft_update_preserves_name_and_note(client):
     assert body["negative"] == ""
 
 
+def test_draft_update_changes_name_and_note_without_self_collision(client):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+
+    first = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"name": "旧名", "positive": "p1", "note": "旧备注"},
+    )
+    assert first.status_code == 200
+    draft_id = first.json()["id"]
+
+    other = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"name": "另一条", "positive": "p3"},
+    )
+    assert other.status_code == 200
+
+    # 更新可改名 / 改备注；自身旧名不构成同名冲突。
+    renamed = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={
+            "draft_id": draft_id,
+            "name": "新名",
+            "positive": "p2",
+            "note": "新备注",
+        },
+    )
+    assert renamed.status_code == 200
+    body = renamed.json()
+    assert body["name"] == "新名"
+    assert body["note"] == "新备注"
+    assert body["positive"] == "p2"
+
+    listed = test_client.get(
+        f"/api/workflows/{workflow_id}/drafts", headers=AUTH
+    ).json()["items"]
+    names = {entry["name"] for entry in listed}
+    assert names == {"新名", "另一条"}
+
+    # 改成与另一条同名仍被拒绝（同名去重只排除自身）。
+    clash = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"draft_id": draft_id, "name": "另一条", "positive": "p4"},
+    )
+    assert clash.status_code == 400
+
+
 def test_draft_rejects_empty_prompt_duplicate_name_and_missing(client):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())

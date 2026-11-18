@@ -612,6 +612,8 @@ export default function WorkflowWorkbench() {
   function adoptDraft(draft: DraftEntry) {
     setPositiveText(draft.positive);
     setNegativeText(draft.negative);
+    setDraftName(draft.name);
+    setDraftNote(draft.note);
     setMessage(`草稿「${draft.name}」已载入编辑框（尚未写入工作副本）。`);
   }
 
@@ -632,6 +634,11 @@ export default function WorkflowWorkbench() {
 
   async function updateDraft(draft: DraftEntry) {
     if (!workflowId) return;
+    const name = draftName.trim();
+    if (!name) {
+      setMessage("请先填写草稿名称。");
+      return;
+    }
     if (!positiveText.trim() && !negativeText.trim()) {
       setMessage("正向与负向均为空，无法更新草稿。");
       return;
@@ -640,10 +647,10 @@ export default function WorkflowWorkbench() {
     try {
       await apiPost(`/api/workflows/${workflowId}/drafts`, {
         draft_id: draft.id,
-        name: draft.name,
+        name,
         positive: positiveText,
         negative: negativeText,
-        note: draft.note,
+        note: draftNote.trim(),
       });
       setUpdatingDraftId(null);
       await loadDrafts(workflowId);
@@ -1202,7 +1209,7 @@ export default function WorkflowWorkbench() {
               <h3>草稿箱</h3>
               <p className="muted">
                 手动保存的 Prompt 组合；保存与更新都不写入工作副本，载入编辑框后仍需确认写入。
-                更新用当前编辑框内容覆盖该草稿，保留其名称与备注。
+                载入后可在上方名称 / 备注框修改，更新时用当前编辑框内容与名称备注一并覆盖该草稿。
               </p>
               <div className="actions">
                 <input
