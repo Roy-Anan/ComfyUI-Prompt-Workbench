@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
 import { apiGet } from "./api";
 
+type HistoryView = "list" | "grid";
+
+function readStoredView(): HistoryView {
+  try {
+    const value = localStorage.getItem("workbench.historyView");
+    if (value === "list" || value === "grid") return value;
+  } catch {
+    // 本地存储不可用时回落到列表视图。
+  }
+  return "list";
+}
+
 type HistoryImage = {
   node_id: string;
   filename: string;
@@ -76,7 +88,16 @@ export default function HistoryPanel() {
   const [keyword, setKeyword] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [view, setView] = useState<"list" | "grid">("list");
+  const [view, setView] = useState<HistoryView>(readStoredView);
+
+  function switchView(next: HistoryView) {
+    setView(next);
+    try {
+      localStorage.setItem("workbench.historyView", next);
+    } catch {
+      // 忽略本地存储写入失败。
+    }
+  }
 
   async function load() {
     try {
@@ -223,7 +244,7 @@ export default function HistoryPanel() {
         </div>
         <div className="actions">
           <button
-            onClick={() => setView(view === "list" ? "grid" : "list")}
+            onClick={() => switchView(view === "list" ? "grid" : "list")}
             disabled={filtered.length === 0}
           >
             {view === "list" ? "网格视图" : "列表视图"}

@@ -4,6 +4,20 @@ import { formatStructured } from "./format";
 import HistoryPanel from "./HistoryPanel";
 import WorkflowWorkbench from "./WorkflowWorkbench";
 
+type PageKey = "settings" | "workflows" | "history";
+
+const PAGE_KEYS: PageKey[] = ["settings", "workflows", "history"];
+
+function readStoredPage(): PageKey {
+  try {
+    const value = localStorage.getItem("workbench.activePage");
+    if (PAGE_KEYS.includes(value as PageKey)) return value as PageKey;
+  } catch {
+    // 本地存储不可用时回落到默认页签。
+  }
+  return "settings";
+}
+
 type Health = {
   ok: boolean;
   app: string;
@@ -210,7 +224,16 @@ export default function App() {
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在连接本地服务…");
-  const [activePage, setActivePage] = useState<"settings" | "workflows" | "history">("settings");
+  const [activePage, setActivePage] = useState<PageKey>(readStoredPage);
+
+  function switchPage(page: PageKey) {
+    setActivePage(page);
+    try {
+      localStorage.setItem("workbench.activePage", page);
+    } catch {
+      // 忽略本地存储写入失败。
+    }
+  }
 
   async function refresh() {
     const [healthResult, settingsResult, serviceResult, catalogResult, ruleResult, profileResult] =
@@ -469,19 +492,19 @@ export default function App() {
       <nav className="page-nav">
         <button
           className={activePage === "settings" ? "" : "secondary"}
-          onClick={() => setActivePage("settings")}
+          onClick={() => switchPage("settings")}
         >
           服务与设置
         </button>
         <button
           className={activePage === "workflows" ? "" : "secondary"}
-          onClick={() => setActivePage("workflows")}
+          onClick={() => switchPage("workflows")}
         >
           工作流工作区
         </button>
         <button
           className={activePage === "history" ? "" : "secondary"}
-          onClick={() => setActivePage("history")}
+          onClick={() => switchPage("history")}
         >
           生成历史
         </button>
