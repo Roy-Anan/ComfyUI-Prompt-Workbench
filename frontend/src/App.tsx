@@ -37,6 +37,20 @@ type PathCheck = {
   writable: boolean;
 };
 
+type CatalogEntry = {
+  name: string;
+  on_disk: boolean | null;
+};
+
+type ModelCatalog = {
+  online: boolean;
+  error: string | null;
+  checkpoints: CatalogEntry[];
+  clips: CatalogEntry[];
+  vaes: CatalogEntry[];
+  loras: CatalogEntry[];
+};
+
 const storageLabels: Record<string, string> = {
   root: "工作台数据根目录（固定）",
   database: "数据库目录",
@@ -53,6 +67,11 @@ const storageLabels: Record<string, string> = {
   lora: "LoRA 模型目录（只读扫描）",
 };
 
+function diskLabel(onDisk: boolean | null): string {
+  if (onDisk === null) return "目录未配置";
+  return onDisk ? "本机存在" : "本机未找到";
+}
+
 function StatusDot({ online }: { online: boolean }) {
   return (
     <span
@@ -66,22 +85,25 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [services, setServices] = useState<ServiceStatus | null>(null);
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在连接本地服务…");
   const [activePage, setActivePage] = useState<"settings" | "workflows">("settings");
 
   async function refresh() {
-    const [healthResult, settingsResult, serviceResult] =
+    const [healthResult, settingsResult, serviceResult, catalogResult] =
       await Promise.all([
         apiGet<Health>("/api/health"),
         apiGet<Settings>("/api/settings"),
         apiGet<ServiceStatus>("/api/services/status"),
+        apiGet<ModelCatalog>("/api/models/catalog"),
       ]);
 
     setHealth(healthResult);
     setSettings(settingsResult);
     setServices(serviceResult);
+    setCatalog(catalogResult);
   }
 
   useEffect(() => {
@@ -376,6 +398,79 @@ export default function App() {
           </div>
         ) : (
           <p>正在读取存储配置…</p>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <h2>模型清单（只读）</h2>
+            <p>
+              名单来自 ComfyUI 已加载的模型；勾选目录后可核对本机文件是否存在。
+              这里不复制、不修改模型权重。
+            </p>
+          </div>
+        </div>
+
+        {catalog ? (
+          catalog.online ? (
+            <div className="catalog-grid">
+              <div className="catalog-col">
+                <div className="catalog-title">
+                  Checkpoint（{catalog.checkpoints.length}）
+                </div>
+                <ul className="catalog-list">
+                  {catalog.checkpoints.map((entry) => (
+                    <li key={entry.name}>
+                      <span>{entry.name}</span>
+                      <small>{diskLabel(entry.on_disk)}</small>
+                    </li>
+                  ))}
+                  {catalog.checkpoints.length === 0 && (
+                    <li className="catalog-empty">ComfyUI 未列出 Checkpoint</li>
+                  )}
+                </ul>
+              </div>
+              <div className="catalog-col">
+                <div className="catalog-title">
+                  LoRA（{catalog.loras.length}）
+                </div>
+                <ul className="catalog-list">
+                  {catalog.loras.map((entry) => (
+                    <li key={entry.name}>
+                      <span>{entry.name}</span>
+                      <small>{diskLabel(entry.on_disk)}</small>
+                    </li>
+                  ))}
+                  {catalog.loras.length === 0 && (
+                    <li className="catalog-empty">ComfyUI 未列出 LoRA</li>
+                  )}
+                </ul>
+              </div>
+              <div className="catalog-col">
+                <div className="catalog-title">
+                  VAE（{catalog.vaes.length}）
+                </div>
+                <ul className="catalog-list">
+                  {catalog.vaes.map((entry) => (
+                    <li key={entry.name}>
+                      <span>{entry.name}</span>
+                      <small>{diskLabel(entry.on_disk)}</small>
+                    </li>
+                  ))}
+                  {catalog.vaes.length === 0 && (
+                    <li className="catalog-empty">ComfyUI 未列出 VAE</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <p className="catalog-offline">
+              模型清单不可用：{catalog.error ?? "ComfyUI 未连接"}
+            </p>
+          )
+        ) : (
+          <p>正在读取模型清单…</p>
         )}
       </section>
 

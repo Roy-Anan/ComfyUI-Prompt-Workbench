@@ -1,0 +1,91 @@
+{
+  "online": true,
+  "error": null,
+  "checkpoint_count": 13,
+  "clip_count": 0,
+  "vae_count": 3,
+  "lora_count": 3,
+  "checkpoints": [
+    {
+      "name": "CyberRealisticPony_V18.0_F16.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "GhostMix_v2.0.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "HuslyoRealismSDXL_v3.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "Juggernaut-XI-byRunDiffusion.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "RH_Illustrious_2.5D_V1.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "anything-v5.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "autismmixSDXL_autismmixPony.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "huslyorealismxl_v2DMD.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "intorealismUltra_v80.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "juggernautXL_ragnarokBy.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "majicMIX realistic v7.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "ponyDiffusionV6XL_v6.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "waiIllustriousSDXL_v170.safetensors",
+      "on_disk": null
+    }
+  ],
+  "clips": [],
+  "vaes": [
+    {
+      "name": "animevae.pt",
+      "on_disk": null
+    },
+    {
+      "name": "pixel_space",
+      "on_disk": null
+    },
+    {
+      "name": "vae-ft-mse-840000-ema-pruned.safetensors",
+      "on_disk": null
+    }
+  ],
+  "loras": [
+    {
+      "name": "ip-adapter-faceid-plusv2_sd15_lora.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "suyuexi.safetensors",
+      "on_disk": null
+    },
+    {
+      "name": "suyuexifull_c1-st6000.safetensors",
+      "on_disk": null
+    }
+  ]
+}

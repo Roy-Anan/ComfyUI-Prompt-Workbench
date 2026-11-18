@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 import datadir
+import model_catalog
 from workflow_api import router as workflow_router
 
 APP_NAME = "ComfyUI-Prompt-Workbench"
@@ -533,6 +534,25 @@ def services_status():
             "/system_stats",
         ),
     }
+
+
+@app.get("/api/models/catalog")
+def models_catalog():
+    """Read-only checkpoint / LoRA names exposed by ComfyUI.
+
+    Names come from ComfyUI ``/object_info``; an optional configured local
+    directory only marks whether each file is present on disk. No weights are
+    copied, hashed or modified here.
+    """
+    settings = load_settings()
+    connections = settings["connections"]
+    storage = settings["storage"]
+
+    return model_catalog.fetch_catalog(
+        comfyui_url=connections["comfyui_url"],
+        checkpoint_dir=storage.get("checkpoint", ""),
+        lora_dir=storage.get("lora", ""),
+    )
 
 
 # ---- Static frontend hosting (local Web runtime) ---------------------------

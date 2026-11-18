@@ -356,3 +356,31 @@
 - Ollama 对话生成（M4）、外部模型目录扫描与身份缓存（M3 / M8）未做。
 - R4 `52d8d3a` 与本轮 R5 改动待网络恢复后推送远端 dev；本地已落盘。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R5/`。
+
+## 16. TASK-003.1-R6 M3 第一切片：模型清单只读对接（2026-11-18）
+
+### 16.1 当前状态
+
+- M3「模型身份库与规则引擎」第一切片落地：从 ComfyUI `/object_info` 只读拉取 Checkpoint / CLIP / VAE / LoRA 在册清单，配置外部目录后做文件名存在性核对；未配置目录标记为未知（`null`），不臆测为缺失。本轮不复制、不哈希、不修改模型权重。
+- 后端新增 `backend/model_catalog.py` 与 `backend/test_model_catalog.py`（5 例）；`backend/main.py` 新增 `GET /api/models/catalog`；前端设置页新增只读清单面板。后端 **69 passed**，前端构建 exit 0。
+
+### 16.2 真机验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 清单接口在线拉取 | 通过 | online=true；Checkpoint 13、CLIP 0、VAE 3、LoRA 3 |
+| 分组正确 | 通过 | VAE 不混入 Checkpoint；见 `samples/catalog-summary.json` |
+| 真实目录存在性核对 | 通过 | 指向 `models\checkpoints`、`models\loras`，13 ckpt / 3 lora 全部 `on_disk=true` |
+| 未配置目录不臆测 | 通过 | `on_disk=null`，界面显示「目录未配置」；核对后设置恢复空串 |
+| 浏览器渲染 | 通过 | `screenshots/model-catalog.png`、`model-catalog-list.png` |
+| 未授权拦截 | 通过 | 未带会话访问接口返回 401（离线测试覆盖） |
+| Python pytest | 通过 | **69 passed, 1 warning in 3.75s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 16.3 边界与 backlog
+
+- 未实现 SHA256 身份库、三级规则继承、规则来源/可信度/版本/回退、冲突检测、动态检索、云端资料导入审核，均属后续 M3 切片。
+- 目录索引只扫直下层权重文件，不递归子目录；存在性仅比对文件名，不读大小/哈希。
+- Ollama 对话生成（M4）、ComfyUI 提交/队列/进度/结果/输出目录索引（M6）未实现。
+- 停止脚本身份校验既有缺陷（`creation_date=null`、CIM 读取失败）未能自动回收；本轮手动核对身份后回收进程树，待后续修复。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R6/`。
