@@ -8,8 +8,8 @@
 ## 1. 当前所处阶段
 
 - 阶段：**多模块主体落地，确定性辅助切片收尾**（M0 骨架与安全基线完成；工作流解析/白名单、规则库与参数比对、本地 LLM 候选审核、任务队列、生成历史、只读诊断/设置/备份导出主体已落地；剩余大头为口径未决、缺依赖、高风险写入或空数据项，见各节 backlog）。
-- 当前任务：**TASK-003.1-R81** —— 编辑框正/负向字数统计与上限只读提示；后端 239 passed，前端构建绿，真机闭环通过，收口提交 dev。
-- 开发分支：`dev`，本地 = origin/dev `588122f`（R81 docs 提交）；main `3084866aa85595133c7a1179b15ddd71e659d8f3` 未改、未合并。
+- 当前任务：**TASK-003.1-R82** —— 草稿收藏星标（可逆标记，不置顶、不改更新时间）；后端 241 passed，前端构建绿，真机闭环通过，收口提交 dev。
+- 开发分支：`dev`，本地 = origin/dev（R82 提交哈希待回填）；main `3084866aa85595133c7a1179b15ddd71e659d8f3` 未改、未合并。
 - 版本：`0.1.0-dev.5`。
 - 注：第 3.1 节 Rust/Tauri 编译与桌面壳条目为 ADR-0001 废弃路线的历史记录；ADR-0002 已改为免安装本机浏览器 Web 应用，该遗留不再阻塞当前 Web 路线。
 - **方向（ADR-0002，2026-11-18）**：免安装本机浏览器 Web 应用；默认 `http://127.0.0.1:17890`（原 8000 与本机酒馆冲突，已改），只绑定回环；不做 EXE/NSIS 安装包，不开发 Tauri/Rust 宿主。ADR-0001 旧路线已废弃，仅作历史记录。
@@ -2026,3 +2026,31 @@
 
 - 计数按 UTF-16 码元；Token 估算、按词/分段统计留后续。
   证据：`docs/TASK_EVIDENCE/TASK-003.1-R81/`。
+
+## 90. TASK-003.1-R82 草稿收藏星标（可逆标记）（2026-11-18）
+
+### 90.1 落地内容
+
+- 草稿记录新增可逆 `favored` 布尔标记，旧文件无字段按 `false`；收藏切换不改变
+  按 `updated_at` 倒序的排序（不引入置顶语义），不 bump `updated_at`；更新草稿保留
+  既有收藏状态。收藏为可逆轻量操作，直接切换，不走两步态确认。
+- 后端：`list_drafts` 投影 `favored`；`save_draft` 新建 `false`、更新 `setdefault`
+  保留；新增 `toggle_favored` 与端点 `POST /{workflow_id}/drafts/{draft_id}/favorite`。
+- 前端：`DraftEntry.favored?`、`toggleFavorite`，行内按钮「收藏 / 取消收藏」纯文本，
+  不置顶重排、未新增 CSS。
+
+### 90.2 真机闭环与回归
+
+- PID 18584，`r31-compare.json`（白名单已确认）：保存草稿 → 收藏翻转 → 刷新持久化
+  → 更新草稿收藏保留 → 取消收藏翻回 → 两步态删除回空态；全程未写入工作副本、未提交
+  ComfyUI 任务。
+- 真机库复核：`workbench_rule=0`、`generation_history=0`、`comfy_task=0`、
+  `model_identity=16`，草稿文件 0，回到基线。
+- 后端 **241 passed, 1 warning**（基线 239 + 新增 2 收藏用例）；前端
+  `tsc -b && vite build` 绿，产物 `index-Byqy5wVp.js` 191.15 kB / gzip 60.51 kB，
+  `index-CE0WX0Hl.css` 9.75 kB / gzip 2.38 kB。
+
+### 90.3 边界与 backlog
+
+- 收藏仅作关注标记，不参与排序、不提供按收藏筛选/分组/置顶；备份/导出链路是否纳入
+  `favored` 留后续备份切片核对。证据：`docs/TASK_EVIDENCE/TASK-003.1-R82/`。
