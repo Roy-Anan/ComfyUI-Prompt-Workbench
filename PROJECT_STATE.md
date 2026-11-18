@@ -1195,3 +1195,27 @@
 - 任务 HTTP 提交、提交前显存/LLM 卸载闸门、WebSocket 进度订阅、断线恢复与中断任务不自动重出
   留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R40/`。
+
+## 51. TASK-003.1-R41 M6 第三切片：任务提交后端与本地记录（2026-11-18）
+
+### 51.1 落地内容
+
+- 新增 `backend/comfy_client.py`：标准库 urllib 的只读探测（`comfyui_online`、
+  `loaded_ollama_models` 读 `/api/ps`）与受控提交 `submit_prompt`（POST `/prompt`）；无云端回退，
+  离线/超时/坏 JSON/缺 prompt_id/非空 node_errors 一律保守失败。
+- 新增 `backend/comfy_tasks.py`：`comfy_task` 表持久化提交记录（prompt_id、workflow_id、status、
+  时间戳、node_errors、last_error、outputs）；状态枚举 submitted/running/succeeded/failed/
+  interrupted/unknown；失败不自动重出。
+- `workflow_service.read_working()` 读取工作副本；`workflow_api` 新增
+  `POST /api/workflows/{id}/tasks` 与 `GET /api/workflows/{id}/tasks`。
+- 提交闸门 fail-closed：ComfyUI 不可达 502；UI 格式 400；白名单未确认 400；Ollama 不可达（无法
+  确认卸载）502；LLM 仍驻留 409；提交失败 502 且不写本地记录。
+- 新增 8 个单测：未确认拒绝、UI 格式拒绝、ComfyUI 离线、Ollama 离线、LLM 驻留、成功落库并回读、
+  节点错误不落库、未知工作流 404。后端测试 **192 passed**。
+
+### 51.2 边界与 backlog
+
+- 显存具体阈值、Ollama 卸载与出图互斥的放宽口径未拍板，本批只做"无法确认即拒绝"，不设数值门槛。
+- 队列先进先出/暂停/恢复/取消/重试、WebSocket 进度订阅、queue/history 回读状态校准、断线恢复、
+  中断任务不自动重出的界面与通知留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R41/`。

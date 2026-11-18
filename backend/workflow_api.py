@@ -1,8 +1,11 @@
 from __future__ import annotations
+import uuid
 from pathlib import Path
 from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
+import comfy_client
+import comfy_tasks
 import datadir
 import llm_client
 import model_identity
@@ -122,6 +125,20 @@ def _ollama_url() -> str:
         ):
             return connections["ollama_url"].rstrip("/")
     return settings["connections"]["ollama_url"].rstrip("/")
+
+
+def _comfyui_url() -> str:
+    """Read the configured local ComfyUI URL, falling back to the default."""
+    root = datadir.default_data_root()
+    settings = datadir.default_settings(root)
+    loaded = datadir.load_settings_file(root)
+    if isinstance(loaded, dict):
+        connections = loaded.get("connections")
+        if isinstance(connections, dict) and isinstance(
+            connections.get("comfyui_url"), str
+        ):
+            return connections["comfyui_url"].rstrip("/")
+    return settings["connections"]["comfyui_url"].rstrip("/")
 
 
 def _unregistered_context() -> dict[str, Any]:
@@ -333,6 +350,97 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
         "conflicts": rule_payload["conflicts"],
         "unknown": rule_payload["unknown"],
     }
+
+
+@router.post("/{workflow_id}/tasks")
+def submit_task(workflow_id: str):
+    """Submit the working API-format workflow to local ComfyUI, guarded.
+
+    The submission fails closed: ComfyUI must be reachable, the workflow must
+    already be in API format, the Prompt-node whitelist must be confirmed, and
+    the local LLM must be confirmed unloaded (or unreachable means unknown, so
+    it is rejected too). UI-format workflows cannot be converted here and are
+    rejected. A failed submit records no local task; retries are manual.
+    """
+    try:
+        workflow = store().get_workflow(workflow_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+    manifest = workflow.get("manifest", {})
+    if manifest.get("format") != "api":
+        raise HTTPException(
+            status_code=400,
+            detail="UI 格式工作流不能直接提交，请先在 ComfyUI 中导出 API 格式。",
+        )
+    if not manifest.get("confirmed"):
+        raise HTTPException(
+            status_code=400,
+            detail="请先确认 Prompt 节点白名单，再提交任务。",
+        )
+
+    comfyui_url = _comfyui_url()
+    ollama_url = _ollama_url()
+
+    if not comfy_client.comfyui_online(comfyui_url):
+        raise HTTPException(
+            status_code=502,
+            detail={"online": False, "error": "ComfyUI 不可达，未提交任务。"},
+        )
+
+    loaded = comfy_client.loaded_ollama_models(ollama_url)
+    if not loaded["online"]:
+        raise HTTPException(
+            status_code=502,
+            detail={"online": False, "error": "无法确认本地 LLM 已卸载，未提交任务。"},
+        )
+    if loaded["models"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "online": True,
+                "loaded": loaded["models"],
+                "error": "本地 LLM 仍驻留显存，请先卸载后再提交。",
+            },
+        )
+
+    working = store().read_working(workflow_id)
+    client_id = str(uuid.uuid4())
+    result = comfy_client.submit_prompt(comfyui_url, working, client_id)
+    if not result["ok"]:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "online": True,
+                "error": result["error"],
+                "node_errors": result["node_errors"],
+            },
+        )
+
+    with model_identity.connect(_database_path()) as connection:
+        comfy_tasks.ensure_schema(connection)
+        record = comfy_tasks.record_submission(
+            connection,
+            result["prompt_id"],
+            workflow_id,
+            result["node_errors"],
+        )
+    return record
+
+
+@router.get("/{workflow_id}/tasks")
+def list_tasks(workflow_id: str):
+    """Return locally recorded tasks for this workflow, newest first."""
+    try:
+        store().get_workflow(workflow_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+    with model_identity.connect(_database_path()) as connection:
+        comfy_tasks.ensure_schema(connection)
+        return {
+            "items": comfy_tasks.list_for_workflow(connection, workflow_id),
+        }
 
 
 @router.get("/{workflow_id}/rules/compare")

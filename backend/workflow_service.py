@@ -732,6 +732,12 @@ class WorkflowStore:
             "original_fingerprint": fingerprint(original),
             "working_fingerprint": fingerprint(working),
         }
+    def read_working(self, workflow_id: str) -> dict[str, Any]:
+        """Return the raw working-copy workflow dict for submission."""
+        folder = self._folder(workflow_id)
+        if not folder.is_dir():
+            raise FileNotFoundError("工作流不存在")
+        return _read_json(folder / "working.json")
     def confirm_prompt_nodes(
         self,
         workflow_id: str,
