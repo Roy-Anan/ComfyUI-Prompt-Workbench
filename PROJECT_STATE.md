@@ -1588,3 +1588,39 @@
 - 历史库为空，时间轴分组真机渲染留待有记录阶段收口；本次仅验证三视图按钮与空态禁用态。
 - 本次只修设置迁移路径并发写；SQLite 与其他文件并发读写锁仍属既有 backlog，未扩范围。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R62/`。
+
+## 73. TASK-003.1-R64/R65 档案整档导入前端闭环；设置 JSON 白名单导入（2026-11-18）
+
+### 73.1 R64 档案候选整档导入
+
+- 后端 `POST /api/profiles/import`（逐条引擎校验，非法候选跳过回报，不调外部服务）早已就绪，
+  前端 R30 仅做只读预览；本切片补前端闭环：预览展开区「整档导入为规则」按钮 → 调导入端点 →
+  展示已导入计数与逐条拒绝原因 → 刷新规则清单与档案清单。
+- 状态 `importingProfile` / `importReports`；`importProfile(file)` 成功后单独刷新 rules 与
+  profiles，不覆盖 settings 等其他状态。后端本切片零改动。
+- 未做：逐候选勾选 / 驳回、差异预览（留 M3 backlog）。
+
+### 73.2 R65 设置 JSON 白名单导入
+
+- 对称 R55 设置只读导出：选择本地设置 JSON，仅采信连接 `ollama_url` / `comfyui_url`
+  （字符串、`http(s)://` 前缀、去尾斜杠）与外部目录 `checkpoint` / `lora` / `clip` / `vae`
+  （字符串）；managed 路径与 `root` 不采信，未知键忽略；根节点非对象（含数组）保守报错。
+- 导入只合并进当前表单，提示用户点既有「保存设置」落库；落库走既有 `POST /api/settings`
+  白名单与目录 / 地址校验。后端本切片零改动。
+
+### 73.3 真机闭环与回归
+
+- R64：导入 `Anything_V5.txt`，报告已导入 12 条（architecture 2 + checkpoint 10），无拒绝；
+  直连 `/api/rules` 核对入库明细一致。冒烟后 12 条规则逐条 DELETE 回收归零。
+- R65：测试 JSON 含合法外部目录、非字符串 clip、伪造 managed/root、非法 scheme 连接、带尾斜杠
+  地址；表单仅被白名单项填充，非法项被忽略，managed/root 保持基线；直连 `/api/settings` 前后
+  一致（未落库）；数组根节点保守提示报错。
+- stopper 按身份回收实例（PID 7328），端口关闭、记录清理；Ollama / ComfyUI 未触碰。
+- 后端 **225 passed, 1 warning**；前端 `tsc -b && vite build` 绿，产物 `index-B6npdTFA.js`
+  180.02 kB / gzip 57.49 kB，`index-X0JFovQF.css` 9.42 kB / gzip 2.33 kB。
+
+### 73.4 边界与 backlog
+
+- R64 仅整档导入；逐候选勾选 / 驳回、差异预览、候选审核写入深化仍属 M3 backlog。
+- R65 不做导入前后差异对照；外部目录存在性与连接合法性由后端保存时 fail-closed 校验。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R64/`。

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { apiGet, apiPost } from "./api";
 import { formatStructured } from "./format";
 import HistoryPanel from "./HistoryPanel";
@@ -128,6 +128,19 @@ type ProfilePreview = {
   candidates: ProfileCandidate[];
 };
 
+type ProfileImportRejected = {
+  rule_key: string;
+  reason: string;
+};
+
+type ProfileImportReport = {
+  file: string;
+  filename: string;
+  imported: number;
+  rejected: ProfileImportRejected[];
+  unknown_fields: string[];
+};
+
 const RULE_LEVEL_LABEL: Record<string, string> = {
   checkpoint: "模型档案",
   architecture: "架构基线",
@@ -221,6 +234,11 @@ export default function App() {
   const [profiles, setProfiles] = useState<ProfileSummary[] | null>(null);
   const [openProfile, setOpenProfile] = useState<string | null>(null);
   const [preview, setPreview] = useState<ProfilePreview | null>(null);
+  const settingsFileRef = useRef<HTMLInputElement>(null);
+  const [importingProfile, setImportingProfile] = useState<string | null>(null);
+  const [importReports, setImportReports] = useState<
+    Record<string, ProfileImportReport>
+  >({});
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在连接本地服务…");
@@ -367,6 +385,34 @@ export default function App() {
     }
   }
 
+  async function importProfile(file: string) {
+    setImportingProfile(file);
+    try {
+      const report = await apiPost<ProfileImportReport>(
+        "/api/profiles/import",
+        { file_name: file },
+      );
+      setImportReports((old) => ({ ...old, [file]: report }));
+      // Refresh rules and the profile summary after the write; the backend
+      // validates each candidate and rejects invalid ones in the report.
+      const [ruleResult, profileResult] = await Promise.all([
+        apiGet<{ items: RuleRecord[] }>("/api/rules"),
+        apiGet<{ items: ProfileSummary[] }>("/api/profiles"),
+      ]);
+      setRules(ruleResult.items);
+      setProfiles(profileResult.items);
+      setMessage(
+        report.rejected.length > 0
+          ? `档案已导入：${report.imported} 条入库，${report.rejected.length} 条被拒绝。`
+          : `档案已导入：${report.imported} 条规则入库。`,
+      );
+    } catch (error) {
+      setMessage(`档案导入失败：${String(error)}`);
+    } finally {
+      setImportingProfile(null);
+    }
+  }
+
   async function saveSettings() {
     if (!settings) return;
 
@@ -438,6 +484,68 @@ export default function App() {
     anchor.remove();
     URL.revokeObjectURL(url);
     setMessage("设置已导出（仅本地，未上传；不含模型权重与原图）。");
+  }
+
+  function importSettingsFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !settings) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result)) as Record<string, unknown>;
+        if (
+          typeof parsed !== "object" ||
+          parsed === null ||
+          Array.isArray(parsed)
+        ) {
+          throw new Error("设置文件根节点必须是对象");
+        }
+
+        const incomingConnections =
+          (parsed.connections as Record<string, unknown>) ?? {};
+        const incomingStorage =
+          (parsed.storage as Record<string, unknown>) ?? {};
+
+        const nextConnections = { ...settings.connections };
+        let applied = 0;
+
+        for (const key of ["ollama_url", "comfyui_url"] as const) {
+          const value = incomingConnections[key];
+          if (typeof value === "string" && /^https?:\/\//.test(value.trim())) {
+            nextConnections[key] = value.trim().replace(/\/+$/, "");
+            applied += 1;
+          }
+        }
+
+        const nextStorage = { ...settings.storage };
+        for (const key of EXTERNAL_STORAGE_KEYS) {
+          const value = incomingStorage[key];
+          if (typeof value === "string") {
+            nextStorage[key] = value.trim();
+            applied += 1;
+          }
+        }
+
+        // Managed storage paths and root are rebuilt against the current data
+        // root; values from the imported file are not trusted for those keys.
+        setSettings({
+          ...settings,
+          storage: nextStorage,
+          connections: nextConnections,
+        });
+        setMessage(
+          applied > 0
+            ? `已从文件载入 ${applied} 项配置；请检查后点「保存设置」落库。`
+            : "文件中没有可采信的连接地址或外部模型目录。",
+        );
+      } catch (error) {
+        setMessage(`设置导入失败：${String(error)}`);
+      }
+    };
+    reader.onerror = () => setMessage("设置导入失败：无法读取文件。");
+    reader.readAsText(file);
   }
 
   function updateStorage(key: string, value: string) {
@@ -772,10 +880,10 @@ export default function App() {
       <section className="panel">
         <div className="section-heading">
           <div>
-            <h2>旧档案候选（只读）</h2>
+            <h2>旧档案候选</h2>
             <p>
-              名单来自 legacy 档案文本解析，仅预览待审核候选；
-              本版本不提供导入、勾选或驳回入口。
+              名单来自 legacy 档案文本解析；可整档导入为规则，落库前由后端逐条校验，
+              非法候选在报告中拒绝。逐候选勾选 / 驳回与差异预览留后续版本。
             </p>
           </div>
         </div>
@@ -851,6 +959,40 @@ export default function App() {
                             </div>
                           ))
                         )}
+                        {preview.candidates.length > 0 && (
+                          <div className="profile-import-actions">
+                            <button
+                              type="button"
+                              onClick={() => void importProfile(profile.file)}
+                              disabled={
+                                importingProfile === profile.file ||
+                                Boolean(profile.error)
+                              }
+                            >
+                              {importingProfile === profile.file
+                                ? "正在导入…"
+                                : "整档导入为规则"}
+                            </button>
+                          </div>
+                        )}
+                        {importReports[profile.file] && (
+                          <div className="profile-import-report">
+                            <p>
+                              已导入 {importReports[profile.file].imported} 条
+                              规则
+                              {importReports[profile.file].rejected.length > 0 &&
+                                `；拒绝 ${importReports[profile.file].rejected.length} 条`}
+                            </p>
+                            {importReports[profile.file].rejected.map((item) => (
+                              <p
+                                className="catalog-empty"
+                                key={item.rule_key}
+                              >
+                                {item.rule_key}：{item.reason}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -923,6 +1065,20 @@ export default function App() {
           >
             导出设置
           </button>
+
+          <button
+            onClick={() => settingsFileRef.current?.click()}
+            disabled={busy || !settings}
+          >
+            导入设置
+          </button>
+          <input
+            ref={settingsFileRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: "none" }}
+            onChange={importSettingsFile}
+          />
 
           <span className="message" role="status">
             {message}

@@ -631,6 +631,27 @@ button.secondary {
 .profile-preview .rule-row-meta {
   justify-content: flex-start;
 }
+.profile-import-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 2px;
+}
+.profile-import-actions button {
+  padding: 7px 13px;
+  font-size: 13px;
+}
+.profile-import-report {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid #344052;
+  border-radius: 9px;
+  background: #111722;
+}
+.profile-import-report p {
+  margin: 0;
+  font-size: 13px;
+}
 .history-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
