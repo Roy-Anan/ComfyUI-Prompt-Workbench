@@ -20,6 +20,7 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
+import architecture_normalize
 import rule_engine
 
 _SCHEMA = """
@@ -230,14 +231,72 @@ def resolve_stored(
     return rule_engine.resolve_context(records, level, scope_key, keys)
 
 
-def _checkpoint_architecture(records: list[dict[str, Any]], checkpoint: str) -> str | None:
-    """Find the base architecture label stored for one checkpoint filename.
+def _architecture_label(records: list[dict[str, Any]], checkpoint: str) -> str | None:
+    """Extract the raw Base Architecture fact for one checkpoint, if stored.
 
-    Architecture rules are scoped by their parsed base label. The architecture
-    section facts were redirected to that scope on import, so the stored
-    architecture scope itself identifies the family; we reuse it directly
-    instead of re-parsing the prose ``Base Architecture`` value.
+    Prefers the checkpoint-scoped ``IDENTITY::Base Architecture`` pointer
+    written on import; falls back to the architecture bucket only for legacy
+    databases that predate that pointer, and never guesses a family across a
+    different checkpoint.
     """
+    checkpoint_keys = ("IDENTITY::Base Architecture", "ARCHITECTURE::Base Architecture")
+    for rule_key in checkpoint_keys:
+        base_record = next(
+            (
+                row for row in records
+                if row["level"] == "checkpoint"
+                and row["scope_key"] == checkpoint
+                and row["rule_key"] == rule_key
+            ),
+            None,
+        )
+        if base_record is not None:
+            label = str(base_record["value"]).strip()
+            return label or None
+
+    # Legacy fallback: the family pointer lived only in the architecture
+    # bucket. Only use it when a single architecture scope stores the fact;
+    # with multiple families present there, do not pick one at random.
+    arch_facts = [
+        row for row in records
+        if row["level"] == "architecture"
+        and row["rule_key"] == "ARCHITECTURE::Base Architecture"
+    ]
+    if len(arch_facts) == 1:
+        label = str(arch_facts[0]["value"]).strip()
+        return label or None
+    return None
+
+
+def _architecture_scope_matches(scope: str | None, label: str | None) -> bool:
+    """True when an architecture scope belongs to the checkpoint's family.
+
+    Same-family match goes through :mod:`architecture_normalize` so variants
+    such as ``SDXL`` and ``SDXL 1.0`` inherit each other's rules. When either
+    side is unrecognized, fall back to the conservative exact / prefix /
+    substring comparison; mixed or derived labels are not merged into a plain
+    family by this check.
+    """
+    if not scope or not label:
+        return False
+    label_norm = architecture_normalize.normalize(label)
+    scope_norm = architecture_normalize.normalize(scope)
+    # When both sides are recognized, match strictly by canonical family;
+    # a mixed/derived label is never merged into a plain family by substring.
+    if label_norm["matched"] and scope_norm["matched"]:
+        return label_norm["canonical"] == scope_norm["canonical"]
+    # Only one side recognized: conservative, do not guess a family.
+    if label_norm["matched"] or scope_norm["matched"]:
+        return False
+    return label == scope or label.startswith(scope) or scope in label
+
+
+def _checkpoint_architecture(
+    records: list[dict[str, Any]],
+    checkpoint: str,
+    label: str | None = None,
+) -> str | None:
+    """Find the architecture scope that matches one checkpoint's family."""
     arch_scopes = {
         row["scope_key"]
         for row in records
@@ -245,32 +304,12 @@ def _checkpoint_architecture(records: list[dict[str, Any]], checkpoint: str) -> 
     }
     if not arch_scopes:
         return None
-    base_record = next(
-        (
-            row for row in records
-            if row["level"] == "checkpoint"
-            and row["scope_key"] == checkpoint
-            and row["rule_key"] == "ARCHITECTURE::Base Architecture"
-        ),
-        None,
-    )
-    # The Base Architecture fact itself was redirected to the architecture
-    # level on import, so match that record in the architecture bucket too.
-    if base_record is None:
-        base_record = next(
-            (
-                row for row in records
-                if row["level"] == "architecture"
-                and row["rule_key"] == "ARCHITECTURE::Base Architecture"
-                and row["scope_key"] in arch_scopes
-            ),
-            None,
-        )
-    if base_record is None:
+    if label is None:
+        label = _architecture_label(records, checkpoint)
+    if label is None:
         return None
-    label = str(base_record["value"]).strip()
     for scope in arch_scopes:
-        if label == scope or label.startswith(scope) or scope in label:
+        if _architecture_scope_matches(scope, label):
             return scope
     return None
 
@@ -291,9 +330,14 @@ def context_for_checkpoint(
     checkpoint_rules = [row for row in records if row["level"] == "checkpoint" and row["scope_key"] == checkpoint]
     registered = bool(checkpoint_rules)
 
-    architecture = _checkpoint_architecture(records, checkpoint)
+    # An unregistered checkpoint must not inherit an arbitrary architecture
+    # label from another model's architecture bucket; leave the family unset.
+    arch_label = _architecture_label(records, checkpoint) if registered else None
+    architecture = _checkpoint_architecture(records, checkpoint, arch_label)
+    arch_norm = architecture_normalize.normalize(arch_label)
     architecture_rules = [
-        row for row in records if row["level"] == "architecture" and row["scope_key"] == architecture
+        row for row in records
+        if row["level"] == "architecture" and _architecture_scope_matches(row["scope_key"], arch_label)
     ]
     global_rules = [row for row in records if row["level"] == "global"]
 
@@ -301,6 +345,8 @@ def context_for_checkpoint(
         "status": "registered" if registered else "unregistered",
         "checkpoint": checkpoint,
         "architecture": architecture,
+        "architecture_label": arch_label,
+        "architecture_family": arch_norm["canonical"],
         "checkpoint_rules": checkpoint_rules,
         "architecture_rules": architecture_rules,
         "global_rules": global_rules,

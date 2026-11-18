@@ -101,6 +101,8 @@ def test_workflow_rules_unregistered_for_unknown_checkpoint(client):
     assert body["status"] == "unregistered"
     assert body["checkpoint"] == "ghost.safetensors"
     assert body["checkpoint_rules"] == []
+    assert body["architecture"] is None
+    assert body.get("architecture_family") is None
 
 
 def test_workflow_rule_prompt_payload_for_registered_workflow(client):

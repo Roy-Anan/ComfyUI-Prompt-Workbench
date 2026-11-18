@@ -56,13 +56,17 @@ def test_preview_profile_candidates(client, tmp_path, monkeypatch):
     assert body["display_name"] == "Alpha Model"
 
     records = body["candidates"]
-    assert len(records) == 2
+    assert len(records) == 3
     steps = next(r for r in records if r["rule_key"] == "GENERATION SETTINGS::Steps")
     assert steps["level"] == "checkpoint"
     assert steps["scope_key"] == "alpha.safetensors"
     assert steps["value"] == "20"
     assert steps["provenance"] == "author"
     assert steps["confidence"] == "authoritative"
+    identity = next(r for r in records if r["rule_key"] == "IDENTITY::Base Architecture")
+    assert identity["level"] == "checkpoint"
+    assert identity["scope_key"] == "alpha.safetensors"
+    assert identity["value"] == "SDXL 1.0"
     # Preview must not have persisted anything.
     stored = test_client.get("/api/rules", headers=headers)
     assert stored.json()["items"] == []
@@ -88,7 +92,7 @@ def test_import_profile_persists_candidates(client, tmp_path, monkeypatch):
     assert imported.status_code == 200
     report = imported.json()
     assert report["filename"] == "alpha.safetensors"
-    assert report["imported"] == 2
+    assert report["imported"] == 3
     assert report["rejected"] == []
 
     stored = test_client.get(
@@ -98,6 +102,7 @@ def test_import_profile_persists_candidates(client, tmp_path, monkeypatch):
     keys = {item["rule_key"] for item in items}
     assert "GENERATION SETTINGS::Steps" in keys
     assert "ARCHITECTURE::Base Architecture" not in keys
+    assert "IDENTITY::Base Architecture" in keys
 
     arch = test_client.get(
         "/api/rules?level=architecture&scope_key=SDXL 1.0", headers=headers

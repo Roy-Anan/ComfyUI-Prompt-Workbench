@@ -263,4 +263,24 @@ def candidates_to_records(
                 "source_raw": candidate.raw,
             }
         )
+        # Keep a checkpoint-scoped identity pointer to the base architecture
+        # label, so a later context lookup can resolve this model's family
+        # without guessing across another model's architecture bucket. The
+        # family-level facts still live at architecture scope above.
+        if candidate.section in ARCHITECTURE_SECTIONS and candidate.key == "Base Architecture":
+            records.append(
+                {
+                    "level": level,
+                    "scope_key": scope_key,
+                    "rule_key": "IDENTITY::Base Architecture",
+                    "value": candidate.value,
+                    "structured": None,
+                    "provenance": candidate.provenance,
+                    "confidence": candidate.confidence,
+                    "version": "legacy-1",
+                    "note": candidate.note,
+                    "source_section": candidate.section,
+                    "source_raw": candidate.raw,
+                }
+            )
     return records

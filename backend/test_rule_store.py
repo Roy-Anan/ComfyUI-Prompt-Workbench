@@ -86,3 +86,51 @@ def test_load_records_feed_engine_resolution(connection):
     assert context["fields"]["steps"]["value"] == 32
     assert context["fields"]["steps"]["source_level"] == "checkpoint"
     assert context["unknown"] == ["clip_skip"]
+
+
+def test_context_groups_same_family_architecture_variants(connection):
+    rule_store.upsert_rule(
+        connection, "checkpoint", "xl-model.safetensors",
+        "GENERATION SETTINGS::Steps", "28",
+    )
+    # Base Architecture fact landed in the architecture bucket on import.
+    rule_store.upsert_rule(
+        connection, "architecture", "SDXL 1.0",
+        "ARCHITECTURE::Base Architecture", "SDXL 1.0",
+    )
+    # Same family under a variant label; must be inherited too.
+    rule_store.upsert_rule(
+        connection, "architecture", "SDXL",
+        "ARCHITECTURE::Model Type", "Checkpoint",
+    )
+    # Different family must not leak into this context.
+    rule_store.upsert_rule(
+        connection, "architecture", "SD1.5",
+        "ARCHITECTURE::Model Type", "Checkpoint",
+    )
+
+    context = rule_store.context_for_checkpoint(connection, "xl-model.safetensors")
+    assert context["status"] == "registered"
+    assert context["architecture_family"] == "SDXL"
+    arch_scopes = {row["scope_key"] for row in context["architecture_rules"]}
+    assert arch_scopes == {"SDXL 1.0", "SDXL"}
+
+
+def test_context_keeps_mixed_label_separate_from_plain_family(connection):
+    rule_store.upsert_rule(
+        connection, "checkpoint", "pony-xl.safetensors",
+        "GENERATION SETTINGS::Steps", "24",
+    )
+    rule_store.upsert_rule(
+        connection, "architecture", "Pony / SDXL 系",
+        "ARCHITECTURE::Base Architecture", "Pony / SDXL 系",
+    )
+    rule_store.upsert_rule(
+        connection, "architecture", "SDXL",
+        "ARCHITECTURE::Model Type", "Checkpoint",
+    )
+
+    context = rule_store.context_for_checkpoint(connection, "pony-xl.safetensors")
+    arch_scopes = {row["scope_key"] for row in context["architecture_rules"]}
+    # The mixed label must not inherit the plain SDXL family rules.
+    assert arch_scopes == {"Pony / SDXL 系"}

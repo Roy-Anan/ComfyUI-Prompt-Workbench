@@ -67,6 +67,8 @@ def build_prompt_context(context: dict[str, Any]) -> dict[str, Any]:
     """
     checkpoint = context.get("checkpoint")
     architecture = context.get("architecture")
+    architecture_family = context.get("architecture_family")
+    architecture_label = context.get("architecture_label")
     status = context.get("status", "unregistered")
 
     checkpoint_rules = context.get("checkpoint_rules", [])
@@ -78,6 +80,8 @@ def build_prompt_context(context: dict[str, Any]) -> dict[str, Any]:
             "status": status,
             "checkpoint": checkpoint,
             "architecture": architecture,
+            "architecture_family": architecture_family,
+            "architecture_label": architecture_label,
             "fields": [],
             "conflicts": [],
             "unknown": [],
@@ -106,6 +110,8 @@ def build_prompt_context(context: dict[str, Any]) -> dict[str, Any]:
         "status": "registered",
         "checkpoint": checkpoint,
         "architecture": architecture,
+        "architecture_family": architecture_family,
+        "architecture_label": architecture_label,
         "fields": fields,
         "conflicts": resolved["conflicts"],
         "unknown": resolved["unknown"],

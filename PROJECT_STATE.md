@@ -731,3 +731,31 @@
 - 比对只读，不回写工作流、不触发 LLM；VAE/CLIP 参数未纳入比对。
 - 带备注数值（如 Scheduler `Karras（Euler A 时）`）仍回退原文、structured=None，比对归 unknown。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R19/`。
+
+## 30. TASK-003.1-R20 M3 第十五切片：架构标签归一化与同家族规则归并（2026-11-18）
+
+### 30.1 当前状态
+
+- 新增 `architecture_normalize.py` 纯函数层：把同义变体（`SDXL`/`SDXL 1.0`/`sdxl`）归到规范家族；混合/派生标签标 `mixed`，不强行并入纯家族；未识别标签留 `other`，不猜家族。
+- 规则上下文按规范家族归并架构规则：同一家族不同原始标签的架构规则都纳入上下文；混合标签不继承纯家族规则。
+- 导入时在 checkpoint 桶补 `IDENTITY::Base Architecture` 身份指针，保留该模型底座标签原值；未登记模型不再从其他模型架构桶回退标签。
+- 提示载荷透传 `architecture_family` 与 `architecture_label`。
+- 后端测试 **147 passed**；前端构建 exit 0。
+
+### 30.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 同义变体归并 | 通过 | 单测：`SDXL`/`SDXL 1.0`/`sdxl` 同家族；SD1.5、Pony 各自独立 |
+| 混合/派生不并入 | 通过 | 单测：`Pony / SDXL 系` mixed；`Illustrious SDXL 系` mixed；`微调自 IL-XL` 留 other |
+| 同家族规则归并 | 通过 | 单测：SDXL 1.0 上下文纳入 SDXL 与 SDXL 1.0 两个 scope，排除 SD1.5；混合标签不并入纯 SDXL |
+| 未登记不猜家族 | 通过 | 未登记 checkpoint 上下文 `architecture`/`family` 均为 None |
+| 真机闭环 | 通过 | `samples/smoke-normalize.json`：intorealismUltra（SDXL 1.0）family=SDXL，纳入 SDXL + SDXL 1.0，排除 Pony / SDXL 系；清理归零 |
+| Python pytest | 通过 | **147 passed, 1 warning in 5.79s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0 |
+
+### 30.3 边界与 backlog
+
+- 归一化仅识别 SD1.5/SDXL/Pony 三个明确家族；其余标签留 other，待证据补充后再扩映射。
+- 架构规则继承仍按家族整体继承；家族内冲突人工裁决界面未实现。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R20/`。
