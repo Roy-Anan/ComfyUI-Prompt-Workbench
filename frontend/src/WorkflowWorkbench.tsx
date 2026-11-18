@@ -370,6 +370,8 @@ export default function WorkflowWorkbench() {
   const [draftBusy, setDraftBusy] = useState(false);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [updatingDraftId, setUpdatingDraftId] = useState<string | null>(null);
+  const [copyingDraftId, setCopyingDraftId] = useState<string | null>(null);
+  const [copyTargetId, setCopyTargetId] = useState("");
   const [draftKeyword, setDraftKeyword] = useState("");
   const [favoredOnly, setFavoredOnly] = useState(readStoredFavoredOnly);
   async function refreshList() {
@@ -438,6 +440,8 @@ export default function WorkflowWorkbench() {
       setTagFilter("");
       setDeletingDraftId(null);
       setUpdatingDraftId(null);
+      setCopyingDraftId(null);
+      setCopyTargetId("");
       setDraftKeyword("");
       setFavoredOnly(false);
       persistFavoredOnly(false);
@@ -495,6 +499,8 @@ export default function WorkflowWorkbench() {
       setTagFilter("");
       setDeletingDraftId(null);
       setUpdatingDraftId(null);
+      setCopyingDraftId(null);
+      setCopyTargetId("");
       setDraftKeyword("");
       setFavoredOnly(false);
       persistFavoredOnly(false);
@@ -865,9 +871,35 @@ export default function WorkflowWorkbench() {
     }
   }
 
+  async function copyDraftTo(draft: DraftEntry) {
+    if (!copyTargetId) {
+      setMessage("请先选择要复制到的目标工作流。");
+      return;
+    }
+    setDraftBusy(true);
+    try {
+      await apiPost(`/api/workflows/${copyTargetId}/drafts`, {
+        name: draft.name,
+        positive: draft.positive,
+        negative: draft.negative,
+        note: draft.note,
+        tags: draft.tags || [],
+      });
+      const target = items.find((workflow) => workflow.id === copyTargetId);
+      setCopyingDraftId(null);
+      setCopyTargetId("");
+      setMessage(`已复制草稿「${draft.name}」到「${target?.filename || copyTargetId}」。`);
+    } catch (error) {
+      setMessage(`复制草稿失败：${String(error)}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
   const allDraftTags = Array.from(
     new Set(drafts.flatMap((draft) => draft.tags || [])),
   ).sort();
+  const copyTargets = items.filter((workflow) => workflow.id !== workflowId);
   const draftKeywordTerm = draftKeyword.trim().toLowerCase();
   const filteredDrafts = drafts.filter((draft) => {
     if (favoredOnly && !draft.favored) return false;
@@ -1632,6 +1664,47 @@ export default function WorkflowWorkbench() {
                         >
                           {draft.favored ? "取消收藏" : "收藏"}
                         </button>
+                        {copyingDraftId === draft.id ? (
+                          <>
+                            <select
+                              value={copyTargetId}
+                              disabled={draftBusy || busy}
+                              onChange={(event) => setCopyTargetId(event.target.value)}
+                            >
+                              <option value="">选择目标工作流</option>
+                              {copyTargets.map((workflow) => (
+                                <option key={workflow.id} value={workflow.id}>
+                                  {workflow.filename}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => void copyDraftTo(draft)}
+                              disabled={draftBusy || busy || !copyTargetId}
+                            >
+                              确认复制？
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCopyingDraftId(null);
+                                setCopyTargetId("");
+                              }}
+                              disabled={draftBusy || busy}
+                            >
+                              取消
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setCopyingDraftId(draft.id);
+                              setCopyTargetId("");
+                            }}
+                            disabled={draftBusy || busy || copyTargets.length === 0}
+                          >
+                            复制到…
+                          </button>
+                        )}
                         {updatingDraftId === draft.id ? (
                           <>
                             <button
