@@ -308,6 +308,23 @@ function promptStamp(): string {
   return new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
 }
 
+function readStoredFavoredOnly(): boolean {
+  try {
+    return localStorage.getItem("workbench.favoredOnly") === "1";
+  } catch {
+    // 本地存储不可用时回落未启用收藏过滤。
+  }
+  return false;
+}
+
+function persistFavoredOnly(value: boolean): void {
+  try {
+    localStorage.setItem("workbench.favoredOnly", value ? "1" : "0");
+  } catch {
+    // 忽略本地存储写入失败。
+  }
+}
+
 export default function WorkflowWorkbench() {
   const [items, setItems] = useState<WorkflowListItem[]>([]);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
@@ -338,7 +355,7 @@ export default function WorkflowWorkbench() {
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [updatingDraftId, setUpdatingDraftId] = useState<string | null>(null);
   const [draftKeyword, setDraftKeyword] = useState("");
-  const [favoredOnly, setFavoredOnly] = useState(false);
+  const [favoredOnly, setFavoredOnly] = useState(readStoredFavoredOnly);
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -405,6 +422,7 @@ export default function WorkflowWorkbench() {
       setUpdatingDraftId(null);
       setDraftKeyword("");
       setFavoredOnly(false);
+      persistFavoredOnly(false);
       setConfirmStamp(null);
       setComparingStamp(null);
       setImportedPrompt(null);
@@ -459,6 +477,7 @@ export default function WorkflowWorkbench() {
       setUpdatingDraftId(null);
       setDraftKeyword("");
       setFavoredOnly(false);
+      persistFavoredOnly(false);
       setComparingStamp(null);
       setImportedPrompt(null);
       setPasteOpen(false);
@@ -1512,7 +1531,10 @@ export default function WorkflowWorkbench() {
                       type="checkbox"
                       checked={favoredOnly}
                       disabled={draftBusy || busy}
-                      onChange={(event) => setFavoredOnly(event.target.checked)}
+                      onChange={(event) => {
+                        setFavoredOnly(event.target.checked);
+                        persistFavoredOnly(event.target.checked);
+                      }}
                     />
                     仅看收藏
                   </label>
