@@ -256,6 +256,16 @@ function parsePromptContent(text: string): PromptImport {
   return parsePromptText(text);
 }
 
+// 与后端 workflow_service.MAX_PROMPT_CHARS 对齐；前端仅只读提示，不做硬拦截。
+const PROMPT_MAX_CHARS = 200_000;
+
+function promptCountLabel(text: string): string {
+  const len = text.length;
+  return len > PROMPT_MAX_CHARS
+    ? `${len} / ${PROMPT_MAX_CHARS}（已超上限）`
+    : `${len} / ${PROMPT_MAX_CHARS}`;
+}
+
 function outputFilenames(outputs: unknown): string[] {
   if (typeof outputs !== "object" || outputs === null) return [];
   const record = outputs as Record<string, unknown>;
@@ -1333,7 +1343,10 @@ export default function WorkflowWorkbench() {
               ) && (
                 <label className="workflow-text-field">
                   <div className="workflow-field-head">
-                    <span>正向 Prompt</span>
+                    <span>
+                      正向 Prompt{" "}
+                      <span className="muted">{promptCountLabel(positiveText)}</span>
+                    </span>
                     <button onClick={copyPositive}>复制正向</button>
                   </div>
                   <textarea
@@ -1349,7 +1362,10 @@ export default function WorkflowWorkbench() {
               ) && (
                 <label className="workflow-text-field">
                   <div className="workflow-field-head">
-                    <span>负向 Prompt</span>
+                    <span>
+                      负向 Prompt{" "}
+                      <span className="muted">{promptCountLabel(negativeText)}</span>
+                    </span>
                     <button onClick={copyNegative}>复制负向</button>
                   </div>
                   <textarea
