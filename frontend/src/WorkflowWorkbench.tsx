@@ -140,9 +140,23 @@ type DraftEntry = {
   negative: string;
   note: string;
   favored?: boolean;
+  tags?: string[];
   created_at: string | null;
   updated_at: string | null;
 };
+
+function parseDraftTags(text: string): string[] {
+  const parts = text.split(/[,，、;；\s]+/);
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    const tag = part.trim();
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
+  }
+  return tags.slice(0, 12);
+}
 
 const STATUS_LABEL: Record<string, string> = {
   match: "匹配",
@@ -351,6 +365,8 @@ export default function WorkflowWorkbench() {
   const [drafts, setDrafts] = useState<DraftEntry[]>([]);
   const [draftName, setDraftName] = useState("");
   const [draftNote, setDraftNote] = useState("");
+  const [draftTags, setDraftTags] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const [draftBusy, setDraftBusy] = useState(false);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [updatingDraftId, setUpdatingDraftId] = useState<string | null>(null);
@@ -418,6 +434,8 @@ export default function WorkflowWorkbench() {
       setDrafts([]);
       setDraftName("");
       setDraftNote("");
+      setDraftTags("");
+      setTagFilter("");
       setDeletingDraftId(null);
       setUpdatingDraftId(null);
       setDraftKeyword("");
@@ -473,6 +491,8 @@ export default function WorkflowWorkbench() {
       setDrafts([]);
       setDraftName("");
       setDraftNote("");
+      setDraftTags("");
+      setTagFilter("");
       setDeletingDraftId(null);
       setUpdatingDraftId(null);
       setDraftKeyword("");
@@ -762,9 +782,11 @@ export default function WorkflowWorkbench() {
         positive: positiveText,
         negative: negativeText,
         note: draftNote.trim(),
+        tags: parseDraftTags(draftTags),
       });
       setDraftName("");
       setDraftNote("");
+      setDraftTags("");
       await loadDrafts(workflowId);
       setMessage("草稿已保存（未写入工作副本）。");
     } catch (error) {
@@ -779,6 +801,7 @@ export default function WorkflowWorkbench() {
     setNegativeText(draft.negative);
     setDraftName(draft.name);
     setDraftNote(draft.note);
+    setDraftTags((draft.tags || []).join(", "));
     setMessage(`草稿「${draft.name}」已载入编辑框（尚未写入工作副本）。`);
   }
 
@@ -830,6 +853,7 @@ export default function WorkflowWorkbench() {
         positive: positiveText,
         negative: negativeText,
         note: draftNote.trim(),
+        tags: parseDraftTags(draftTags),
       });
       setUpdatingDraftId(null);
       await loadDrafts(workflowId);
@@ -841,11 +865,21 @@ export default function WorkflowWorkbench() {
     }
   }
 
+  const allDraftTags = Array.from(
+    new Set(drafts.flatMap((draft) => draft.tags || [])),
+  ).sort();
   const draftKeywordTerm = draftKeyword.trim().toLowerCase();
   const filteredDrafts = drafts.filter((draft) => {
     if (favoredOnly && !draft.favored) return false;
+    if (tagFilter && !(draft.tags || []).includes(tagFilter)) return false;
     if (!draftKeywordTerm) return true;
-    const haystack = [draft.name, draft.note, draft.positive, draft.negative]
+    const haystack = [
+      draft.name,
+      draft.note,
+      draft.positive,
+      draft.negative,
+      ...(draft.tags || []),
+    ]
       .join(" ")
       .toLowerCase();
     return haystack.includes(draftKeywordTerm);
@@ -1510,6 +1544,13 @@ export default function WorkflowWorkbench() {
                   disabled={draftBusy || busy}
                   onChange={(event) => setDraftNote(event.target.value)}
                 />
+                <input
+                  type="text"
+                  placeholder="标签（逗号分隔）"
+                  value={draftTags}
+                  disabled={draftBusy || busy}
+                  onChange={(event) => setDraftTags(event.target.value)}
+                />
                 <button
                   disabled={draftBusy || busy}
                   onClick={() => void saveDraft()}
@@ -1526,6 +1567,20 @@ export default function WorkflowWorkbench() {
                     disabled={draftBusy || busy}
                     onChange={(event) => setDraftKeyword(event.target.value)}
                   />
+                  {allDraftTags.length > 0 && (
+                    <select
+                      value={tagFilter}
+                      disabled={draftBusy || busy}
+                      onChange={(event) => setTagFilter(event.target.value)}
+                    >
+                      <option value="">全部标签</option>
+                      {allDraftTags.map((tag) => (
+                        <option key={tag} value={tag}>
+                          {tag}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <label className="workflow-meta">
                     <input
                       type="checkbox"
@@ -1557,6 +1612,11 @@ export default function WorkflowWorkbench() {
                         <small>负向：{clipText(draft.negative)}</small>
                         {draft.note && (
                           <small className="workflow-meta">备注：{draft.note}</small>
+                        )}
+                        {(draft.tags || []).length > 0 && (
+                          <small className="workflow-meta">
+                            标签：{(draft.tags || []).join("、")}
+                          </small>
                         )}
                       </div>
                       <div className="actions">

@@ -12,6 +12,8 @@ MAX_WORKFLOW_BYTES = 20 * 1024 * 1024
 MAX_PROMPT_CHARS = 200_000
 MAX_DRAFT_NAME_CHARS = 120
 MAX_DRAFT_NOTE_CHARS = 1000
+MAX_DRAFT_TAGS = 12
+MAX_DRAFT_TAG_CHARS = 30
 TEXT_ENCODER_MARKERS = ("CLIPTextEncode", "TextEncode")
 SAMPLER_MARKERS = ("KSampler", "SamplerCustom", "SamplerAdvanced")
 LATENT_MARKERS = ("LatentImage",)
@@ -75,6 +77,25 @@ def _read_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise WorkflowError(f"无法读取工作流数据：{exc}") from exc
+
+
+def _clean_tags(raw: Any) -> list[str]:
+    """Strip, de-duplicate and cap draft tags; non-strings are skipped."""
+    if not isinstance(raw, list):
+        return []
+    tags: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        tag = item.strip()[:MAX_DRAFT_TAG_CHARS]
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        tags.append(tag)
+        if len(tags) >= MAX_DRAFT_TAGS:
+            break
+    return tags
 def _safe_filename(name: str) -> str:
     name = Path(name.replace("\\", "/")).name
     name = re.sub(r"[^0-9A-Za-z._\-\u4e00-\u9fff ]", "_", name)
@@ -1077,6 +1098,7 @@ class WorkflowStore:
                     "positive": record.get("positive") or "",
                     "negative": record.get("negative") or "",
                     "favored": bool(record.get("favored") or False),
+                    "tags": _clean_tags(record.get("tags")),
                     "created_at": record.get("created_at"),
                     "updated_at": record.get("updated_at"),
                 }
@@ -1095,6 +1117,7 @@ class WorkflowStore:
         positive: str | None,
         negative: str | None,
         note: str | None,
+        tags: list[str] | None = None,
     ) -> dict[str, Any]:
         """Create or update a named draft under this workflow's draft box.
 
@@ -1119,6 +1142,7 @@ class WorkflowStore:
         clean_note = (note or "").strip()
         if len(clean_note) > MAX_DRAFT_NOTE_CHARS:
             raise WorkflowError("草稿备注超过 1000 字符限制")
+        clean_tags = _clean_tags(tags)
 
         existing = {
             entry["id"]: entry
@@ -1134,6 +1158,7 @@ class WorkflowStore:
             record["positive"] = clean_positive
             record["negative"] = clean_negative
             record["note"] = clean_note
+            record["tags"] = clean_tags
             record.setdefault("favored", False)
             record["updated_at"] = _now()
             record.setdefault("created_at", record.get("updated_at"))
@@ -1146,6 +1171,7 @@ class WorkflowStore:
                 "positive": clean_positive,
                 "negative": clean_negative,
                 "note": clean_note,
+                "tags": clean_tags,
                 "favored": False,
                 "created_at": _now(),
                 "updated_at": _now(),

@@ -812,3 +812,35 @@ def test_draft_favored_toggle_and_preserved_on_update(tmp_path):
         store.toggle_favored(
             workflow_id, "11111111-1111-4111-8111-111111111111"
         )
+
+
+def test_draft_tags_cleaned_and_preserved_on_update(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+
+    draft = store.save_draft(
+        workflow_id,
+        None,
+        "标签草稿",
+        "positive",
+        None,
+        "",
+        tags=[" 头像 ", "头像", "  ", 123, "角色"],
+    )
+
+    listed = store.list_drafts(workflow_id)
+    assert listed[0]["tags"] == ["头像", "角色"]
+    fetched = store.get_draft(workflow_id, draft["id"])
+    assert fetched["tags"] == ["头像", "角色"]
+
+    # Updating replaces the tag set; an empty tag list clears it.
+    updated = store.save_draft(
+        workflow_id, draft["id"], "标签草稿改", "positive2", None, "", tags=["夜景"]
+    )
+    assert updated["tags"] == ["夜景"]
+
+    cleared = store.save_draft(
+        workflow_id, draft["id"], "标签草稿改", "positive3", None, "", tags=[]
+    )
+    assert cleared["tags"] == []
