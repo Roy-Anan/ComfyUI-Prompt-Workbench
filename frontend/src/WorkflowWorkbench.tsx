@@ -338,6 +338,7 @@ export default function WorkflowWorkbench() {
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [updatingDraftId, setUpdatingDraftId] = useState<string | null>(null);
   const [draftKeyword, setDraftKeyword] = useState("");
+  const [favoredOnly, setFavoredOnly] = useState(false);
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -403,6 +404,7 @@ export default function WorkflowWorkbench() {
       setDeletingDraftId(null);
       setUpdatingDraftId(null);
       setDraftKeyword("");
+      setFavoredOnly(false);
       setConfirmStamp(null);
       setComparingStamp(null);
       setImportedPrompt(null);
@@ -456,6 +458,7 @@ export default function WorkflowWorkbench() {
       setDeletingDraftId(null);
       setUpdatingDraftId(null);
       setDraftKeyword("");
+      setFavoredOnly(false);
       setComparingStamp(null);
       setImportedPrompt(null);
       setPasteOpen(false);
@@ -821,6 +824,7 @@ export default function WorkflowWorkbench() {
 
   const draftKeywordTerm = draftKeyword.trim().toLowerCase();
   const filteredDrafts = drafts.filter((draft) => {
+    if (favoredOnly && !draft.favored) return false;
     if (!draftKeywordTerm) return true;
     const haystack = [draft.name, draft.note, draft.positive, draft.negative]
       .join(" ")
@@ -1503,6 +1507,15 @@ export default function WorkflowWorkbench() {
                     disabled={draftBusy || busy}
                     onChange={(event) => setDraftKeyword(event.target.value)}
                   />
+                  <label className="workflow-meta">
+                    <input
+                      type="checkbox"
+                      checked={favoredOnly}
+                      disabled={draftBusy || busy}
+                      onChange={(event) => setFavoredOnly(event.target.checked)}
+                    />
+                    仅看收藏
+                  </label>
                 </div>
               )}
               {drafts.length === 0 ? (
@@ -1515,6 +1528,9 @@ export default function WorkflowWorkbench() {
                     <div className="workflow-node-row" key={draft.id}>
                       <div>
                         <strong>{draft.name}</strong>
+                        {draft.favored && (
+                          <small className="workflow-meta">已收藏</small>
+                        )}
                         <small>正向：{clipText(draft.positive)}</small>
                         <small>负向：{clipText(draft.negative)}</small>
                         {draft.note && (
