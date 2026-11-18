@@ -71,7 +71,7 @@
 -   保持模块化单体，不创建微服务。
 -   业务规则只在 Python domain/service 层实现一份。
 -   React 负责展示和用户交互，不承担安全验证。
--   Rust/Tauri 只处理桌面宿主、窗口、sidecar 生命周期和系统能力。
+-   启动脚本只负责服务拉起、健康检查与进程树回收；业务规则不进脚本层。
 -   适配器隔离外部依赖：ComfyUI、Ollama、GPU、文件系统。
 -   API 路由保持薄；数据访问集中在 repository。
 -   不允许在 UI 组件中直接拼接工作流 JSON 或修改节点字段。
@@ -165,11 +165,11 @@ docs/
 
 -   前端依赖使用 lockfile 固定。
 -   Python 依赖使用锁定文件/约束文件固定。
--   Rust 依赖提交 Cargo.lock。
--   更新 Tauri、React、Python、FastAPI、PyInstaller
+-   前端依赖使用 lockfile 固定；Python 依赖使用约束文件固定。
+-   更新 React、Python、FastAPI、Vite
     等关键依赖前，先查看官方迁移说明。
 -   不因为依赖有新版本就自动升级。
--   升级后跑工作流安全、LLM 调度、ComfyUI mock 集成和 Windows 打包测试。
+-   升级后跑工作流安全、LLM 调度、ComfyUI mock 集成和本机启停/构建测试。
 
 ## 10. 智能体交接模板
 
@@ -216,7 +216,7 @@ docs/
 白名单字段。 2. 出图前确认本地 LLM 已卸载且显存释放。 3.
 草稿只有用户主动保存；生成历史自动保存。 4.
 默认本地隐私，不自动上传，不接云端 AI API。 5. 保持模块化单体和清晰的
-Python/React/Tauri 职责边界。
+Python/React 职责边界（本机 Web，免安装，见 ADR-0002）。
 
 开始编码前先总结项目状态、任务范围、受影响模块、风险和测试计划。任何无法确认的状态都标记
 unknown，不能猜测或跳过安全检查。

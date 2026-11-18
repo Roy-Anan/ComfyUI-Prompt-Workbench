@@ -1,22 +1,19 @@
 # 技术架构与模块边界
 
-## 1. 推荐初始技术路线
+> 当前运行形态以 ADR-0002《本机浏览器 Web 运行时（免安装）》为准；ADR-0001 中的 Tauri/PyInstaller/NSIS 路线已废弃。下文若残留旧桌面宿主表述，以本节与 ADR-0002 为准。
+
+## 1. 当前技术路线
 
   -----------------------------------------------------------------------------------------------
   层                      技术                    职责
   ----------------------- ----------------------- -----------------------------------------------
-  桌面容器                Tauri 2.x               Windows
-                                                  窗口、应用生命周期、系统对话框、通知、sidecar
-                                                  管理、安装包
+  运行入口                本机浏览器（Edge/Chrome） 访问 `http://127.0.0.1:17890`，同源使用前端页面与 API
 
-  前端                    React + TypeScript +    中文桌面 UI、Prompt 编辑器、候选/草稿/历史/LoRA
-                          Vite                    页面
+  前端                    React + TypeScript +    中文 UI、Prompt 编辑器、候选/草稿/历史/LoRA
+                          Vite（产物由 FastAPI 托管） 页面
 
-  本地业务服务            Python 3.12 起步 +      领域逻辑、工作流解析/验证、LLM/ComfyUI
-                          FastAPI                 适配、队列、数据访问
-
-  Python 打包             PyInstaller             将 Python 服务和依赖打包为 Tauri 可启动的
-                                                  Windows sidecar
+  本地业务服务            Python + FastAPI        领域逻辑、工作流解析/验证、LLM/ComfyUI
+                                                  适配、队列、数据访问、静态托管
 
   数据库                  SQLite                  本地结构化数据
 
@@ -24,39 +21,31 @@
 
   ComfyUI                 HTTP + WebSocket 适配器 工作流任务提交、事件、历史、队列状态与中断
 
-  Windows 发布            Tauri Windows 安装程序  安装程序、快捷方式；安装后启动桌面应用
-                          EXE                    
+  交付方式                免安装启动脚本          双击 `启动工作台.bat` 起服务并开浏览器；
+                                                  `停止工作台.bat` 按身份回收进程树；不产出 EXE
   -----------------------------------------------------------------------------------------------
 
-**技术状态：** 这是推荐的初始架构基线，需在 M0 原型阶段验证 sidecar
-启动、通信、打包和 Windows
-安装体验后锁定具体版本。不要把未验证的版本号写成永久约束。
+**技术状态：** 本机 `.venv` 实测 Python 3.13.18，测试在该版本通过；Python 3.12 兼容性尚未单独验证，不把未测试的版本号写成永久约束。
 
 ## 2. 选择理由
 
--   用户需要独立 Windows 桌面程序，同时希望界面具有网页技术的灵活性。
--   Tauri 使用系统 WebView2 渲染界面；Windows 11 通常具备 WebView2
-    运行环境，可减少应用重复携带完整 Chromium 的负担。
--   Tauri 支持把外部可执行程序作为 sidecar；Python API 服务可以先用
-    PyInstaller 打包，再由桌面应用管理其生命周期。
+-   单用户本地工具，浏览器同源访问已足够，不需要独立桌面窗口外壳。
+-   免安装方案绕开 Rust/MSVC 工具链与打包链，迭代链路短、维护成本低（见 ADR-0002）。
 -   React/TypeScript 适合复杂 Prompt
     编辑器、结构化区块、差异对比和多页面状态管理。
 -   Python 适合处理 JSON、HTTP/WebSocket、SQLite、本地模型服务和 ComfyUI
     集成。
 -   将核心业务放在一个 Python 模块化单体中，避免把同一业务逻辑分散在
-    TypeScript、Rust 和多个微服务。
--   Rust/Tauri 层保持轻薄，负责桌面宿主职责，不实现模型规则或 Prompt
-    业务逻辑。
+    TypeScript 和多个微服务。
+-   后端是业务规则与安全校验的唯一权威层；前端只展示与发起命令。
 
 ## 3. 进程与通信拓扑
 
-### 桌面主进程（Tauri/Rust）
+### 启动入口（启动脚本 + FastAPI 进程）
 
--   启动时拉起本应用 Python sidecar。
--   通过本地握手获取后端随机端口和会话凭据。
--   检查后端健康状态后再加载完整应用界面。
--   负责窗口、系统通知、文件选择对话框和 sidecar 生命周期。
--   退出时关闭本应用 sidecar；不得关闭 ComfyUI 或 Ollama 用户服务。
+-   双击 `启动工作台.bat`，由 `scripts/workbench_launcher.py` 复用项目 `.venv` 启动 FastAPI 进程。
+-   启动前做 loopback 校验、端口占用与实例身份校验；健康检查通过后打开默认浏览器。
+-   `停止工作台.bat` 经 `workbench_stopper.py` 按 PID + 可执行路径/命令行/工作目录/实例标识/启动时间核验身份后回收本工作台进程树；不得关闭 ComfyUI 或 Ollama 用户服务。
 
 ### 前端（React）
 
@@ -103,11 +92,6 @@
           settings/
         services/
         styles/
-      src-tauri/
-        Cargo.toml
-        tauri.conf.json
-        capabilities/
-        src/
       backend/
         pyproject.toml
         app/
@@ -149,6 +133,26 @@
 -   drafts：手动保存、版本历史、回收站和模型快照。
 -   history：生成记录、文件路径状态、筛选和导出。
 -   repositories：SQLite 数据访问和迁移。
+
+### 5.1 模块拆分节奏
+
+当前 M0/M1 阶段后端为平铺文件，允许在单文件内集中实现；进入后续阶段时按下列节奏拆分，避免在大文件中持续堆叠：
+
+-   M2 收尾：将工作流解析、白名单/快照/校验从 `workflow_service.py` 拆到 `workflow/`（识别、白名单、快照差异）。
+-   M3：新增 `rules/` 与 `repositories/`，模型身份与规则落 SQLite。
+-   M4：新增 `prompt/` 与 `adapters/ollama/`。
+-   M5/M7：新增 `drafts/`、`history/`。
+-   M6：新增 `queue/` 与 `adapters/comfyui/`、`adapters/gpu/`。
+-   拆分时保持业务规则只在 Python 后端一份；API 路由保持薄，数据访问集中到 repository。
+
+### 5.2 存储边界
+
+| 数据 | 存放位置 | 说明 |
+| --- | --- | --- |
+| 工作流原始文件、工作副本、版本快照、识别报告 | `userdata/workflows/<id>/` JSON 文件 | 原始文件不入库、不被覆盖；版本快照为写入前副本 |
+| 模型身份、规则版本/来源、LoRA 卡、草稿与版本、队列、生成历史、设置、LLM 参数 | SQLite | 只存元数据、路径、索引与必要快照 |
+| 图片原件、模型权重、LoRA 文件、ComfyUI 输出 | 用户原有目录，工作台不复制 | 数据库/数据目录只记录路径与缩略图索引 |
+| 注入角色/知识/规则文件 | `userdata/` 下配置目录（M3/M4 落地定格式） | 默认文件受保护，自定义副本可改可删 |
 
 ## 6. 核心安全管线
 
@@ -220,28 +224,21 @@ JSON 快照应记录 schema_version。
     临时数据库。
 -   安全测试：伪造节点、未知字段、Prompt
     节点误识别、工作流变化、写入中断、回滚失败、LLM 卸载失败。
--   Windows 构建测试：sidecar
-    启动、端口握手、安装/卸载、数据目录权限、桌面通知。
+-   本机运行测试：启动脚本起服务、端口与身份校验、停止脚本按进程树回收、数据目录权限。
 -   硬件验收：在用户 RTX 4060 Laptop 8GB + 16GB RAM
     环境验证真实显存释放与队列行为。
 
-## 12. 打包与发布
+## 12. 交付与运行
 
--   开发态：Tauri dev server + Python 虚拟环境。
--   构建态：Python 后端用 PyInstaller 生成 Windows sidecar；Tauri 将
-    sidecar 纳入应用包。
--   Windows 安装包优先生成 NSIS setup EXE；安装后创建快捷方式。
--   不把 Ollama 模型、ComfyUI、Checkpoint、LoRA
-    或生成图片打包进安装程序。
--   WebView2 在 Windows 11 通常可用；安装器仍需配置合理的 WebView2
-    检查/引导策略。
--   首版可先发布未签名测试包；正式公开分发前评估代码签名和更新机制。
+-   开发态：项目 `.venv` 运行 FastAPI；前端经 `tsc -b && vite build` 产出 `dist/`，由后端同源托管。
+-   交付形态：免安装。双击 `启动工作台.bat` 起服务并打开浏览器，`停止工作台.bat` 回收进程树；不产出 EXE/NSIS 安装包（见 ADR-0002）。
+-   不把 Ollama 模型、ComfyUI、Checkpoint、LoRA 或生成图片纳入工作台目录或备份导出。
+-   正式运行只需要项目 `.venv` 的 Python 依赖；Node/Vite 仅用于构建前端产物。
 
 ## 13. 技术约束
 
 -   模块化单体，不拆微服务。
 -   Python 后端是业务逻辑唯一权威来源；前端只展示/发起命令。
--   Rust 层保持薄，不复制业务规则。
 -   SQLite schema 迁移必须可追踪。
 -   外部导入的模型资料不能作为可执行指令。
 -   对无法确认的模型/节点/显存/任务状态保持 unknown，安全失败。

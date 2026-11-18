@@ -3,17 +3,17 @@
 - 文档版本：1.0
 - 日期：2026-11-17
 - 适用阶段：M0 基线规划
-- 配套基线：`docs/ARCHITECTURE.md`、`docs/decisions/ADR-0001-TECH-STACK.md`（本文件为项目控制视图，不替代基线架构文档）
+- 配套基线：`docs/ARCHITECTURE.md`、`docs/decisions/ADR-0002-LOCAL-WEB-RUNTIME.md`（本文件为项目控制视图，不替代基线架构文档）
 
 ## 1. 总体拓扑
 
-> **方向变更（TASK-002.3，2026-11-17）**：正式运行形态为本机浏览器 Web 应用，FastAPI 同源托管前端静态产物与 API；Tauri/Rust 桌面宿主方向已取消，历史代码归档于 `legacy/src-tauri/`，不参与 Web 运行时。下图为当前 Web 拓扑；第 2 节中 Tauri/Rust 相关职责为历史规划口径，落地以第 7 节 M0 现状为准。
+> **方向（ADR-0002，2026-11-18）**：正式运行形态为免安装本机浏览器 Web 应用，FastAPI 同源托管前端静态产物与 API；Tauri/Rust/PyInstaller/NSIS 路线已废弃，历史代码归档于 `legacy/src-tauri/`，不参与 Web 运行时。
 
 模块化单体，单一 Python 进程对内提供 API 与静态页面，一组本地外部服务：
 
 ```text
 ┌──────────────────────── 本机浏览器 (Edge / Chrome) ─────────────────────────┐
-│  访问 http://127.0.0.1:8000 · 同源 fetch · Cookie 会话票据 + CSRF 头          │
+│  访问 http://127.0.0.1:17890 · 同源 fetch · Cookie 会话票据 + CSRF 头        │
 └───────────────┬──────────────────────────────────────────────────────────────┘
                 │ 同源 loopback：FastAPI 同时返回前端静态文件与 /api/*
 ┌───────────────▼──────────────────────── Python 业务服务 (FastAPI) ────────────┐
@@ -24,19 +24,12 @@
         └──────────────────────────────┴─────────────────────────────────┴──────┘
 ```
 
-历史 Tauri 桌面拓扑（已归档，不再作为运行目标）：
-
-```text
-Tauri 桌面宿主 (Rust) → sidecar Python 服务；该路径因本机缺 Rust/MSVC 工具链且
-方向已取消，不再继续投入；源码见 legacy/src-tauri/。
-```
-
 ## 2. 模块职责与边界
 
-### 2.1 桌面宿主（Tauri / Rust）
+### 2.1 启动脚本与进程生命周期
 
-- 职责：拉起并管理 Python sidecar；本地握手获取后端随机端口与会话凭据；健康检查通过后加载完整界面；负责窗口、系统通知、文件选择对话框；退出时关闭本应用 sidecar。
-- 边界：**不实现模型规则或 Prompt 业务逻辑**；不关闭 ComfyUI / Ollama 用户服务；Rust 层保持薄。
+- 职责：`workbench_launcher.py` 复用项目 `.venv` 启动 FastAPI，做 loopback/端口/实例身份校验，健康检查通过后打开浏览器；`workbench_stopper.py` 按 PID + 身份记录回收本工作台进程树。
+- 边界：**不实现模型规则或 Prompt 业务逻辑**；不关闭 ComfyUI / Ollama 用户服务；脚本层保持薄。
 
 ### 2.2 React 前端
 
@@ -45,7 +38,7 @@ Tauri 桌面宿主 (Rust) → sidecar Python 服务；该路径因本机缺 Rust
 
 ### 2.3 Python 后端（业务逻辑权威实现）
 
-> **特别注意：Python 后端是业务逻辑的权威实现。** 规则判定、白名单校验、安全约束、状态机与数据访问以 Python 为准；前端与 Rust 不得复制或绕过这些规则。
+> **特别注意：Python 后端是业务逻辑的权威实现。** 规则判定、白名单校验、安全约束、状态机与数据访问以 Python 为准；前端不得复制或绕过这些规则。
 
 - **api**：HTTP 路由、请求/响应模型、错误码；不放业务规则。
 - **core**：配置、日志、应用生命周期、异常类型。
@@ -121,8 +114,8 @@ Tauri 桌面宿主 (Rust) → sidecar Python 服务；该路径因本机缺 Rust
 ## 6. 模块依赖方向
 
 - 前端 → api（后端）→ 领域服务 → repositories/adapters。
-- 上层可调用下层，下层不反向依赖前端或 Rust。
-- 规则、安全与状态判定集中在 Python 后端，不在前端、Rust 或 Prompt 文件中重新实现。
+- 上层可调用下层，下层不反向依赖前端。
+- 规则、安全与状态判定集中在 Python 后端，不在前端或 Prompt 文件中重新实现。
 
 ## 7. M0 当前落地范围
 
@@ -131,24 +124,24 @@ Tauri 桌面宿主 (Rust) → sidecar Python 服务；该路径因本机缺 Rust
 本节只记录本次代码已落地与实测状态，不代表第 2 节规划模块已全部实现。
 
 - **已落地并在后端实测**：FastAPI 会话令牌校验、`/api/health`、`/api/settings` 读写、`/api/storage/validate`、`/api/services/status`（Ollama / ComfyUI 仅连通性检测）、管理目录初始化；后端绑定 `127.0.0.1`。
-- **已落地并在前端静态构建通过**：React 设置/状态界面、Vite + TypeScript 工程；前端经 Tauri 命令 `get_backend_config` 获取端口与令牌后访问后端。
-- **已落地代码、本机未编译验证**：Tauri 2 宿主（随机端口、UUID v4 令牌、拉起自己的 Python 子进程、退出时结束该子进程）。阻塞原因：本机缺 Rust 工具链与 MSVC C++ Build Tools。
+- **已落地并在前端静态构建通过**：React 设置/状态界面、Vite + TypeScript 工程；前端经同源相对路径访问后端。
+- **历史遗留（已废弃）**：早期 Tauri 2 宿主代码已归档至 `legacy/src-tauri/`，不参与 Web 运行时；对应 Rust 工具链缺失记录仅作历史说明。
 
 ### 7.2 TASK-002.1（2026-11-17，0.1.0-dev.2）
 
 - **SQLite 基础层已落地并在后端实测**：数据库文件位于 `storage.database/workbench.sqlite3`；初始表 `schema_version(version PK, applied_at)`、`app_metadata(key PK, value, updated_at)`，`schema_version` 当前为 1；重复初始化保留版本号。业务实体表（规则、草稿、历史、LoRA 等）属后续阶段。
-- **根目录与配置规则**：`storage.root` 由桌面宿主固定（数据根取 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench`，Rust 与 Python 默认根一致），客户端修改 root 返回 400；管理子目录、外部模型路径（checkpoint/lora，可留空）、连接地址（ollama_url/comfyui_url）按白名单校验；损坏 `settings.json` 先备份为 `settings.corrupt-<时间戳>-<hex>.json` 再重建默认配置。
-- **日志职责**：Rust sidecar 子进程 stdout/stderr 分流到数据根 `logs/sidecar-stdout.log`、`logs/sidecar-stderr.log`；会话令牌仅经 `WORKBENCH_SESSION_TOKEN` 环境变量传递，不写入日志；启动失败/超时错误附带 stderr 日志路径。
+- **根目录与配置规则**：`storage.root` 由后端固定（数据根后迁至项目内 `userdata/`，见 7.4），客户端修改 root 返回 400；管理子目录、外部模型路径（checkpoint/lora，可留空）、连接地址（ollama_url/comfyui_url）按白名单校验；损坏 `settings.json` 先备份为 `settings.corrupt-<时间戳>-<hex>.json` 再重建默认配置。
+- **日志职责**：服务 stdout/stderr 记录到数据根日志；会话令牌仅经环境变量传递，不写入日志；启动失败/超时错误附带日志路径。
 - **健康检查**：宿主在 TCP 连通后再以 Bearer 令牌请求 `/api/health`，返回 200 且体含 `ok:true` 才判定就绪，不仅凭端口打开判定。
 - **尚未落地**：第 2.3 节列出的 domain/workflow/rules/prompt/queue/drafts/history/loras 等业务模块、业务实体表、显存管理、知识库与注入编辑 UI、工作流解析与出图闭环，均属后续阶段。
 
 ### 7.3 TASK-002.3（2026-11-17，0.1.0-dev.3，本机 Web 架构）
 
-- **运行形态**：FastAPI 托管 `frontend/dist/` 静态产物并提供 `/api/*`；浏览器经同源相对路径访问，默认 `http://127.0.0.1:8000`，只绑定 loopback；`WORKBENCH_HOST` / `WORKBENCH_PORT` 可配置，非 loopback 绑定在启动时被拒绝。
+- **运行形态**：FastAPI 托管 `frontend/dist/` 静态产物并提供 `/api/*`；浏览器经同源相对路径访问，默认 `http://127.0.0.1:17890`（原 8000 与本机酒馆冲突，已改），只绑定 loopback；`WORKBENCH_HOST` / `WORKBENCH_PORT` 可配置，非 loopback 绑定在启动时被拒绝。
 - **会话与安全**：`/api/bootstrap` 为同源回环浏览器签发 HttpOnly 会话票据与 CSRF 令牌；Cookie 会话的状态变更需 `X-Workbench-CSRF` 头；Origin 白名单校验；引导令牌仅环境变量传递，不入前端产物；保留原 API 认证，未关闭安全检查。
 - **进程生命周期**：根目录 `启动工作台.bat` / `停止工作台.bat` 为普通用户入口；启动器复用项目 `.venv`，记录 PID 到 `.workbench.pid`（已忽略提交）；停止器按 PID 终止工作台进程树，不按进程名批量结束 Python。
 - **依赖边界**：正式运行只需要项目 `.venv` 中的 Python 依赖；Node/Vite 仅在构建前端产物时使用，正式运行不启动 Node 开发服务器。Tauri 运行依赖（`@tauri-apps/api`、`@tauri-apps/cli`）已从 `package.json` 移除，Rust 工程归档至 `legacy/src-tauri/`。
-- **数据与外部服务**：数据根仍为 `%LOCALAPPDATA%\ComfyUI-Prompt-Workbench`；SQLite 与设置文件保留；Ollama `127.0.0.1:11434`、ComfyUI `127.0.0.1:8188` 仅做连通性检测，不自启/自关/重启。
+- **数据与外部服务**：数据根后迁至仓库内 `userdata/`（见 7.4）；SQLite 与设置文件保留；Ollama `127.0.0.1:11434`、ComfyUI `127.0.0.1:8188` 仅做连通性检测，不自启/自关/重启。
 
 ### 7.4 TASK-002.3.1（2026-11-17，0.1.0-dev.4，安全加固与项目内数据目录）
 

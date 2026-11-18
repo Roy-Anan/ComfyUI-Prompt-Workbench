@@ -4,13 +4,12 @@
 辅助编写、优化和管理图像生成提示词，并通过严格的白名单机制，把审核后的正向/负向
 Prompt 写入 ComfyUI 工作流。
 
-> **当前状态：文档基线包。** 需求梳理已完成（用户确认决策
-> 01---132）；桌面产品方向已确定；本压缩包不包含已实现的软件代码，也不代表
-> EXE 已经构建。
+> **当前状态：M0 骨架与安全基线已落地，M1/M2 工作流功能收尾中。** 需求基线已确认；
+> 运行形态为免安装本机浏览器 Web 应用（见 ADR-0002），不产出 EXE 安装包。
 
 ## 项目目标
 
-在一个 Windows 桌面工作台中完成：
+在一个本机浏览器工作台中完成：
 
 选择工作流 → 识别模型与提示词节点 → 按模型规则创作 Prompt → 用户审核 →
 安全写入 → 卸载本地 LLM 并确认显存释放 → 提交 ComfyUI → 记录生成历史。
@@ -32,17 +31,15 @@ Prompt 写入 ComfyUI 工作流。
 
 ## 技术方向
 
--   Windows 桌面应用，最终交付安装程序 EXE。
--   网页技术构建 UI。
--   推荐初始方案：Tauri 2 + React + TypeScript + Vite + Python
-    本地服务 + SQLite。
+-   免安装本机浏览器 Web 应用：FastAPI 同源托管前端产物与 API，访问 `http://127.0.0.1:17890`。
+-   前端 React + TypeScript + Vite；后端 Python + FastAPI；本地数据 SQLite + `userdata/` 文件。
 -   本地 LLM 第一版通过 Ollama 适配器接入。
 -   ComfyUI 通过 HTTP + WebSocket 连接。
 -   采用模块化单体，不拆微服务。
 
 **注意：**
-技术组合是当前推荐基线。工程启动阶段仍需做最小可运行原型，验证 Tauri 与
-Python sidecar 的启动、通信、打包和 Windows 运行情况后，再冻结依赖版本。
+Tauri/Rust/PyInstaller/NSIS 路线已废弃（ADR-0001，历史记录见 `legacy/src-tauri/`）；
+正式运行只需项目 `.venv` 的 Python 依赖，Node/Vite 仅用于构建前端产物。
 
 ## 文档导航
 
@@ -51,7 +48,8 @@ Python sidecar 的启动、通信、打包和 Windows 运行情况后，再冻�
 -   [技术架构](docs/ARCHITECTURE.md)
 -   [开发路线图](docs/ROADMAP.md)
 -   [维护与智能体交接手册](docs/MAINTENANCE_AND_AGENT_HANDOFF.md)
--   [ADR-0001 技术选型决策](docs/decisions/ADR-0001-TECH-STACK.md)
+-   [ADR-0001 技术选型决策（已废弃，历史记录）](docs/decisions/ADR-0001-TECH-STACK.md)
+-   [ADR-0002 本机 Web 运行时（免安装）](docs/decisions/ADR-0002-LOCAL-WEB-RUNTIME.md)
 -   [上传到 GitHub 的操作说明](UPLOAD_GUIDE.md)
 
 ## 用户设备参考
@@ -72,16 +70,14 @@ Python sidecar 的启动、通信、打包和 Windows 运行情况后，再冻�
   阶段                     状态
   ------------------------ --------------------------------
   需求梳理                 已完成（决策 01---132 已确认）
-  产品与架构文档           本压缩包已整理，待上传仓库
-  技术原型验证             待开始
-  工程脚手架               待建立
-  工作流解析与白名单保护   待开发
+  M0 工程脚手架与安全基线  已完成（后端 pytest 57 通过，前端构建通过）
+  工作流解析与白名单保护   收尾中（服务端测试通过，真机闭环待真实样本）
   模型规则引擎             待开发
   Prompt 工作区与 LLM      待开发
   队列、显存调度、历史     待开发
   LoRA 管理                待开发
   UI 视觉打磨              后期进行
-  Windows EXE 发布         待开发
+  免安装交付与启动脚本     后期完善（不做 EXE 安装包）
 
 ## 事实说明
 

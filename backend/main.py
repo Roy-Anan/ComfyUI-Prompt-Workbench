@@ -52,8 +52,8 @@ MIGRATION_REPORT: dict[str, Any] = {}
 # Local-only origins allowed by CORS. The production Web runtime is same-origin
 # (FastAPI serves both API and frontend), so no broad LAN/public origin is added.
 ALLOWED_ORIGINS = {
-    "http://127.0.0.1:8000",
-    "http://localhost:8000",
+    "http://127.0.0.1:17890",
+    "http://localhost:17890",
     "http://127.0.0.1:1420",
     "http://localhost:1420",
 }
@@ -618,7 +618,7 @@ def main() -> None:
     import uvicorn
 
     host = os.environ.get("WORKBENCH_HOST", "127.0.0.1")
-    port = int(os.environ.get("WORKBENCH_PORT", "8000"))
+    port = int(os.environ.get("WORKBENCH_PORT", "17890"))
 
     # Default must stay loopback; refuse LAN/public binds.
     if not is_loopback_host(host):

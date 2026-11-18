@@ -3,7 +3,7 @@
 Started by the double-click batch entry. It:
   * reuses the project virtualenv interpreter (never the ComfyUI bundled Python)
   * enforces a loopback bind (refuses 0.0.0.0, LAN and public addresses)
-  * checks whether port 8000 already serves this workbench (identity check)
+  * checks whether the configured port already serves this workbench (identity check)
   * starts FastAPI as a detached tracked process and records its PID to a file
   * waits for the health endpoint to identify the real workbench, then opens
     the default browser
@@ -33,7 +33,7 @@ PID_FILE = REPO_ROOT / ".workbench.pid"
 # stopper verifies identity against this record rather than the PID alone.
 RUNTIME_RECORD_FILE = REPO_ROOT / ".workbench-runtime.json"
 HOST = os.environ.get("WORKBENCH_HOST", "127.0.0.1")
-PORT = int(os.environ.get("WORKBENCH_PORT", "8000"))
+PORT = int(os.environ.get("WORKBENCH_PORT", "17890"))
 HEALTH_PATH = "/api/health"
 APP_ID = "ComfyUI-Prompt-Workbench"
 OPEN_BROWSER = os.environ.get("WORKBENCH_OPEN_BROWSER", "1") != "0"
