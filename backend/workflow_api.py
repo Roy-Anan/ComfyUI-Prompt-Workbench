@@ -2,8 +2,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import datadir
+import llm_client
 import model_identity
 import rule_compare
 import rule_prompt
@@ -95,6 +96,84 @@ class PromptNodeConfirmation(BaseModel):
 class PromptWrite(BaseModel):
     positive_text: str | None = None
     negative_text: str | None = None
+
+
+class PromptCandidateRequest(BaseModel):
+    model: str = Field(min_length=1, max_length=120)
+    task: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("model")
+    @classmethod
+    def _model_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("model must not be blank")
+        return value.strip()
+
+
+def _ollama_url() -> str:
+    """Read the configured local Ollama URL, falling back to the default."""
+    root = datadir.default_data_root()
+    settings = datadir.default_settings(root)
+    loaded = datadir.load_settings_file(root)
+    if isinstance(loaded, dict):
+        connections = loaded.get("connections")
+        if isinstance(connections, dict) and isinstance(
+            connections.get("ollama_url"), str
+        ):
+            return connections["ollama_url"].rstrip("/")
+    return settings["connections"]["ollama_url"].rstrip("/")
+
+
+def _unregistered_context() -> dict[str, Any]:
+    return {
+        "status": "unregistered",
+        "checkpoint": None,
+        "architecture": None,
+        "architecture_family": None,
+        "architecture_label": None,
+        "checkpoint_rules": [],
+        "architecture_rules": [],
+        "global_rules": [],
+    }
+
+
+def _rules_system_message(rule_payload: dict[str, Any]) -> str:
+    lines: list[str] = [rule_payload.get("instruction", "")]
+    fields = rule_payload.get("fields", [])
+    if fields:
+        lines.append("已解析规则：")
+        for entry in fields:
+            lines.append(
+                f"- {entry.get('key')}: {entry.get('value')}（{entry.get('status')}）"
+            )
+    if rule_payload.get("conflicts"):
+        lines.append("存在 conflict 字段，需人工核对，不要替模型选择。")
+    if rule_payload.get("unknown"):
+        lines.append("存在 unknown 字段，不要补默认值或猜测。")
+    return "\n".join(line for line in lines if line)
+
+
+def _user_message(
+    working_prompts: list[dict[str, Any]], task: str | None
+) -> str:
+    by_role: dict[str, list[str]] = {"positive": [], "negative": []}
+    for item in working_prompts:
+        role = item.get("role")
+        text = item.get("text")
+        if role in by_role and isinstance(text, str) and text.strip():
+            by_role[role].append(text.strip())
+
+    lines: list[str] = ["当前工作流现有 Prompt："]
+    if by_role["positive"]:
+        lines.append("正向：" + " / ".join(by_role["positive"]))
+    if by_role["negative"]:
+        lines.append("负向：" + " / ".join(by_role["negative"]))
+    if task and task.strip():
+        lines.append(f"任务要求：{task.strip()}")
+    lines.append(
+        "请基于上述规则与现有内容给出 Prompt 候选；未提供的参数不要臆造。"
+    )
+    return "\n".join(lines)
 @router.get("")
 def list_workflows():
     return {"items": store().list_workflows()}
@@ -206,6 +285,54 @@ def workflow_rule_prompt(workflow_id: str):
         rule_store.ensure_schema(connection)
         context = rule_store.context_for_checkpoint(connection, checkpoint)
     return rule_prompt.build_prompt_context(context)
+
+
+@router.post("/{workflow_id}/prompt/candidates")
+def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
+    """Ask the local Ollama model for a prompt candidate for this workflow.
+
+    Only the trimmed rule context already resolved for this workflow is sent;
+    unrelated rules are never included. The response is a candidate text only:
+    it is not written back to the workflow, and the working draft is left
+    untouched. A local-model failure returns a conservative 502 with no
+    fabricated candidate; there is no cloud fallback.
+    """
+    try:
+        workflow = store().get_workflow(workflow_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+    report = workflow.get("report", {})
+    checkpoint = _checkpoint_filename(report)
+    if checkpoint:
+        with model_identity.connect(_database_path()) as connection:
+            rule_store.ensure_schema(connection)
+            context = rule_store.context_for_checkpoint(connection, checkpoint)
+    else:
+        context = _unregistered_context()
+    rule_payload = rule_prompt.build_prompt_context(context)
+
+    messages = [
+        {"role": "system", "content": _rules_system_message(rule_payload)},
+        {
+            "role": "user",
+            "content": _user_message(workflow.get("working_prompts", []), payload.task),
+        },
+    ]
+    result = llm_client.chat(_ollama_url(), payload.model, messages)
+    if not result["ok"]:
+        raise HTTPException(
+            status_code=502,
+            detail={"online": False, "error": result["error"]},
+        )
+
+    return {
+        "model": result["model"],
+        "candidates": [result["content"]],
+        "rule_status": rule_payload["status"],
+        "conflicts": rule_payload["conflicts"],
+        "unknown": rule_payload["unknown"],
+    }
 
 
 @router.get("/{workflow_id}/rules/compare")

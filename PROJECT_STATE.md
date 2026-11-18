@@ -1127,3 +1127,21 @@
 
 - 模型选择/参数配置、候选生成、结构化验证、审核前不写入工作流等 M4 主体功能留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R36/`。
+
+## 47. TASK-003.1-R37 M4 第二切片：本地 Ollama 候选生成后端闭环（2026-11-18）
+
+### 47.1 落地内容
+
+- 新增 `llm_client.py`：本地 Ollama `/api/chat` 非流式调用；离线/超时/坏 JSON/空消息保守返回
+  `ok=False`，无云端回退、不臆造候选文本。
+- 新增 `POST /api/workflows/{id}/prompt/candidates`：复用规则上下文构建 system/user 消息，
+  只传当前工作流相关规则；返回 `{model, candidates:[text], rule_status, conflicts, unknown}`。
+- 候选不回写工作流，working draft 保持不变；本地模型失败返回 502 `{online:False, error}`；
+  模型名去空白后不能为空（422）。
+- 新增单测：成功返回候选且草稿不变、无关规则不进消息；本地失败 502；空模型 422。
+- 后端测试 **176 passed**；本批无前端改动。
+
+### 47.2 边界与 backlog
+
+- 前端模型选择、候选展示、审核后写入工作流、三种创作模式与参数配置、输出结构化验证留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R37/`。

@@ -1,5 +1,6 @@
 import sqlite3
 
+import llm_client
 import rule_store
 
 
@@ -232,6 +233,104 @@ def test_workflow_rule_prompt_unregistered_without_checkpoint(client):
     body = response.json()
     assert body["status"] == "unregistered"
     assert body["fields"] == []
+
+
+def test_prompt_candidates_returns_text_without_writing_draft(
+    client, monkeypatch
+):
+    test_client, main = client
+    db = main.DATA_ROOT / "database" / "workbench.sqlite3"
+    _seed_context_rules(db)
+
+    workflow = {
+        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sample_checkpoint.safetensors"}},
+    }
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    before = test_client.get(
+        f"/api/workflows/{workflow_id}",
+        headers={"Authorization": "Bearer test-session-token"},
+    ).json()
+
+    captured: dict = {}
+
+    def fake_chat(url, model, messages, timeout=30.0):
+        captured["url"] = url
+        captured["model"] = model
+        captured["messages"] = messages
+        return {
+            "ok": True,
+            "content": "candidate prompt text",
+            "model": model,
+            "error": None,
+        }
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers={"Authorization": "Bearer test-session-token"},
+        json={"model": "comfyui-prompt:v1", "task": "优化正向描述"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["model"] == "comfyui-prompt:v1"
+    assert body["candidates"] == ["candidate prompt text"]
+    assert body["rule_status"] == "registered"
+
+    # Only the trimmed rule context is sent; the unrelated checkpoint rule
+    # must not leak into the messages.
+    system_text = captured["messages"][0]["content"]
+    assert "GENERATION SETTINGS::Steps" in system_text
+    assert "other_checkpoint.safetensors" not in system_text
+
+    # The working draft is untouched by candidate generation.
+    after = test_client.get(
+        f"/api/workflows/{workflow_id}",
+        headers={"Authorization": "Bearer test-session-token"},
+    ).json()
+    assert after["working_prompts"] == before["working_prompts"]
+
+
+def test_prompt_candidates_reports_local_model_failure(client, monkeypatch):
+    test_client, main = client
+    db = main.DATA_ROOT / "database" / "workbench.sqlite3"
+    _seed_context_rules(db)
+
+    workflow = {
+        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sample_checkpoint.safetensors"}},
+    }
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    def fake_chat(url, model, messages, timeout=30.0):
+        return {"ok": False, "content": None, "model": model, "error": "connection refused"}
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers={"Authorization": "Bearer test-session-token"},
+        json={"model": "comfyui-prompt:v1"},
+    )
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert detail["online"] is False
+    assert detail["error"] == "connection refused"
+
+
+def test_prompt_candidates_rejects_empty_model(client):
+    test_client, main = client
+    workflow = {
+        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sample_checkpoint.safetensors"}},
+    }
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers={"Authorization": "Bearer test-session-token"},
+        json={"model": "   "},
+    )
+    assert response.status_code == 422
 
 
 def test_workflow_rules_unregistered_without_checkpoint(client):
