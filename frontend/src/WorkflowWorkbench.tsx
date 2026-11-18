@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "./api";
+import { formatActual } from "./format";
 type PromptNode = {
   node_id: string;
   class_type: string;
@@ -105,12 +106,6 @@ const STATUS_LABEL: Record<string, string> = {
   out_of_set: "不在集合",
   unknown: "无法判定",
 };
-
-function formatActual(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
 
 const ACTUAL_SUMMARY: Array<{ key: string; label: string }> = [
   { key: "steps", label: "步数" },

@@ -998,3 +998,27 @@
 
 - 档案候选的勾选/驳回/差异预览与前端规则、档案管理写界面留后续切片；本切片仅只读预览。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R30/`。
+
+## 41. TASK-003.1-R31 M3 第二十六切片：结构化规则值前端可读摘要（2026-11-18）
+
+### 41.1 当前状态
+
+- 新增共享工具 `frontend/src/format.ts`：`formatStructured` 按 kind 渲染 value/range/floor/resolutions/list 可读摘要；`formatActual` 兼容比对 verdict 提炼值（数值、范围、下限、分辨率对/数组、列表数组）。
+- 规则库、档案候选面板的 `structured` 字段与比对面板规则列改用共享格式化；未知形态回退原始 JSON，`structured=None` 显示「—」。
+- 纯展示层改动，后端归一化与比对结论口径不变；后端零改动。
+- 后端测试 **165 passed**；前端 `tsc -b && vite build` exit 0。
+
+### 41.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| value / range / floor 摘要 | 通过 | CFG 5、Steps 30~32、CFG 4~6、Steps ≥30；`screenshots/rules-summary.png` |
+| resolutions / list 摘要 | 通过 | `896×1152 / 832×1216`、采样器以 `/` 连接 |
+| 比对面板规则列 | 通过 | 数值/分辨率/列表/下限摘要正确；`screenshots/compare-summary.png`；`samples/compare-payload.json` |
+| Python pytest | 通过 | **165 passed, 1 warning in 6.04s** |
+| TypeScript / Vite 构建 | 通过 | exit 0；`index-D68eGJQw.js 165.08 kB`，CSS 8.09 kB |
+
+### 41.3 边界与 backlog
+
+- 分号两套建议的分组结构化与示例套/推荐套优先级语义留后续切片；本切片摘要只服务既有 kind。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R31/`。

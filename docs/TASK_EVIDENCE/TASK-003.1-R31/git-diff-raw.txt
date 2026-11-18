@@ -1,0 +1,123 @@
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index b088c56..44c55d5 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -1,5 +1,6 @@
+ import { useEffect, useState } from "react";
+ import { apiGet, apiPost } from "./api";
++import { formatStructured } from "./format";
+ import WorkflowWorkbench from "./WorkflowWorkbench";
+ 
+ type Health = {
+@@ -638,7 +639,7 @@ export default function App() {
+                           {rule.scope_key || "全局"} · 值：
+                           {formatRuleValue(rule.value)}
+                           {rule.structured
+-                            ? ` · 结构：${formatRuleValue(rule.structured)}`
++                            ? ` · 结构：${formatStructured(rule.structured)}`
+                             : ""}
+                           {rule.note ? ` · 备注：${rule.note}` : ""}
+                         </small>
+@@ -722,7 +723,7 @@ export default function App() {
+                                   {" · 值："}
+                                   {formatRuleValue(candidate.value)}
+                                   {candidate.structured
+-                                    ? ` · 结构：${formatRuleValue(candidate.structured)}`
++                                    ? ` · 结构：${formatStructured(candidate.structured)}`
+                                     : ""}
+                                   {candidate.note
+                                     ? ` · 备注：${candidate.note}`
+diff --git a/frontend/src/WorkflowWorkbench.tsx b/frontend/src/WorkflowWorkbench.tsx
+index ad8205b..9fc171f 100644
+--- a/frontend/src/WorkflowWorkbench.tsx
++++ b/frontend/src/WorkflowWorkbench.tsx
+@@ -1,5 +1,6 @@
+ import { useEffect, useState } from "react";
+ import { apiGet, apiPost } from "./api";
++import { formatActual } from "./format";
+ type PromptNode = {
+   node_id: string;
+   class_type: string;
+@@ -106,12 +107,6 @@ const STATUS_LABEL: Record<string, string> = {
+   unknown: "无法判定",
+ };
+ 
+-function formatActual(value: unknown): string {
+-  if (value === null || value === undefined || value === "") return "—";
+-  if (typeof value === "object") return JSON.stringify(value);
+-  return String(value);
+-}
+-
+ const ACTUAL_SUMMARY: Array<{ key: string; label: string }> = [
+   { key: "steps", label: "步数" },
+   { key: "cfg", label: "CFG" },
+
+
+=== NEW FILE: frontend/src/format.ts ===
+
+// Readable summary formatting for structured rule values and comparison
+// verdict values. Pure display only; it does not reinterpret the backend
+// normalization or comparison verdict.
+
+function dimension(pair: unknown): string {
+  if (typeof pair !== "object" || pair === null) return String(pair);
+  const record = pair as Record<string, unknown>;
+  const width = record.width;
+  const height = record.height;
+  if (width !== undefined && height !== undefined) return `${width}×${height}`;
+  return JSON.stringify(pair);
+}
+
+/**
+ * Format a backend ``structured`` record (carrying a ``kind`` tag from
+ * ``value_normalize``): value / range / floor / resolutions / list.
+ * Unknown shapes fall back to their raw JSON so nothing is guessed.
+ */
+export function formatStructured(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value !== "object") return String(value);
+
+  const record = value as Record<string, unknown>;
+  switch (record.kind) {
+    case "value":
+      return String(record.value);
+    case "range":
+      return `${record.low}~${record.high}`;
+    case "floor":
+      return `≥${record.low}`;
+    case "resolutions":
+      return (Array.isArray(record.items) ? record.items : []).map(dimension).join(" / ");
+    case "list":
+      return (Array.isArray(record.items) ? record.items : []).map(String).join(" / ");
+    default:
+      return JSON.stringify(value);
+  }
+}
+
+/**
+ * Format a comparison verdict's extracted rule value. The verdict may hold
+ * a plain number/string, a ``{low, high}`` range, a ``{floor}`` lower bound,
+ * a resolution pair/array, or a plain list array. Anything unexpected keeps
+ * its raw JSON.
+ */
+export function formatActual(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value !== "object") return String(value);
+
+  if (Array.isArray(value)) {
+    if (value.length > 0 && typeof value[0] === "object") {
+      return value.map(dimension).join(" / ");
+    }
+    return value.map(String).join(" / ");
+  }
+
+  const record = value as Record<string, unknown>;
+  if (record.low !== undefined && record.high !== undefined) {
+    return `${record.low}~${record.high}`;
+  }
+  if (record.floor !== undefined) return `≥${record.floor}`;
+  if (record.width !== undefined && record.height !== undefined) {
+    return dimension(record);
+  }
+  return JSON.stringify(value);
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "./api";
+import { formatStructured } from "./format";
 import WorkflowWorkbench from "./WorkflowWorkbench";
 
 type Health = {
@@ -638,7 +639,7 @@ export default function App() {
                           {rule.scope_key || "全局"} · 值：
                           {formatRuleValue(rule.value)}
                           {rule.structured
-                            ? ` · 结构：${formatRuleValue(rule.structured)}`
+                            ? ` · 结构：${formatStructured(rule.structured)}`
                             : ""}
                           {rule.note ? ` · 备注：${rule.note}` : ""}
                         </small>
@@ -722,7 +723,7 @@ export default function App() {
                                   {" · 值："}
                                   {formatRuleValue(candidate.value)}
                                   {candidate.structured
-                                    ? ` · 结构：${formatRuleValue(candidate.structured)}`
+                                    ? ` · 结构：${formatStructured(candidate.structured)}`
                                     : ""}
                                   {candidate.note
                                     ? ` · 备注：${candidate.note}`
