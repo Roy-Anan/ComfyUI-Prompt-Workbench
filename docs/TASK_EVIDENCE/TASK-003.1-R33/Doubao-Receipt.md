@@ -27,8 +27,8 @@ M3 第二十八切片：分号两套建议分组结构化（sets，保守归 unk
 
 ## Git
 
-- 功能提交：见下方回填。
-- 回执提交：见下方回填。
+- 功能提交：`e86f1df6e47f14bd5a8424e02394a6100a970250`（本地 dev，已推送 origin/dev）。
+- 远端核对：连接器 `list_commits(dev)` 最新提交即 `e86f1df`，消息「feat(workbench): M3 第二十八切片 分号两套建议分组结构化 sets」，作者 Roy-Anan / 1538072315@qq.com。
 - main 分支未改动。
 
 ## 边界
