@@ -74,6 +74,7 @@ export default function HistoryPanel() {
   const [statusFilter, setStatusFilter] = useState("");
   const [workflowFilter, setWorkflowFilter] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [view, setView] = useState<"list" | "grid">("list");
 
   async function load() {
     try {
@@ -131,6 +132,83 @@ export default function HistoryPanel() {
     return true;
   });
 
+  function renderRecord(record: HistoryRecord) {
+    const open = openId === record.prompt_id;
+    const checkpoints = snapshotFiles(record.model_snapshot, "checkpoints");
+    const loras = snapshotFiles(record.model_snapshot, "loras");
+    const images = record.images || [];
+    return (
+      <div className="rule-row" key={record.prompt_id}>
+        <div className="rule-row-main">
+          <strong>{summarize(record.positive_prompt)}</strong>
+          <small>
+            {formatTime(record.created_at)} · 工作流 {record.workflow_id.slice(0, 8)}
+            {checkpoints.length > 0 && ` · ${checkpoints.join("、")}`}
+            {loras.length > 0 && ` · LoRA ${loras.join("、")}`}
+          </small>
+          {record.last_error && (
+            <small className="workflow-warning">{record.last_error}</small>
+          )}
+        </div>
+        <div className="rule-row-meta">
+          <span className={`compare-badge ${record.task_status}`}>
+            {STATUS_LABEL[record.task_status] ?? record.task_status}
+          </span>
+          <button
+            onClick={() => setOpenId(open ? null : record.prompt_id)}
+          >
+            {open ? "收起" : "详情"}
+          </button>
+        </div>
+
+        {open && (
+          <div className="profile-preview" style={{ width: "100%" }}>
+            <div className="rule-row">
+              <div className="rule-row-main">
+                <strong>正向 Prompt</strong>
+                <small>{record.positive_prompt || "—"}</small>
+              </div>
+            </div>
+            <div className="rule-row">
+              <div className="rule-row-main">
+                <strong>负向 Prompt</strong>
+                <small>{record.negative_prompt || "—"}</small>
+              </div>
+            </div>
+            <div className="rule-row">
+              <div className="rule-row-main">
+                <strong>模型快照</strong>
+                <small>
+                  {[
+                    `Checkpoint：${checkpoints.join("、") || "—"}`,
+                    `LoRA：${loras.join("、") || "—"}`,
+                    `VAE：${snapshotFiles(record.model_snapshot, "vaes").join("、") || "—"}`,
+                    `CLIP：${snapshotFiles(record.model_snapshot, "clips").join("、") || "—"}`,
+                  ].join(" · ")}
+                </small>
+              </div>
+            </div>
+            {images.length > 0 && (
+              <div className="rule-row">
+                <div className="rule-row-main">
+                  <strong>输出图片</strong>
+                  <small>
+                    {images
+                      .map(
+                        (image) =>
+                          `${image.filename}（${existenceLabel(image)}）`,
+                      )
+                      .join("、")}
+                  </small>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <section className="panel">
       <div className="section-heading">
@@ -139,6 +217,12 @@ export default function HistoryPanel() {
           <p>提交时刻固化的 Prompt 与模型快照；图片只记录文件名与存在性，不复制原图。</p>
         </div>
         <div className="actions">
+          <button
+            onClick={() => setView(view === "list" ? "grid" : "list")}
+            disabled={filtered.length === 0}
+          >
+            {view === "list" ? "网格视图" : "列表视图"}
+          </button>
           <button onClick={exportHistory} disabled={filtered.length === 0}>
             导出 JSON
           </button>
@@ -201,83 +285,8 @@ export default function HistoryPanel() {
       ) : filtered.length === 0 ? (
         <p className="catalog-empty">没有符合筛选条件的历史记录。</p>
       ) : (
-        <div className="rule-list">
-          {filtered.map((record) => {
-            const open = openId === record.prompt_id;
-            const checkpoints = snapshotFiles(record.model_snapshot, "checkpoints");
-            const loras = snapshotFiles(record.model_snapshot, "loras");
-            const images = record.images || [];
-            return (
-              <div className="rule-row" key={record.prompt_id}>
-                <div className="rule-row-main">
-                  <strong>{summarize(record.positive_prompt)}</strong>
-                  <small>
-                    {formatTime(record.created_at)} · 工作流 {record.workflow_id.slice(0, 8)}
-                    {checkpoints.length > 0 && ` · ${checkpoints.join("、")}`}
-                    {loras.length > 0 && ` · LoRA ${loras.join("、")}`}
-                  </small>
-                  {record.last_error && (
-                    <small className="workflow-warning">{record.last_error}</small>
-                  )}
-                </div>
-                <div className="rule-row-meta">
-                  <span className={`compare-badge ${record.task_status}`}>
-                    {STATUS_LABEL[record.task_status] ?? record.task_status}
-                  </span>
-                  <button
-                    onClick={() => setOpenId(open ? null : record.prompt_id)}
-                  >
-                    {open ? "收起" : "详情"}
-                  </button>
-                </div>
-
-                {open && (
-                  <div className="profile-preview" style={{ width: "100%" }}>
-                    <div className="rule-row">
-                      <div className="rule-row-main">
-                        <strong>正向 Prompt</strong>
-                        <small>{record.positive_prompt || "—"}</small>
-                      </div>
-                    </div>
-                    <div className="rule-row">
-                      <div className="rule-row-main">
-                        <strong>负向 Prompt</strong>
-                        <small>{record.negative_prompt || "—"}</small>
-                      </div>
-                    </div>
-                    <div className="rule-row">
-                      <div className="rule-row-main">
-                        <strong>模型快照</strong>
-                        <small>
-                          {[
-                            `Checkpoint：${checkpoints.join("、") || "—"}`,
-                            `LoRA：${loras.join("、") || "—"}`,
-                            `VAE：${snapshotFiles(record.model_snapshot, "vaes").join("、") || "—"}`,
-                            `CLIP：${snapshotFiles(record.model_snapshot, "clips").join("、") || "—"}`,
-                          ].join(" · ")}
-                        </small>
-                      </div>
-                    </div>
-                    {images.length > 0 && (
-                      <div className="rule-row">
-                        <div className="rule-row-main">
-                          <strong>输出图片</strong>
-                          <small>
-                            {images
-                              .map(
-                                (image) =>
-                                  `${image.filename}（${existenceLabel(image)}）`,
-                              )
-                              .join("、")}
-                          </small>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <div className={view === "grid" ? "history-grid" : "rule-list"}>
+          {filtered.map(renderRecord)}
         </div>
       )}
     </section>
