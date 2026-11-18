@@ -1,0 +1,8 @@
+frontend/  npm run build  (tsc -b && vite build)
+
+dist/index.html                   0.41 kB │ gzip:  0.28 kB
+dist/assets/index-DkENSQMT.css    8.09 kB │ gzip:  2.12 kB
+dist/assets/index-Cw2T345o.js   164.26 kB │ gzip: 52.99 kB
+✓ built in 544ms
+
+exit 0

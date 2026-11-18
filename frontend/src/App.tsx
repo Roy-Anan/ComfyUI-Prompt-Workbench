@@ -82,6 +82,36 @@ type RuleRecord = {
   note: string;
 };
 
+type ProfileCandidate = {
+  level: string;
+  scope_key: string | null;
+  rule_key: string;
+  value: unknown;
+  structured: unknown;
+  provenance: string;
+  confidence: string;
+  version: string;
+  note: string;
+};
+
+type ProfileSummary = {
+  file: string;
+  filename: string | null;
+  display_name: string | null;
+  architecture: string | null;
+  candidates: number;
+  unknown_fields: string[];
+  error: string | null;
+};
+
+type ProfilePreview = {
+  file: string;
+  filename: string | null;
+  architecture: string | null;
+  unknown_fields: string[];
+  candidates: ProfileCandidate[];
+};
+
 const RULE_LEVEL_LABEL: Record<string, string> = {
   checkpoint: "模型档案",
   architecture: "架构基线",
@@ -162,19 +192,23 @@ export default function App() {
   const [services, setServices] = useState<ServiceStatus | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
   const [rules, setRules] = useState<RuleRecord[] | null>(null);
+  const [profiles, setProfiles] = useState<ProfileSummary[] | null>(null);
+  const [openProfile, setOpenProfile] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ProfilePreview | null>(null);
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在连接本地服务…");
   const [activePage, setActivePage] = useState<"settings" | "workflows">("settings");
 
   async function refresh() {
-    const [healthResult, settingsResult, serviceResult, catalogResult, ruleResult] =
+    const [healthResult, settingsResult, serviceResult, catalogResult, ruleResult, profileResult] =
       await Promise.all([
         apiGet<Health>("/api/health"),
         apiGet<Settings>("/api/settings"),
         apiGet<ServiceStatus>("/api/services/status"),
         apiGet<ModelCatalog>("/api/models/catalog"),
         apiGet<{ items: RuleRecord[] }>("/api/rules"),
+        apiGet<{ items: ProfileSummary[] }>("/api/profiles"),
       ]);
 
     setHealth(healthResult);
@@ -182,6 +216,7 @@ export default function App() {
     setServices(serviceResult);
     setCatalog(catalogResult);
     setRules(ruleResult.items);
+    setProfiles(profileResult.items);
   }
 
   useEffect(() => {
@@ -276,6 +311,24 @@ export default function App() {
         ...old,
         [key]: `检查失败：${String(error)}`,
       }));
+    }
+  }
+
+  async function toggleProfile(file: string) {
+    if (openProfile === file) {
+      setOpenProfile(null);
+      setPreview(null);
+      return;
+    }
+    setOpenProfile(file);
+    try {
+      const detail = await apiGet<ProfilePreview>(
+        `/api/profiles/${encodeURIComponent(file)}`,
+      );
+      setPreview(detail);
+    } catch (error) {
+      setPreview(null);
+      setMessage(`档案预览失败：${String(error)}`);
     }
   }
 
@@ -607,6 +660,98 @@ export default function App() {
               </div>
             );
           })
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <h2>旧档案候选（只读）</h2>
+            <p>
+              名单来自 legacy 档案文本解析，仅预览待审核候选；
+              本版本不提供导入、勾选或驳回入口。
+            </p>
+          </div>
+        </div>
+
+        {profiles === null ? (
+          <p>正在读取旧档案…</p>
+        ) : profiles.length === 0 ? (
+          <p className="catalog-empty">未发现旧档案。</p>
+        ) : (
+          <div className="rule-list">
+            {profiles.map((profile) => {
+              const expanded = openProfile === profile.file;
+              return (
+                <div className="rule-row" key={profile.file}>
+                  <div className="rule-row-main">
+                    <button
+                      className="profile-toggle"
+                      onClick={() => void toggleProfile(profile.file)}
+                      disabled={Boolean(profile.error)}
+                    >
+                      <strong>
+                        {profile.filename ?? profile.display_name ?? profile.file}
+                      </strong>
+                      <small>
+                        {profile.architecture ?? "架构未识别"} · 候选{" "}
+                        {profile.candidates} · 未识别{" "}
+                        {profile.unknown_fields.length}
+                      </small>
+                    </button>
+                    {profile.error && (
+                      <small className="catalog-empty">
+                        解析失败：{profile.error}
+                      </small>
+                    )}
+                    {expanded && preview && preview.file === profile.file && (
+                      <div className="profile-preview">
+                        {preview.candidates.length === 0 ? (
+                          <p className="catalog-empty">无可导入候选。</p>
+                        ) : (
+                          preview.candidates.map((candidate, index) => (
+                            <div className="rule-row" key={index}>
+                              <div className="rule-row-main">
+                                <strong>{candidate.rule_key}</strong>
+                                <small>
+                                  {RULE_LEVEL_LABEL[candidate.level] ??
+                                    candidate.level}
+                                  {candidate.scope_key
+                                    ? ` · ${candidate.scope_key}`
+                                    : " · 作用域待定"}
+                                  {" · 值："}
+                                  {formatRuleValue(candidate.value)}
+                                  {candidate.structured
+                                    ? ` · 结构：${formatRuleValue(candidate.structured)}`
+                                    : ""}
+                                  {candidate.note
+                                    ? ` · 备注：${candidate.note}`
+                                    : ""}
+                                </small>
+                              </div>
+                              <div className="rule-row-meta">
+                                <span className="rule-tag">
+                                  {RULE_PROVENANCE_LABEL[candidate.provenance] ??
+                                    candidate.provenance}
+                                </span>
+                                <span className="rule-tag">
+                                  {RULE_CONFIDENCE_LABEL[candidate.confidence] ??
+                                    candidate.confidence}
+                                </span>
+                                <span className="rule-tag">
+                                  v{candidate.version}
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </section>
 
