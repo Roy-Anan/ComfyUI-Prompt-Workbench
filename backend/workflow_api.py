@@ -362,9 +362,8 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
     }
 
 
-@router.post("/{workflow_id}/tasks")
-def submit_task(workflow_id: str):
-    """Submit the working API-format workflow to local ComfyUI, guarded.
+def _submit_guarded(workflow_id: str) -> dict[str, Any]:
+    """Shared fail-closed submission gate used by first submit and manual retry.
 
     The submission fails closed: ComfyUI must be reachable, the workflow must
     already be in API format, the Prompt-node whitelist must be confirmed, and
@@ -445,6 +444,42 @@ def submit_task(workflow_id: str):
             "submitted",
         )
     return record
+
+
+@router.post("/{workflow_id}/tasks")
+def submit_task(workflow_id: str):
+    """Submit the working API-format workflow to local ComfyUI, guarded."""
+    return _submit_guarded(workflow_id)
+
+
+@router.post("/{workflow_id}/tasks/{prompt_id}/retry")
+def retry_task(workflow_id: str, prompt_id: str):
+    """Manually resubmit a failed or interrupted task through the same gate.
+
+    Only ``failed`` and ``interrupted`` records may be retried; succeeded,
+    in-flight and unknown tasks are refused. The old record and its history
+    snapshot are kept; a retry creates a new prompt_id and a fresh snapshot.
+    The gate fails closed exactly like the first submission; a remote failure
+    leaves the old record untouched and does not auto-retry.
+    """
+    try:
+        store().get_workflow(workflow_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+    with model_identity.connect(_database_path()) as connection:
+        comfy_tasks.ensure_schema(connection)
+        record = comfy_tasks.get_by_prompt_id(connection, prompt_id)
+        if record is None or record["workflow_id"] != workflow_id:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        status = record["status"]
+        if status not in ("failed", "interrupted"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"任务状态为 {status}，仅失败或已中断的任务可手动重试。",
+            )
+
+    return _submit_guarded(workflow_id)
 
 
 @router.get("/{workflow_id}/tasks")

@@ -1362,3 +1362,21 @@
 
 - 缩略图索引、图库网格视图、按日期范围/导出、历史反向创建草稿留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R49/`。
+
+## 60. TASK-003.1-R50 失败/中断任务手动重试（2026-11-18）
+
+### 60.1 落地内容
+
+- 后端抽出 `_submit_guarded` 共享 fail-closed 提交闸门（ComfyUI 在线、API 格式、白名单确认、
+  本地 LLM 已卸载确认）；首次提交与手动重试复用同一闸门。
+- 新增 `POST /api/workflows/{id}/tasks/{prompt_id}/retry`：仅 `failed`/`interrupted` 可重试，
+  succeeded/在途/unknown 拒绝 409；旧记录与历史快照保留，重试生成新 prompt_id 与新快照；
+  远端失败不改旧记录、不自动重试。
+- 前端任务面板对失败/已中断项提供「重试」按钮，成功后刷新任务列表。
+- 后端 **220 passed, 1 warning**；前端 `tsc -b && vite build` 绿（`index-CClNSCnw.js 173.99 kB
+  gzip 55.45 kB`）。
+
+### 60.2 边界与 backlog
+
+- WebSocket 实时进度、队列暂停/恢复、通知、Ollama unload 状态与显存阈值验证留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R50/`。

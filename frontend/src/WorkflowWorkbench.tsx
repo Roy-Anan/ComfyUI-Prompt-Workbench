@@ -432,6 +432,22 @@ export default function WorkflowWorkbench() {
       setTaskBusy(false);
     }
   }
+  async function retryTask(promptId: string) {
+    if (!workflowId) return;
+    setTaskBusy(true);
+    try {
+      await apiPost(
+        `/api/workflows/${workflowId}/tasks/${promptId}/retry`,
+        {},
+      );
+      setMessage("已按当前工作流重新提交任务。");
+      await loadTasks(true);
+    } catch (error) {
+      setMessage(`重试失败：${String(error)}`);
+    } finally {
+      setTaskBusy(false);
+    }
+  }
   const canWrite =
     detail?.report.safe_prompt_write_supported === true &&
     detail.manifest.confirmed === true;
@@ -884,6 +900,15 @@ export default function WorkflowWorkbench() {
                                 disabled={taskBusy || busy}
                               >
                                 {task.status === "running" ? "中断" : "取消"}
+                              </button>
+                            )}
+                            {(task.status === "failed" ||
+                              task.status === "interrupted") && (
+                              <button
+                                onClick={() => void retryTask(task.prompt_id)}
+                                disabled={taskBusy || busy}
+                              >
+                                重试
                               </button>
                             )}
                             <span className={`compare-badge ${task.status}`}>

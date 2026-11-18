@@ -430,6 +430,77 @@ def _fake_chat_record(called: dict):
     return fake_chat
 
 
+def test_retry_resubmits_failed_task(client, monkeypatch):
+    test_client, main = client
+    workflow_id = _submit_one(test_client, monkeypatch, prompt_id="prompt-1")
+    _set_status(main, "prompt-1", "failed")
+
+    calls: list[str] = []
+
+    def fake_submit(url, prompt_api, client_id, timeout=10.0):
+        pid = "prompt-2" if not calls else "prompt-x"
+        calls.append(pid)
+        return {"ok": True, "prompt_id": pid, "node_errors": {}, "error": None}
+
+    monkeypatch.setattr(workflow_api.comfy_client, "submit_prompt", fake_submit)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/prompt-1/retry", headers=AUTH
+    )
+    assert response.status_code == 200
+    new_record = response.json()
+    assert new_record["prompt_id"] == "prompt-2"
+    assert new_record["status"] == "submitted"
+
+    listed = test_client.get(
+        f"/api/workflows/{workflow_id}/tasks", headers=AUTH
+    ).json()["items"]
+    by_id = {item["prompt_id"]: item for item in listed}
+    assert set(by_id) == {"prompt-1", "prompt-2"}
+    assert by_id["prompt-1"]["status"] == "failed"
+
+
+def test_retry_refuses_succeeded_task(client, monkeypatch):
+    test_client, main = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+    _set_status(main, "prompt-1", "succeeded")
+
+    submit_called = {"n": 0}
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "submit_prompt",
+        lambda *args, **kwargs: submit_called.__setitem__("n", 1)
+        or {"ok": False, "prompt_id": None, "node_errors": {}, "error": "x"},
+    )
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/prompt-1/retry", headers=AUTH
+    )
+    assert response.status_code == 409
+    assert submit_called["n"] == 0
+
+
+def test_retry_refuses_unknown_task(client, monkeypatch):
+    test_client, main = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+    _set_status(main, "prompt-1", "unknown")
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/prompt-1/retry", headers=AUTH
+    )
+    assert response.status_code == 409
+
+
+def test_retry_unknown_prompt_returns_404(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/does-not-exist/retry", headers=AUTH
+    )
+    assert response.status_code == 404
+
+
 def test_candidate_blocked_when_comfyui_queue_active(client, monkeypatch):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())
