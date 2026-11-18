@@ -882,3 +882,26 @@
 
 - 逐采样器组独立比对、组间参数冲突提示未实现；当前判定仅对应首组。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R25/`。
+
+## 36. TASK-003.1-R26 M3 第二十一切片：前端规则比对结果只读展示（2026-11-18）
+
+### 36.1 当前状态
+
+- 工作流详情新增「规则与参数比对（只读）」面板：拉取 `/api/workflows/{id}/rules/compare`，展示注册状态、Checkpoint、架构、计数徽标、实际参数摘要与逐条比对条目（规则值 / 实际值 / 状态 / 理由）。
+- 纯只读：不做规则勾选驳回、不写入规则库；unknown 条目原样展示理由。
+- 后端测试 **164 passed**；前端 `tsc -b && vite build` exit 0。
+
+### 36.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 面板渲染 | 通过 | `screenshots/compare-panel-meta.png`：已登记、checkpoint、架构 Pony / SDXL 系、计数 18/2、摘要步数 25 / CFG 7 / Clip Skip 2 / 832×1216 |
+| 比对条目 | 通过 | `screenshots/compare-entries.png`：Clip Skip 2=2 匹配、Steps 25=25 匹配，其余 unknown 带理由 |
+| 载荷样本 | 通过 | `samples/compare-payload.json`：counts `{unknown:18, match:2}` |
+| Python pytest | 通过 | **164 passed, 1 warning in 6.14s** |
+| TypeScript / Vite 构建 | 通过 | exit 0；`index-BUphuMzW.js 158.94 kB` |
+
+### 36.3 边界与 backlog
+
+- 未实现规则候选勾选/驳回、差异预览、冲突人工裁决入口；当前面板只展示后端比对结论。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R26/`。

@@ -71,10 +71,51 @@ type WriteResult = {
   }>;
   workflow: WorkflowDetail;
 };
+type ComparisonEntry = {
+  key: string;
+  rule_status: string;
+  actual_key: string | null;
+  actual: unknown;
+  status: string;
+  reason?: string;
+  rule?: unknown;
+};
+type ComparePayload = {
+  status: string;
+  checkpoint: string | null;
+  architecture: string | null;
+  architecture_family?: string | null;
+  architecture_label?: string | null;
+  actuals: Record<string, unknown>;
+  comparisons: ComparisonEntry[];
+  counts: Record<string, number>;
+};
 type RoleChoice = "" | "positive" | "negative";
+
+const STATUS_LABEL: Record<string, string> = {
+  match: "匹配",
+  out_of_range: "超出范围",
+  out_of_set: "不在集合",
+  unknown: "无法判定",
+};
+
+function formatActual(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+const ACTUAL_SUMMARY: Array<{ key: string; label: string }> = [
+  { key: "steps", label: "步数" },
+  { key: "cfg", label: "CFG" },
+  { key: "sampler_name", label: "采样器" },
+  { key: "scheduler", label: "调度器" },
+  { key: "clip_skip", label: "Clip Skip" },
+];
 export default function WorkflowWorkbench() {
   const [items, setItems] = useState<WorkflowListItem[]>([]);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
+  const [compare, setCompare] = useState<ComparePayload | null>(null);
   const [workflowId, setWorkflowId] = useState("");
   const [roles, setRoles] = useState<Record<string, RoleChoice>>({});
   const [positiveText, setPositiveText] = useState("");
@@ -105,6 +146,17 @@ export default function WorkflowWorkbench() {
     }
     return next;
   }
+  async function loadCompare(id: string) {
+    try {
+      const result = await apiGet<ComparePayload>(
+        `/api/workflows/${id}/rules/compare`,
+      );
+      setCompare(result);
+    } catch (error) {
+      setCompare(null);
+      setMessage(`读取规则比对失败：${String(error)}`);
+    }
+  }
   async function openWorkflow(id: string) {
     setBusy(true);
     try {
@@ -113,6 +165,8 @@ export default function WorkflowWorkbench() {
       );
       setWorkflowId(id);
       setDetail(result);
+      setCompare(null);
+      void loadCompare(id);
       setRoles(initialRoles(result.report));
       setPositiveText(
         result.working_prompts.find((item) => item.role === "positive")?.text ?? "",
@@ -141,6 +195,7 @@ export default function WorkflowWorkbench() {
         },
       );
       setWorkflowId(result.id);
+      setCompare(null);
       setRoles(initialRoles(result.report));
       setPositiveText("");
       setNegativeText("");
@@ -155,6 +210,7 @@ export default function WorkflowWorkbench() {
         report: result.report,
         working_prompts: [],
       });
+      void loadCompare(result.id);
       await refreshList();
       setMessage(`导入成功：${result.filename}`);
     } catch (error) {
@@ -330,6 +386,70 @@ export default function WorkflowWorkbench() {
       </div>
       {detail && (
         <>
+          {compare && (
+            <div className="panel">
+              <h3>规则与参数比对（只读）</h3>
+              <div className="compare-meta">
+                <span>
+                  状态：{compare.status === "registered" ? "已登记" : "未登记"}
+                </span>
+                <span>Checkpoint：{compare.checkpoint ?? "—"}</span>
+                <span>
+                  架构：
+                  {compare.architecture_label ?? compare.architecture ?? "—"}
+                </span>
+              </div>
+              {compare.status !== "registered" ? (
+                <p className="muted">
+                  当前工作流未在规则库登记；不依据模型名猜测参数或风格。
+                </p>
+              ) : (
+                <>
+                  <div className="compare-counts">
+                    {Object.entries(compare.counts).map(([status, count]) => (
+                      <span key={status} className={`compare-badge ${status}`}>
+                        {STATUS_LABEL[status] ?? status} · {count}
+                      </span>
+                    ))}
+                  </div>
+                  <h4>实际参数摘要</h4>
+                  <div className="compare-actuals">
+                    {ACTUAL_SUMMARY.map(({ key, label }) => (
+                      <span key={key} className="workflow-meta">
+                        {label}: {formatActual(compare.actuals[key])}
+                      </span>
+                    ))}
+                    <span className="workflow-meta">
+                      分辨率: {formatActual(compare.actuals.width)}×
+                      {formatActual(compare.actuals.height)}
+                    </span>
+                  </div>
+                  <h4>比对条目</h4>
+                  <div className="compare-table">
+                    {compare.comparisons.length === 0 ? (
+                      <p className="muted">无可比对的规则字段。</p>
+                    ) : (
+                      compare.comparisons.map((entry) => (
+                        <div className="compare-row" key={entry.key}>
+                          <div className="compare-row-main">
+                            <strong>{entry.key}</strong>
+                            <small>
+                              规则：{formatActual(entry.rule)} · 实际：
+                              {formatActual(entry.actual)}
+                            </small>
+                          </div>
+                          <span className={`compare-badge ${entry.status}`}>
+                            {STATUS_LABEL[entry.status] ?? entry.status}
+                            {entry.reason ? `（${entry.reason}）` : ""}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <div className="panel">
             <h3>Prompt 节点确认</h3>
             {detail.report.prompt_nodes.length === 0 ? (
