@@ -312,6 +312,7 @@ export default function WorkflowWorkbench() {
       setUpdatingDraftId(null);
       setDraftKeyword("");
       setConfirmStamp(null);
+      setComparingStamp(null);
       void loadTasks(false);
       void loadVersions(id);
       void loadDrafts(id);
@@ -360,6 +361,7 @@ export default function WorkflowWorkbench() {
       setDeletingDraftId(null);
       setUpdatingDraftId(null);
       setDraftKeyword("");
+      setComparingStamp(null);
       await refreshList();
       setMessage(`导入成功：${result.filename}`);
     } catch (error) {
@@ -672,6 +674,7 @@ export default function WorkflowWorkbench() {
   });
   const [restoringStamp, setRestoringStamp] = useState<string | null>(null);
   const [confirmStamp, setConfirmStamp] = useState<string | null>(null);
+  const [comparingStamp, setComparingStamp] = useState<string | null>(null);
 
   async function restoreVersion(stamp: string) {
     if (!workflowId) return;
@@ -856,6 +859,9 @@ export default function WorkflowWorkbench() {
                         entry.prompts.find((p) => p.role === "negative")?.text ?? "";
                       const restoring = restoringStamp === entry.stamp;
                       const confirming = confirmStamp === entry.stamp;
+                      const comparing = comparingStamp === entry.stamp;
+                      const positiveSame = positive.trim() === positiveText.trim();
+                      const negativeSame = negative.trim() === negativeText.trim();
                       return (
                         <li key={entry.stamp}>
                           <small className="workflow-meta">
@@ -863,31 +869,64 @@ export default function WorkflowWorkbench() {
                           </small>
                           <div>正向：{clipText(positive)}</div>
                           <div>负向：{clipText(negative)}</div>
-                          {confirming ? (
-                            <>
+                          <div className="actions">
+                            {confirming ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={restoring || busy}
+                                  onClick={() => void restoreVersion(entry.stamp)}
+                                >
+                                  {restoring ? "正在恢复…" : "再次点击确认恢复"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={restoring || busy}
+                                  onClick={() => setConfirmStamp(null)}
+                                >
+                                  取消
+                                </button>
+                              </>
+                            ) : (
                               <button
                                 type="button"
                                 disabled={restoring || busy}
-                                onClick={() => void restoreVersion(entry.stamp)}
+                                onClick={() => setConfirmStamp(entry.stamp)}
                               >
-                                {restoring ? "正在恢复…" : "再次点击确认恢复"}
+                                {restoring ? "正在恢复…" : "恢复此版本"}
                               </button>
-                              <button
-                                type="button"
-                                disabled={restoring || busy}
-                                onClick={() => setConfirmStamp(null)}
-                              >
-                                取消
-                              </button>
-                            </>
-                          ) : (
+                            )}
                             <button
                               type="button"
                               disabled={restoring || busy}
-                              onClick={() => setConfirmStamp(entry.stamp)}
+                              onClick={() =>
+                                setComparingStamp(comparing ? null : entry.stamp)
+                              }
                             >
-                              {restoring ? "正在恢复…" : "恢复此版本"}
+                              {comparing ? "收起比对" : "比对当前副本"}
                             </button>
+                          </div>
+                          {comparing && (
+                            <div className="workflow-meta">
+                              <div>
+                                正向：{positiveSame ? "与当前副本一致" : "与当前副本不一致"}
+                              </div>
+                              {!positiveSame && (
+                                <div>
+                                  <div>快照：{positive || "（空）"}</div>
+                                  <div>当前：{positiveText || "（空）"}</div>
+                                </div>
+                              )}
+                              <div>
+                                负向：{negativeSame ? "与当前副本一致" : "与当前副本不一致"}
+                              </div>
+                              {!negativeSame && (
+                                <div>
+                                  <div>快照：{negative || "（空）"}</div>
+                                  <div>当前：{negativeText || "（空）"}</div>
+                                </div>
+                              )}
+                            </div>
                           )}
                         </li>
                       );
