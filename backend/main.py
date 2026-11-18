@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 import datadir
+import generation_history
 import model_catalog
 import model_identity
 import profile_source
@@ -740,6 +741,25 @@ def comfyui_status():
 def comfyui_queue():
     settings = load_settings()
     return fetch_comfyui_queue(settings["connections"]["comfyui_url"])
+
+
+@app.get("/api/history")
+def generation_history_list(workflow_id: str | None = None):
+    """Read-only generation history, newest first, optionally filtered by workflow."""
+    with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
+        generation_history.ensure_schema(connection)
+        items = generation_history.list_history(connection, workflow_id)
+    return {"items": items}
+
+
+@app.get("/api/history/{prompt_id}")
+def generation_history_detail(prompt_id: str):
+    with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
+        generation_history.ensure_schema(connection)
+        record = generation_history.get_by_prompt_id(connection, prompt_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="历史记录不存在")
+    return record
 
 
 @app.get("/api/models/catalog")

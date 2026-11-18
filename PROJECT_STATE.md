@@ -1286,3 +1286,21 @@
 
 - 显存数值阈值、Ollama 主动 unload 接口、WebSocket 进度、队列暂停/恢复/重试、断线恢复留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R45/`。
+
+## 56. TASK-003.1-R46 M7 第一切片：生成历史快照与图片索引（2026-11-18）
+
+### 56.1 落地内容
+
+- 新模块 `generation_history.py`：`generation_history` 表，提交时刻固化正向/负向 Prompt 文本与
+  checkpoint/LoRA/VAE/CLIP 文件名快照；校准终态回写任务状态与图片文件名索引。
+- 图片只记录 `filename/subfolder/type` 元数据，`exists` 留空（输出目录配置未接入，不臆造存在）；
+  不复制原图，原图仍由 ComfyUI 输出目录管理。
+- 只读端点 `GET /api/history`（可按 `workflow_id` 过滤）、`GET /api/history/{prompt_id}`。
+- 新增 6 个单测：快照固化、快照不随后续草稿改动、成功回写图片、工作流过滤与 404、outputs 两种
+  形状兼容、空报告保守空快照。后端 **212 passed**。
+
+### 56.2 边界与 backlog
+
+- 图片磁盘存在性探测（需 ComfyUI 输出目录配置）、时间轴/图库双视图、搜索筛选导出、历史反向创建
+  草稿、缩略图索引留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R46/`。

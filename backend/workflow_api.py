@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 import comfy_client
 import comfy_tasks
 import datadir
+import generation_history
 import llm_client
 import model_identity
 import rule_compare
@@ -428,11 +429,20 @@ def submit_task(workflow_id: str):
 
     with model_identity.connect(_database_path()) as connection:
         comfy_tasks.ensure_schema(connection)
+        generation_history.ensure_schema(connection)
         record = comfy_tasks.record_submission(
             connection,
             result["prompt_id"],
             workflow_id,
             result["node_errors"],
+        )
+        generation_history.record_snapshot(
+            connection,
+            result["prompt_id"],
+            workflow_id,
+            workflow.get("working_prompts", []),
+            workflow.get("report", {}),
+            "submitted",
         )
     return record
 
@@ -453,6 +463,7 @@ def list_tasks(workflow_id: str, refresh: bool = False):
 
     with model_identity.connect(_database_path()) as connection:
         comfy_tasks.ensure_schema(connection)
+        generation_history.ensure_schema(connection)
         items = comfy_tasks.list_for_workflow(connection, workflow_id)
         sync_error: str | None = None
 
@@ -465,8 +476,10 @@ def list_tasks(workflow_id: str, refresh: bool = False):
                     pid = record["prompt_id"]
                     if pid in states["running"]:
                         comfy_tasks.update_status(connection, pid, "running")
+                        generation_history.update_task_status(connection, pid, "running")
                     elif pid in states["pending"]:
                         comfy_tasks.update_status(connection, pid, "submitted")
+                        generation_history.update_task_status(connection, pid, "submitted")
                     elif pid in states["history"]:
                         entry = states["history"][pid]
                         status = comfy_tasks.classify_history_status(
@@ -479,8 +492,20 @@ def list_tasks(workflow_id: str, refresh: bool = False):
                             status,
                             outputs=entry.get("outputs"),
                         )
+                        generation_history.update_task_status(connection, pid, status)
+                        if status == "succeeded":
+                            images = generation_history.extract_images(
+                                entry.get("outputs")
+                            )
+                            generation_history.attach_images(connection, pid, images)
                     elif record["status"] in ("submitted", "running"):
                         comfy_tasks.update_status(
+                            connection,
+                            pid,
+                            "unknown",
+                            last_error="队列与历史均未找到该任务",
+                        )
+                        generation_history.update_task_status(
                             connection,
                             pid,
                             "unknown",
