@@ -99,6 +99,18 @@ type ComparePayload = {
   sampler_group_comparisons?: GroupComparison[];
 };
 type RoleChoice = "" | "positive" | "negative";
+type OllamaModelsResponse = {
+  online: boolean;
+  models: string[];
+  error: string | null;
+};
+type CandidateResponse = {
+  model: string;
+  candidates: string[];
+  rule_status: string;
+  conflicts: unknown[];
+  unknown: unknown[];
+};
 
 const STATUS_LABEL: Record<string, string> = {
   match: "匹配",
@@ -124,6 +136,12 @@ export default function WorkflowWorkbench() {
   const [negativeText, setNegativeText] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("请选择一个 ComfyUI 工作流 JSON 文件。");
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [modelsOnline, setModelsOnline] = useState(true);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [taskText, setTaskText] = useState("");
+  const [candidate, setCandidate] = useState<string | null>(null);
+  const [candidateBusy, setCandidateBusy] = useState(false);
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -134,6 +152,10 @@ export default function WorkflowWorkbench() {
     void refreshList().catch((error) => {
       setMessage(`读取工作流列表失败：${String(error)}`);
     });
+  }, []);
+  useEffect(() => {
+    void loadModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   function initialRoles(report: Analysis) {
     const next: Record<string, RoleChoice> = {};
@@ -282,6 +304,39 @@ export default function WorkflowWorkbench() {
     } finally {
       setBusy(false);
     }
+  }
+  async function loadModels() {
+    try {
+      const result = await apiGet<OllamaModelsResponse>("/api/ollama/models");
+      setOllamaModels(result.models);
+      setModelsOnline(result.online);
+      if (result.models.length > 0 && !selectedModel) {
+        setSelectedModel(result.models[0]);
+      }
+    } catch (error) {
+      setModelsOnline(false);
+      setMessage(`读取本地模型列表失败：${String(error)}`);
+    }
+  }
+  async function generateCandidate() {
+    if (!workflowId || !selectedModel) return;
+    setCandidateBusy(true);
+    setCandidate(null);
+    try {
+      const result = await apiPost<CandidateResponse>(
+        `/api/workflows/${workflowId}/prompt/candidates`,
+        { model: selectedModel, task: taskText.trim() || null },
+      );
+      setCandidate(result.candidates[0] ?? null);
+      setMessage(`已生成候选（规则状态：${result.rule_status}），采用前请核对。`);
+    } catch (error) {
+      setMessage(`候选生成失败：${String(error)}`);
+    } finally {
+      setCandidateBusy(false);
+    }
+  }
+  function adoptCandidate() {
+    if (candidate) setPositiveText(candidate);
   }
   const canWrite =
     detail?.report.safe_prompt_write_supported === true &&
@@ -590,6 +645,57 @@ export default function WorkflowWorkbench() {
               </div>
             )}
           </div>
+          {detail && (
+            <div className="panel">
+              <h3>本地模型候选</h3>
+              {!modelsOnline ? (
+                <p className="muted">本地 Ollama 不可用，无法生成候选。</p>
+              ) : ollamaModels.length === 0 ? (
+                <p className="muted">未发现本地模型。</p>
+              ) : (
+                <>
+                  <div className="actions">
+                    <select
+                      value={selectedModel}
+                      disabled={busy || candidateBusy}
+                      onChange={(event) => setSelectedModel(event.target.value)}
+                    >
+                      {ollamaModels.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="补充任务要求（可选）"
+                      value={taskText}
+                      disabled={busy || candidateBusy}
+                      onChange={(event) => setTaskText(event.target.value)}
+                    />
+                    <button
+                      disabled={busy || candidateBusy || !selectedModel}
+                      onClick={() => void generateCandidate()}
+                    >
+                      {candidateBusy ? "生成中…" : "生成候选"}
+                    </button>
+                  </div>
+                  {candidate && (
+                    <div className="workflow-text-field">
+                      <span>候选文本（只读，采用后进入下方编辑框）</span>
+                      <textarea readOnly rows={7} value={candidate} />
+                      <div className="actions">
+                        <button onClick={adoptCandidate}>采用到正向 Prompt</button>
+                        <span className="muted">
+                          候选不会自动写入工作副本，需在下方确认写入。
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           {canWrite && (
             <div className="panel">
               <h3>编辑工作副本 Prompt</h3>
