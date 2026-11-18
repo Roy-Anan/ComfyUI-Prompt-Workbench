@@ -69,6 +69,38 @@ type ModelCatalog = {
   loras: CatalogEntry[];
 };
 
+type RuleRecord = {
+  id: number;
+  level: string;
+  scope_key: string | null;
+  rule_key: string;
+  value: unknown;
+  structured: unknown;
+  provenance: string;
+  confidence: string;
+  version: string;
+  note: string;
+};
+
+const RULE_LEVEL_LABEL: Record<string, string> = {
+  checkpoint: "模型档案",
+  architecture: "架构基线",
+  global: "全局规则",
+};
+const RULE_PROVENANCE_LABEL: Record<string, string> = {
+  author: "作者",
+  verified_mirror: "已核实镜像",
+  community: "社区",
+  local_test: "本机测试",
+  unverified: "未核实",
+};
+const RULE_CONFIDENCE_LABEL: Record<string, string> = {
+  authoritative: "权威",
+  partial: "部分",
+  unverified: "未核实",
+};
+const RULE_LEVEL_ORDER = ["checkpoint", "architecture", "global"];
+
 const storageLabels: Record<string, string> = {
   root: "工作台数据根目录（固定）",
   database: "数据库目录",
@@ -88,6 +120,12 @@ const storageLabels: Record<string, string> = {
 function diskLabel(onDisk: boolean | null): string {
   if (onDisk === null) return "目录未配置";
   return onDisk ? "本机存在" : "本机未找到";
+}
+
+function formatRuleValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 }
 
 function formatSize(bytes?: number | null): string {
@@ -123,24 +161,27 @@ export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [services, setServices] = useState<ServiceStatus | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
+  const [rules, setRules] = useState<RuleRecord[] | null>(null);
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在连接本地服务…");
   const [activePage, setActivePage] = useState<"settings" | "workflows">("settings");
 
   async function refresh() {
-    const [healthResult, settingsResult, serviceResult, catalogResult] =
+    const [healthResult, settingsResult, serviceResult, catalogResult, ruleResult] =
       await Promise.all([
         apiGet<Health>("/api/health"),
         apiGet<Settings>("/api/settings"),
         apiGet<ServiceStatus>("/api/services/status"),
         apiGet<ModelCatalog>("/api/models/catalog"),
+        apiGet<{ items: RuleRecord[] }>("/api/rules"),
       ]);
 
     setHealth(healthResult);
     setSettings(settingsResult);
     setServices(serviceResult);
     setCatalog(catalogResult);
+    setRules(ruleResult.items);
   }
 
   useEffect(() => {
@@ -508,6 +549,64 @@ export default function App() {
           )
         ) : (
           <p>正在读取模型清单…</p>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <h2>规则库（只读）</h2>
+            <p>
+              规则记录来自档案导入与本地登记；本版本只展示，
+              不提供新增、修改或删除入口。
+            </p>
+          </div>
+        </div>
+
+        {rules === null ? (
+          <p>正在读取规则库…</p>
+        ) : rules.length === 0 ? (
+          <p className="catalog-empty">规则库为空。</p>
+        ) : (
+          RULE_LEVEL_ORDER.map((level) => {
+            const group = rules.filter((rule) => rule.level === level);
+            if (group.length === 0) return null;
+            return (
+              <div className="rule-group" key={level}>
+                <div className="catalog-title">
+                  {RULE_LEVEL_LABEL[level] ?? level}（{group.length}）
+                </div>
+                <div className="rule-list">
+                  {group.map((rule) => (
+                    <div className="rule-row" key={rule.id}>
+                      <div className="rule-row-main">
+                        <strong>{rule.rule_key}</strong>
+                        <small>
+                          {rule.scope_key || "全局"} · 值：
+                          {formatRuleValue(rule.value)}
+                          {rule.structured
+                            ? ` · 结构：${formatRuleValue(rule.structured)}`
+                            : ""}
+                          {rule.note ? ` · 备注：${rule.note}` : ""}
+                        </small>
+                      </div>
+                      <div className="rule-row-meta">
+                        <span className="rule-tag">
+                          {RULE_PROVENANCE_LABEL[rule.provenance] ??
+                            rule.provenance}
+                        </span>
+                        <span className="rule-tag">
+                          {RULE_CONFIDENCE_LABEL[rule.confidence] ??
+                            rule.confidence}
+                        </span>
+                        <span className="rule-tag">v{rule.version}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })
         )}
       </section>
 

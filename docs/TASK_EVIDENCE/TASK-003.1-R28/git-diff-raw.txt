@@ -1,0 +1,220 @@
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 4892797..421ebdc 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -69,6 +69,38 @@ type ModelCatalog = {
+   loras: CatalogEntry[];
+ };
+ 
++type RuleRecord = {
++  id: number;
++  level: string;
++  scope_key: string | null;
++  rule_key: string;
++  value: unknown;
++  structured: unknown;
++  provenance: string;
++  confidence: string;
++  version: string;
++  note: string;
++};
++
++const RULE_LEVEL_LABEL: Record<string, string> = {
++  checkpoint: "模型档案",
++  architecture: "架构基线",
++  global: "全局规则",
++};
++const RULE_PROVENANCE_LABEL: Record<string, string> = {
++  author: "作者",
++  verified_mirror: "已核实镜像",
++  community: "社区",
++  local_test: "本机测试",
++  unverified: "未核实",
++};
++const RULE_CONFIDENCE_LABEL: Record<string, string> = {
++  authoritative: "权威",
++  partial: "部分",
++  unverified: "未核实",
++};
++const RULE_LEVEL_ORDER = ["checkpoint", "architecture", "global"];
++
+ const storageLabels: Record<string, string> = {
+   root: "工作台数据根目录（固定）",
+   database: "数据库目录",
+@@ -90,6 +122,12 @@ function diskLabel(onDisk: boolean | null): string {
+   return onDisk ? "本机存在" : "本机未找到";
+ }
+ 
++function formatRuleValue(value: unknown): string {
++  if (value === null || value === undefined || value === "") return "—";
++  if (typeof value === "object") return JSON.stringify(value);
++  return String(value);
++}
++
+ function formatSize(bytes?: number | null): string {
+   if (bytes === null || bytes === undefined) return "";
+   if (bytes >= 1024 * 1024 * 1024) {
+@@ -123,24 +161,27 @@ export default function App() {
+   const [settings, setSettings] = useState<Settings | null>(null);
+   const [services, setServices] = useState<ServiceStatus | null>(null);
+   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
++  const [rules, setRules] = useState<RuleRecord[] | null>(null);
+   const [checks, setChecks] = useState<Record<string, string>>({});
+   const [busy, setBusy] = useState(true);
+   const [message, setMessage] = useState("正在连接本地服务…");
+   const [activePage, setActivePage] = useState<"settings" | "workflows">("settings");
+ 
+   async function refresh() {
+-    const [healthResult, settingsResult, serviceResult, catalogResult] =
++    const [healthResult, settingsResult, serviceResult, catalogResult, ruleResult] =
+       await Promise.all([
+         apiGet<Health>("/api/health"),
+         apiGet<Settings>("/api/settings"),
+         apiGet<ServiceStatus>("/api/services/status"),
+         apiGet<ModelCatalog>("/api/models/catalog"),
++        apiGet<{ items: RuleRecord[] }>("/api/rules"),
+       ]);
+ 
+     setHealth(healthResult);
+     setSettings(settingsResult);
+     setServices(serviceResult);
+     setCatalog(catalogResult);
++    setRules(ruleResult.items);
+   }
+ 
+   useEffect(() => {
+@@ -511,6 +552,64 @@ export default function App() {
+         )}
+       </section>
+ 
++      <section className="panel">
++        <div className="section-heading">
++          <div>
++            <h2>规则库（只读）</h2>
++            <p>
++              规则记录来自档案导入与本地登记；本版本只展示，
++              不提供新增、修改或删除入口。
++            </p>
++          </div>
++        </div>
++
++        {rules === null ? (
++          <p>正在读取规则库…</p>
++        ) : rules.length === 0 ? (
++          <p className="catalog-empty">规则库为空。</p>
++        ) : (
++          RULE_LEVEL_ORDER.map((level) => {
++            const group = rules.filter((rule) => rule.level === level);
++            if (group.length === 0) return null;
++            return (
++              <div className="rule-group" key={level}>
++                <div className="catalog-title">
++                  {RULE_LEVEL_LABEL[level] ?? level}（{group.length}）
++                </div>
++                <div className="rule-list">
++                  {group.map((rule) => (
++                    <div className="rule-row" key={rule.id}>
++                      <div className="rule-row-main">
++                        <strong>{rule.rule_key}</strong>
++                        <small>
++                          {rule.scope_key || "全局"} · 值：
++                          {formatRuleValue(rule.value)}
++                          {rule.structured
++                            ? ` · 结构：${formatRuleValue(rule.structured)}`
++                            : ""}
++                          {rule.note ? ` · 备注：${rule.note}` : ""}
++                        </small>
++                      </div>
++                      <div className="rule-row-meta">
++                        <span className="rule-tag">
++                          {RULE_PROVENANCE_LABEL[rule.provenance] ??
++                            rule.provenance}
++                        </span>
++                        <span className="rule-tag">
++                          {RULE_CONFIDENCE_LABEL[rule.confidence] ??
++                            rule.confidence}
++                        </span>
++                        <span className="rule-tag">v{rule.version}</span>
++                      </div>
++                    </div>
++                  ))}
++                </div>
++              </div>
++            );
++          })
++        )}
++      </section>
++
+       <section className="panel">
+         <div className="section-heading">
+           <div>
+diff --git a/frontend/src/styles.css b/frontend/src/styles.css
+index d5c1ca3..67b14d1 100644
+--- a/frontend/src/styles.css
++++ b/frontend/src/styles.css
+@@ -550,6 +550,65 @@ button.secondary {
+ .compare-group-head .compare-counts {
+   margin-bottom: 0;
+ }
++
++/* M3 twenty-third slice: read-only rule library panel */
++.rule-group {
++  margin-bottom: 16px;
++}
++.rule-group:last-child {
++  margin-bottom: 0;
++}
++.rule-list {
++  display: grid;
++  gap: 9px;
++  margin-top: 8px;
++}
++.rule-row {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) auto;
++  align-items: center;
++  gap: 14px;
++  padding: 11px 12px;
++  border: 1px solid #344052;
++  border-radius: 9px;
++  background: #151c27;
++}
++.rule-row-main {
++  display: flex;
++  flex-direction: column;
++  gap: 5px;
++  min-width: 0;
++}
++.rule-row-main strong {
++  font-size: 13px;
++  overflow-wrap: anywhere;
++}
++.rule-row-main small {
++  color: #9ca8ba;
++  overflow-wrap: anywhere;
++}
++.rule-row-meta {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 6px;
++  justify-content: flex-end;
++}
++.rule-tag {
++  border: 1px solid #344052;
++  border-radius: 7px;
++  padding: 4px 9px;
++  font-size: 12px;
++  color: #c6d0df;
++  background: #111722;
++}
++@media (max-width: 760px) {
++  .rule-row {
++    grid-template-columns: minmax(0, 1fr);
++  }
++  .rule-row-meta {
++    justify-content: flex-start;
++  }
++}
+ @media (max-width: 760px) {
+   .compare-row {
+     grid-template-columns: minmax(0, 1fr);

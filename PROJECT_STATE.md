@@ -927,3 +927,25 @@
 
 - 多组间参数冲突只逐组呈现，未做跨组冲突裁决或推荐取值。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R27/`。
+
+## 38. TASK-003.1-R28 M3 第二十三切片：规则库只读清单界面（2026-11-18）
+
+### 38.1 当前状态
+
+- 服务与设置页新增「规则库（只读）」面板，拉取 `GET /api/rules`，按 checkpoint / architecture / global 三级分组展示规则键、作用域、原始值、结构化摘要、来源、可信度、版本与备注。
+- 纯只读：不提供新增、修改、删除入口；空库显示「规则库为空」。
+- 后端测试 **164 passed**；前端 `tsc -b && vite build` exit 0。
+
+### 38.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 规则分组展示 | 通过 | 模型档案 15 条、架构基线 5 条；`screenshots/rules-checkpoint-group.png`、`rules-architecture-group.png` |
+| 载荷样本 | 通过 | `samples/rules-payload.json`：20 条，architecture 5 / checkpoint 15 |
+| Python pytest | 通过 | **164 passed, 1 warning in 6.15s** |
+| TypeScript / Vite 构建 | 通过 | exit 0；`index-8q4qtSIr.js 161.93 kB` |
+
+### 38.3 边界与 backlog
+
+- 规则新增/编辑/删除、档案候选审核导入入口仍在后端接口层，前端未开放写操作。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R28/`。
