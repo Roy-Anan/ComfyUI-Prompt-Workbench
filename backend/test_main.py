@@ -351,6 +351,33 @@ def test_services_status_returns_when_services_offline(client):
     assert "comfyui" in response.json()
 
 
+def test_diagnostics_report_is_read_only_and_conservative(client):
+    test_client, _ = client
+
+    response = test_client.get("/api/diagnostics", headers=auth())
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["app"] == "ComfyUI-Prompt-Workbench"
+    assert body["version"]
+    assert body["uploaded"] is False
+    assert body["database_error"] is None
+    assert set(body["counts"]) == {
+        "rules",
+        "history",
+        "tasks",
+        "model_identities",
+        "workflows",
+        "profiles",
+    }
+    for value in body["counts"].values():
+        assert value is None or isinstance(value, int)
+    assert "ollama" in body["services"]
+    assert "comfyui" in body["services"]
+    assert "directories" in body
+    assert "external_directories" in body
+
+
 def test_ollama_models_passes_through_discovered_names(client, monkeypatch):
     test_client, main = client
 

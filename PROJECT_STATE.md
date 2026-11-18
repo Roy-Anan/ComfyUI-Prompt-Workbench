@@ -1395,3 +1395,20 @@
 
 - 缩略图索引、图库网格视图、日期范围导出、历史反向创建草稿留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R51/`。
+
+## 62. TASK-003.1-R52 只读诊断报告（2026-11-18）
+
+### 62.1 落地内容
+
+- 后端新增 `GET /api/diagnostics`：只读汇总应用/版本、Python/平台、数据域计数（规则、历史、
+  任务、模型身份、工作流、档案）、托管与外部存储目录存在性、本地 Ollama/ComfyUI 可达性；
+  数据库异常记入 `database_error` 而不中断报告；报告 `uploaded: false`，不含模型权重、原图或
+  完整 Prompt 载荷。
+- 前端设置页加「导出诊断报告」按钮，经前端 Blob 下载为本地 JSON，默认不上传。
+- 后端 **221 passed, 1 warning**；前端 `tsc -b && vite build` 绿（`index-BCj7cW2p.js
+  175.03 kB gzip 55.81 kB`）。
+
+### 62.2 边界与 backlog
+
+- 备份/恢复、数据库迁移、崩溃恢复与完整性检查、手动更新检查留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R52/`。

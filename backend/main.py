@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
+import comfy_tasks
 import datadir
 import generation_history
 import model_catalog
@@ -26,6 +27,7 @@ import profile_source
 import rule_engine
 import rule_store
 from workflow_api import router as workflow_router
+from workflow_service import WorkflowStore
 
 APP_NAME = "ComfyUI-Prompt-Workbench"
 APP_VERSION = "0.1.0-dev.5"
@@ -722,6 +724,90 @@ def services_status():
             connections["comfyui_url"],
             "/system_stats",
         ),
+    }
+
+
+def _dir_info(raw: Any) -> dict[str, Any]:
+    path = Path(str(raw)).expanduser() if isinstance(raw, str) and raw.strip() else None
+    return {"path": str(path) if path else None, "exists": bool(path and path.is_dir())}
+
+
+@app.get("/api/diagnostics")
+def diagnostics():
+    """Read-only local diagnostic report. Never uploaded externally.
+
+    Summarizes app/version, Python/platform, per-domain record counts,
+    configured directories and local service reachability. No model weights,
+    original images or full prompt payloads are attached; a database failure is
+    recorded as an error field rather than aborting the report.
+    """
+    settings = load_settings()
+    storage = settings.get("storage", {})
+    connections = settings["connections"]
+
+    counts: dict[str, Any] = {
+        "rules": None,
+        "history": None,
+        "tasks": None,
+        "model_identities": None,
+        "workflows": None,
+        "profiles": None,
+    }
+    db_error: str | None = None
+
+    database_dir = Path(storage.get("database", "")).expanduser()
+    database_path = database_dir / "workbench.sqlite3"
+    try:
+        with model_identity.connect(database_path) as connection:
+            rule_store.ensure_schema(connection)
+            generation_history.ensure_schema(connection)
+            comfy_tasks.ensure_schema(connection)
+
+            def _count(table: str) -> int:
+                row = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                return int(row[0])
+
+            counts["rules"] = _count("workbench_rule")
+            counts["history"] = _count("generation_history")
+            counts["tasks"] = _count("comfy_task")
+            counts["model_identities"] = _count("model_identity")
+    except Exception as exc:  # conservative: report the failure, do not 500
+        db_error = f"{type(exc).__name__}: {exc}"
+
+    try:
+        workflows_root = Path(storage.get("workflows", "")).expanduser()
+        counts["workflows"] = len(WorkflowStore(workflows_root).list_workflows())
+    except OSError as exc:
+        counts["workflows"] = None
+        db_error = f"{db_error} | workflows: {exc}" if db_error else f"workflows: {exc}"
+
+    try:
+        counts["profiles"] = len(profile_source.list_profiles())
+    except OSError:
+        counts["profiles"] = None
+
+    managed_dirs = {key: _dir_info(storage.get(key, "")) for key in datadir.MANAGED_KEYS}
+    external_dirs = {
+        key: _dir_info(storage.get(key, "")) for key in datadir.OPTIONAL_EXTERNAL_KEYS
+    }
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "app": APP_NAME,
+        "version": APP_VERSION,
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "data_root": str(DATA_ROOT),
+        "database_path": str(database_path),
+        "counts": counts,
+        "directories": managed_dirs,
+        "external_directories": external_dirs,
+        "services": {
+            "ollama": probe_url(connections["ollama_url"], "/api/tags"),
+            "comfyui": probe_url(connections["comfyui_url"], "/system_stats"),
+        },
+        "database_error": db_error,
+        "uploaded": False,
     }
 
 

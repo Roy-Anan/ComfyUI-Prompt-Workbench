@@ -370,6 +370,30 @@ export default function App() {
     }
   }
 
+  async function exportDiagnostics() {
+    setBusy(true);
+    try {
+      const report = await apiGet<Record<string, unknown>>("/api/diagnostics");
+      const blob = new Blob([JSON.stringify(report, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `workbench-diagnostics-${stamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setMessage("诊断报告已导出（仅本地，未上传）。");
+    } catch (error) {
+      setMessage(`导出诊断报告失败：${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function updateStorage(key: string, value: string) {
     if (!settings || key === "root") return;
 
@@ -838,6 +862,13 @@ export default function App() {
             disabled={busy || !settings}
           >
             保存设置
+          </button>
+
+          <button
+            onClick={() => void exportDiagnostics()}
+            disabled={busy}
+          >
+            导出诊断报告
           </button>
 
           <span className="message" role="status">
