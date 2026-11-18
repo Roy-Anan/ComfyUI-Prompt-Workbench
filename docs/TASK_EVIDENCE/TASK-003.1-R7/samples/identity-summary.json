@@ -1,0 +1,21 @@
+{
+  "online": true,
+  "checkpoint_count": 13,
+  "lora_count": 3,
+  "sample_checkpoint_identity": {
+    "known": true,
+    "on_disk": true,
+    "size_bytes": 6938041288,
+    "sha256": null,
+    "hashed": false
+  },
+  "sample_lora_identity": {
+    "known": true,
+    "on_disk": true,
+    "size_bytes": 51059544,
+    "sha256": null,
+    "hashed": false
+  },
+  "hashed_lora": "suyuexi.safetensors",
+  "hashed_digest_prefix": "fedeb940e772"
+}

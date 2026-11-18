@@ -148,3 +148,49 @@ def test_catalog_endpoint_returns_injected_catalog(client, monkeypatch):
     assert body["checkpoints"][0]["name"] == "pony.safetensors"
     assert body["vaes"][0]["name"] == "animevae.pt"
     assert body["loras"][0]["name"] == "lora-a.safetensors"
+    # No on-disk directory configured -> identity unknown.
+    assert body["checkpoints"][0]["identity"] == {"known": False}
+
+
+def test_catalog_endpoint_attaches_identity_for_configured_dir(
+    client, monkeypatch, tmp_path
+):
+    test_client, main = client
+    ckpt_dir = tmp_path / "ckpt"
+    ckpt_dir.mkdir()
+    (ckpt_dir / "pony.safetensors").write_bytes(b"weight")
+
+    settings = test_client.get("/api/settings", headers=auth()).json()
+    settings["storage"]["checkpoint"] = str(ckpt_dir)
+    test_client.post(
+        "/api/settings",
+        headers=auth(),
+        json={
+            "storage": {
+                k: v for k, v in settings["storage"].items() if k != "root"
+            },
+            "connections": settings["connections"],
+        },
+    )
+
+    def fake_catalog(comfyui_url, checkpoint_dir="", lora_dir="", timeout=4.0):
+        return {
+            "online": True,
+            "error": None,
+            "checkpoints": [{"name": "pony.safetensors", "on_disk": True}],
+            "clips": [],
+            "vaes": [],
+            "loras": [],
+        }
+
+    monkeypatch.setattr(main.model_catalog, "fetch_catalog", fake_catalog)
+
+    body = test_client.get(
+        "/api/models/catalog", headers=auth()
+    ).json()
+    identity = body["checkpoints"][0]["identity"]
+    assert identity["known"] is True
+    assert identity["on_disk"] is True
+    assert identity["size_bytes"] == len(b"weight")
+    assert identity["hashed"] is False
+    assert identity["sha256"] is None

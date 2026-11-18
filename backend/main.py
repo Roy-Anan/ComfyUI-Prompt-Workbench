@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 import datadir
 import model_catalog
+import model_identity
 from workflow_api import router as workflow_router
 
 APP_NAME = "ComfyUI-Prompt-Workbench"
@@ -108,6 +109,8 @@ def initialize_database(settings: dict[str, Any]) -> str:
 
     with sqlite3.connect(database_path, timeout=10) as connection:
         connection.execute("PRAGMA foreign_keys = ON")
+
+        model_identity.ensure_schema(connection)
 
         connection.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
@@ -541,18 +544,53 @@ def models_catalog():
     """Read-only checkpoint / LoRA names exposed by ComfyUI.
 
     Names come from ComfyUI ``/object_info``; an optional configured local
-    directory only marks whether each file is present on disk. No weights are
-    copied, hashed or modified here.
+    directory marks whether each file is present on disk and records cached
+    metadata in the identity store. No weights are copied or modified; a
+    SHA256 digest is never computed eagerly here.
     """
     settings = load_settings()
     connections = settings["connections"]
     storage = settings["storage"]
 
-    return model_catalog.fetch_catalog(
+    catalog = model_catalog.fetch_catalog(
         comfyui_url=connections["comfyui_url"],
         checkpoint_dir=storage.get("checkpoint", ""),
         lora_dir=storage.get("lora", ""),
     )
+
+    database_path = Path(storage["database"]).expanduser() / "workbench.sqlite3"
+    with model_identity.connect(database_path) as connection:
+        model_identity.ensure_schema(connection)
+        for category, dir_key in (
+            ("checkpoint", "checkpoint"),
+            ("lora", "lora"),
+        ):
+            directory = storage.get(dir_key, "")
+            if directory:
+                model_identity.index_directory(connection, category, directory)
+
+        summaries: dict[str, dict[str, Any]] = {}
+        for group, category in (
+            ("checkpoints", "checkpoint"),
+            ("loras", "lora"),
+        ):
+            summaries[group] = {
+                entry["name"]: model_identity.identity_summary(
+                    connection, category, entry["name"]
+                )
+                for entry in catalog.get(group, [])
+            }
+
+    for group, category in (
+        ("checkpoints", "checkpoint"),
+        ("loras", "lora"),
+    ):
+        for entry in catalog.get(group, []):
+            entry["identity"] = summaries[group].get(
+                entry["name"], {"known": False}
+            )
+
+    return catalog
 
 
 # ---- Static frontend hosting (local Web runtime) ---------------------------

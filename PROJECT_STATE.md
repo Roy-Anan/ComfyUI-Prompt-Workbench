@@ -384,3 +384,32 @@
 - Ollama 对话生成（M4）、ComfyUI 提交/队列/进度/结果/输出目录索引（M6）未实现。
 - 停止脚本身份校验既有缺陷（`creation_date=null`、CIM 读取失败）未能自动回收；本轮手动核对身份后回收进程树，待后续修复。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R6/`。
+
+## 17. TASK-003.1-R7 M3 第二切片：模型身份库骨架与元数据缓存（2026-11-18）
+
+### 17.1 当前状态
+
+- M3 第二切片落地：新增 `backend/model_identity.py`，SQLite `model_identity` 表按 `category + relative_name` 唯一记录绝对路径、大小、mtime、可空 SHA256 与时间戳；目录索引只扫直下层权重后缀；大小/mtime 变化使缓存哈希失效；SHA256 流式计算、按需触发并缓存，大 checkpoint 不 eager 哈希。
+- `/api/models/catalog` 在已配置 checkpoint/lora 目录时索引身份库，并给每条清单回挂 `identity` 摘要（known / on_disk / size_bytes / sha256 / hashed）；无记录返回 `{known:false}`，不臆测。前端清单右侧标签由存在性改为身份摘要（大小 · 已校验/未哈希）。
+- 后端新增 `backend/test_model_identity.py`（7 例），`test_model_catalog.py` 追加 1 例接口身份回挂；后端 **77 passed**，前端构建 exit 0。
+
+### 17.2 真机验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 身份摘要回挂 | 通过 | 配置真实目录后 13 ckpt / 3 lora 均 `known=true, on_disk=true`，带 `size_bytes`、`hashed=false`、`sha256=null` |
+| 元数据大小正确 | 通过 | 样例 ckpt 6,938,041,288 字节（6.5 GB）；样例 lora 51,059,544 字节（48.7 MB） |
+| 按需哈希并缓存 | 通过 | 最小 LoRA `suyuexi.safetensors`（37,866,968 字节）`ensure_hash` 后 `hashed=true`，摘要前缀 `fedeb940e772`；复调复用缓存 |
+| 文件变更使哈希失效 | 通过 | 单元测试覆盖：size/mtime 变化后缓存 sha256 置空 |
+| 浏览器渲染 | 通过 | `screenshots/identity-catalog.png`、`identity-catalog-list.png`；LoRA 已校验/未哈希标签区分 |
+| 未配置目录不臆测 | 通过 | 核对后设置恢复空串；未记录条目 `{known:false}` |
+| Python pytest | 通过 | **77 passed, 1 warning in 4.26s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 17.3 边界与 backlog
+
+- 本轮只落身份库骨架与元数据缓存；架构/模型/Checkpoint 三级规则继承、规则来源/可信度/版本/回退、多模型与实际启用 LoRA 规则组合、冲突检测、动态检索、云端资料导入审核均属后续 M3 切片。
+- 哈希为按需触发，尚无全量/定时哈希策略与前端触发入口；VAE/CLIP 目录本轮未进身份库索引。
+- 目录索引只扫直下层权重文件，不递归子目录；并发写锁未加。
+- Ollama 对话生成（M4）、ComfyUI 提交/队列/进度/结果/输出目录索引（M6）未实现。
+- 停止脚本身份校验既有缺陷未修；证据：`docs/TASK_EVIDENCE/TASK-003.1-R7/`。

@@ -1,0 +1,200 @@
+diff --git a/backend/main.py b/backend/main.py
+index 095ca0a..9d95660 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
+ 
+ import datadir
+ import model_catalog
++import model_identity
+ from workflow_api import router as workflow_router
+ 
+ APP_NAME = "ComfyUI-Prompt-Workbench"
+@@ -109,6 +110,8 @@ def initialize_database(settings: dict[str, Any]) -> str:
+     with sqlite3.connect(database_path, timeout=10) as connection:
+         connection.execute("PRAGMA foreign_keys = ON")
+ 
++        model_identity.ensure_schema(connection)
++
+         connection.execute("""
+             CREATE TABLE IF NOT EXISTS schema_version (
+                 version INTEGER PRIMARY KEY,
+@@ -541,19 +544,54 @@ def models_catalog():
+     """Read-only checkpoint / LoRA names exposed by ComfyUI.
+ 
+     Names come from ComfyUI ``/object_info``; an optional configured local
+-    directory only marks whether each file is present on disk. No weights are
+-    copied, hashed or modified here.
++    directory marks whether each file is present on disk and records cached
++    metadata in the identity store. No weights are copied or modified; a
++    SHA256 digest is never computed eagerly here.
+     """
+     settings = load_settings()
+     connections = settings["connections"]
+     storage = settings["storage"]
+ 
+-    return model_catalog.fetch_catalog(
++    catalog = model_catalog.fetch_catalog(
+         comfyui_url=connections["comfyui_url"],
+         checkpoint_dir=storage.get("checkpoint", ""),
+         lora_dir=storage.get("lora", ""),
+     )
+ 
++    database_path = Path(storage["database"]).expanduser() / "workbench.sqlite3"
++    with model_identity.connect(database_path) as connection:
++        model_identity.ensure_schema(connection)
++        for category, dir_key in (
++            ("checkpoint", "checkpoint"),
++            ("lora", "lora"),
++        ):
++            directory = storage.get(dir_key, "")
++            if directory:
++                model_identity.index_directory(connection, category, directory)
++
++        summaries: dict[str, dict[str, Any]] = {}
++        for group, category in (
++            ("checkpoints", "checkpoint"),
++            ("loras", "lora"),
++        ):
++            summaries[group] = {
++                entry["name"]: model_identity.identity_summary(
++                    connection, category, entry["name"]
++                )
++                for entry in catalog.get(group, [])
++            }
++
++    for group, category in (
++        ("checkpoints", "checkpoint"),
++        ("loras", "lora"),
++    ):
++        for entry in catalog.get(group, []):
++            entry["identity"] = summaries[group].get(
++                entry["name"], {"known": False}
++            )
++
++    return catalog
++
+ 
+ # ---- Static frontend hosting (local Web runtime) ---------------------------
+ 
+diff --git a/backend/test_model_catalog.py b/backend/test_model_catalog.py
+index aa7ccda..e68c219 100644
+--- a/backend/test_model_catalog.py
++++ b/backend/test_model_catalog.py
+@@ -148,3 +148,49 @@ def test_catalog_endpoint_returns_injected_catalog(client, monkeypatch):
+     assert body["checkpoints"][0]["name"] == "pony.safetensors"
+     assert body["vaes"][0]["name"] == "animevae.pt"
+     assert body["loras"][0]["name"] == "lora-a.safetensors"
++    # No on-disk directory configured -> identity unknown.
++    assert body["checkpoints"][0]["identity"] == {"known": False}
++
++
++def test_catalog_endpoint_attaches_identity_for_configured_dir(
++    client, monkeypatch, tmp_path
++):
++    test_client, main = client
++    ckpt_dir = tmp_path / "ckpt"
++    ckpt_dir.mkdir()
++    (ckpt_dir / "pony.safetensors").write_bytes(b"weight")
++
++    settings = test_client.get("/api/settings", headers=auth()).json()
++    settings["storage"]["checkpoint"] = str(ckpt_dir)
++    test_client.post(
++        "/api/settings",
++        headers=auth(),
++        json={
++            "storage": {
++                k: v for k, v in settings["storage"].items() if k != "root"
++            },
++            "connections": settings["connections"],
++        },
++    )
++
++    def fake_catalog(comfyui_url, checkpoint_dir="", lora_dir="", timeout=4.0):
++        return {
++            "online": True,
++            "error": None,
++            "checkpoints": [{"name": "pony.safetensors", "on_disk": True}],
++            "clips": [],
++            "vaes": [],
++            "loras": [],
++        }
++
++    monkeypatch.setattr(main.model_catalog, "fetch_catalog", fake_catalog)
++
++    body = test_client.get(
++        "/api/models/catalog", headers=auth()
++    ).json()
++    identity = body["checkpoints"][0]["identity"]
++    assert identity["known"] is True
++    assert identity["on_disk"] is True
++    assert identity["size_bytes"] == len(b"weight")
++    assert identity["hashed"] is False
++    assert identity["sha256"] is None
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 950e8c9..f701696 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -37,9 +37,18 @@ type PathCheck = {
+   writable: boolean;
+ };
+ 
++type IdentitySummary = {
++  known: boolean;
++  on_disk?: boolean;
++  size_bytes?: number | null;
++  sha256?: string | null;
++  hashed?: boolean;
++};
++
+ type CatalogEntry = {
+   name: string;
+   on_disk: boolean | null;
++  identity?: IdentitySummary;
+ };
+ 
+ type ModelCatalog = {
+@@ -72,6 +81,25 @@ function diskLabel(onDisk: boolean | null): string {
+   return onDisk ? "本机存在" : "本机未找到";
+ }
+ 
++function formatSize(bytes?: number | null): string {
++  if (bytes === null || bytes === undefined) return "";
++  if (bytes >= 1024 * 1024 * 1024) {
++    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
++  }
++  if (bytes >= 1024 * 1024) {
++    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
++  }
++  return `${bytes} B`;
++}
++
++function identityLabel(entry: CatalogEntry): string {
++  const identity = entry.identity;
++  if (!identity || !identity.known) return diskLabel(entry.on_disk);
++  const size = formatSize(identity.size_bytes);
++  const digest = identity.hashed ? "已校验" : "未哈希";
++  return [size, digest].filter(Boolean).join(" · ");
++}
++
+ function StatusDot({ online }: { online: boolean }) {
+   return (
+     <span
+@@ -423,7 +451,7 @@ export default function App() {
+                   {catalog.checkpoints.map((entry) => (
+                     <li key={entry.name}>
+                       <span>{entry.name}</span>
+-                      <small>{diskLabel(entry.on_disk)}</small>
++                      <small>{identityLabel(entry)}</small>
+                     </li>
+                   ))}
+                   {catalog.checkpoints.length === 0 && (
+@@ -439,7 +467,7 @@ export default function App() {
+                   {catalog.loras.map((entry) => (
+                     <li key={entry.name}>
+                       <span>{entry.name}</span>
+-                      <small>{diskLabel(entry.on_disk)}</small>
++                      <small>{identityLabel(entry)}</small>
+                     </li>
+                   ))}
+                   {catalog.loras.length === 0 && (

@@ -37,9 +37,18 @@ type PathCheck = {
   writable: boolean;
 };
 
+type IdentitySummary = {
+  known: boolean;
+  on_disk?: boolean;
+  size_bytes?: number | null;
+  sha256?: string | null;
+  hashed?: boolean;
+};
+
 type CatalogEntry = {
   name: string;
   on_disk: boolean | null;
+  identity?: IdentitySummary;
 };
 
 type ModelCatalog = {
@@ -70,6 +79,25 @@ const storageLabels: Record<string, string> = {
 function diskLabel(onDisk: boolean | null): string {
   if (onDisk === null) return "目录未配置";
   return onDisk ? "本机存在" : "本机未找到";
+}
+
+function formatSize(bytes?: number | null): string {
+  if (bytes === null || bytes === undefined) return "";
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${bytes} B`;
+}
+
+function identityLabel(entry: CatalogEntry): string {
+  const identity = entry.identity;
+  if (!identity || !identity.known) return diskLabel(entry.on_disk);
+  const size = formatSize(identity.size_bytes);
+  const digest = identity.hashed ? "已校验" : "未哈希";
+  return [size, digest].filter(Boolean).join(" · ");
 }
 
 function StatusDot({ online }: { online: boolean }) {
@@ -423,7 +451,7 @@ export default function App() {
                   {catalog.checkpoints.map((entry) => (
                     <li key={entry.name}>
                       <span>{entry.name}</span>
-                      <small>{diskLabel(entry.on_disk)}</small>
+                      <small>{identityLabel(entry)}</small>
                     </li>
                   ))}
                   {catalog.checkpoints.length === 0 && (
@@ -439,7 +467,7 @@ export default function App() {
                   {catalog.loras.map((entry) => (
                     <li key={entry.name}>
                       <span>{entry.name}</span>
-                      <small>{diskLabel(entry.on_disk)}</small>
+                      <small>{identityLabel(entry)}</small>
                     </li>
                   ))}
                   {catalog.loras.length === 0 && (
