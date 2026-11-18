@@ -1709,3 +1709,30 @@
 
 - 完整性巡检为只读 `integrity_check`；崩溃恢复、自动修复、备份恢复写入与冲突合并留后续。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R68/`。
+
+## 77. TASK-003.1-R69 规则库前端删除入口（两步态确认）（2026-11-18）
+
+### 77.1 落地内容
+
+- 后端 `DELETE /api/rules`（R80，level 校验 + CSRF）早已就绪并有测试覆盖；前端规则清单此前只读，
+  本切片补齐删除闭环，后端无改动。
+- 前端 `App.tsx`：引入 `apiDelete`；`deletingRule` 确认态 + `removeRule(rule)`。首次点「删除」
+  只进确认态（按钮变「确认删除？」危险色），再次点击才发删除请求，体 `{level, scope_key, rule_key}`；
+  成功后重拉规则清单并回显「规则已删除。」，失败回显错误。不用原生 `confirm`。
+- 规则库标题去掉「只读」；说明更新为记录来自档案导入、可删除纠错，前端不提供手动新增/修改。
+- `styles.css`：规则行按钮紧凑尺寸；确认态 `.danger` 沿用既有暖橙色板。
+
+### 77.2 真机闭环与回归
+
+- 种子一条临时规则（checkpoint / pony.safetensors / steps=32）；浏览器两步删除：确认态规则行仍在，
+  确认后清单刷新为空、消息「规则已删除。」；直连复核 `rules=0`，diagnostics 计数回到基线
+  （rules 0 / history 0 / tasks 0 / identities 16 / workflows 22 / profiles 13），console 无报错。
+- 后端 **231 passed, 1 warning**（全量回归兜底，后端无改动）；前端 `tsc -b && vite build` 绿，
+  产物 `index-Di176E0j.js` 182.20 kB / gzip 58.10 kB，`index-YZUDVJS8.css` 9.58 kB / gzip 2.36 kB。
+- stopper 回收实例 18340、21912，端口关闭；Ollama / ComfyUI 未触碰。
+
+### 77.3 边界与 backlog
+
+- 前端仍不提供规则手动新增/编辑表单；写入与覆盖继续走档案导入或后端既有 upsert。
+- 批量删除、删除前预览、规则历史版本回退留后续。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R69/`。

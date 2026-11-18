@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { apiGet, apiGetBlob, apiPost } from "./api";
+import { apiDelete, apiGet, apiGetBlob, apiPost } from "./api";
 import { formatStructured } from "./format";
 import HistoryPanel from "./HistoryPanel";
 import WorkflowWorkbench from "./WorkflowWorkbench";
@@ -236,6 +236,7 @@ export default function App() {
   const [preview, setPreview] = useState<ProfilePreview | null>(null);
   const settingsFileRef = useRef<HTMLInputElement>(null);
   const [importingProfile, setImportingProfile] = useState<string | null>(null);
+  const [deletingRule, setDeletingRule] = useState<string | null>(null);
   const [importReports, setImportReports] = useState<
     Record<string, ProfileImportReport>
   >({});
@@ -410,6 +411,33 @@ export default function App() {
       setMessage(`档案导入失败：${String(error)}`);
     } finally {
       setImportingProfile(null);
+    }
+  }
+
+  function ruleIdentity(rule: RuleRecord): string {
+    return `${rule.level}::${rule.scope_key ?? ""}::${rule.rule_key}`;
+  }
+
+  async function removeRule(rule: RuleRecord) {
+    const identity = ruleIdentity(rule);
+    if (deletingRule !== identity) {
+      // 两步确认第一步：进入确认态，不直接删除；不用原生弹窗。
+      setDeletingRule(identity);
+      return;
+    }
+    try {
+      await apiDelete<{ removed: boolean }>("/api/rules", {
+        level: rule.level,
+        scope_key: rule.scope_key,
+        rule_key: rule.rule_key,
+      });
+      const ruleResult = await apiGet<{ items: RuleRecord[] }>("/api/rules");
+      setRules(ruleResult.items);
+      setMessage("规则已删除。");
+    } catch (error) {
+      setMessage(`规则删除失败：${String(error)}`);
+    } finally {
+      setDeletingRule(null);
     }
   }
 
@@ -843,10 +871,10 @@ export default function App() {
       <section className="panel">
         <div className="section-heading">
           <div>
-            <h2>规则库（只读）</h2>
+            <h2>规则库</h2>
             <p>
-              规则记录来自档案导入与本地登记；本版本只展示，
-              不提供新增、修改或删除入口。
+              规则记录来自档案导入；可删除已入库规则做纠错。
+              前端不提供手动新增或修改，新增与覆盖仍走档案导入。
             </p>
           </div>
         </div>
@@ -888,6 +916,16 @@ export default function App() {
                             rule.confidence}
                         </span>
                         <span className="rule-tag">v{rule.version}</span>
+                        <button
+                          onClick={() => void removeRule(rule)}
+                          className={
+                            deletingRule === ruleIdentity(rule) ? "danger" : ""
+                          }
+                        >
+                          {deletingRule === ruleIdentity(rule)
+                            ? "确认删除？"
+                            : "删除"}
+                        </button>
                       </div>
                     </div>
                   ))}

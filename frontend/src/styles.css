@@ -601,6 +601,16 @@ button.secondary {
   color: #c6d0df;
   background: #111722;
 }
+.rule-row-meta button {
+  padding: 4px 9px;
+  font-size: 12px;
+  border-radius: 7px;
+}
+.rule-row-meta button.danger {
+  border-color: #d18b68;
+  background: #5a3325;
+  color: #e8c3ae;
+}
 .profile-toggle {
   display: flex;
   flex-direction: column;
