@@ -193,6 +193,23 @@ const ACTUAL_SUMMARY: Array<{ key: string; label: string }> = [
   { key: "scheduler", label: "调度器" },
   { key: "clip_skip", label: "Clip Skip" },
 ];
+
+function downloadLocalFile(filename: string, text: string, mime: string) {
+  const blob = new Blob([text], { type: `${mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function promptStamp(): string {
+  return new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
+}
+
 export default function WorkflowWorkbench() {
   const [items, setItems] = useState<WorkflowListItem[]>([]);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
@@ -458,6 +475,40 @@ export default function WorkflowWorkbench() {
       return;
     }
     void copyPromptText(parts.join("\n\n"), "完整 Prompt");
+  }
+
+  function exportPromptTxt() {
+    if (!positiveText.trim() && !negativeText.trim()) {
+      setMessage("正向与负向均为空，无需导出。");
+      return;
+    }
+    const parts: string[] = [];
+    if (positiveText.trim()) parts.push(`正向：\n${positiveText}`);
+    if (negativeText.trim()) parts.push(`负向：\n${negativeText}`);
+    downloadLocalFile(
+      `workbench-prompt-${promptStamp()}.txt`,
+      parts.join("\n\n"),
+      "text/plain",
+    );
+    setMessage("Prompt 已导出为 TXT（仅本地下载，未写入工作副本）。");
+  }
+
+  function exportPromptJson() {
+    if (!positiveText.trim() && !negativeText.trim()) {
+      setMessage("正向与负向均为空，无需导出。");
+      return;
+    }
+    const payload = {
+      version: 1,
+      positive: positiveText,
+      negative: negativeText,
+    };
+    downloadLocalFile(
+      `workbench-prompt-${promptStamp()}.json`,
+      JSON.stringify(payload, null, 2),
+      "application/json",
+    );
+    setMessage("Prompt 已导出为 JSON（仅本地下载，未写入工作副本）。");
   }
   async function loadTasks(refresh: boolean) {
     if (!workflowId) return;
@@ -1007,6 +1058,8 @@ export default function WorkflowWorkbench() {
                   写入工作副本并校验
                 </button>
                 <button onClick={copyBoth}>复制完整</button>
+                <button onClick={exportPromptTxt}>导出 TXT</button>
+                <button onClick={exportPromptJson}>导出 JSON</button>
                 <span className="muted">
                   不会修改原始文件，也不会提交 ComfyUI 任务。
                 </span>

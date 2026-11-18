@@ -1757,3 +1757,23 @@
 
 - 中英文对照复制依赖未实现的中文编辑/翻译区；TXT/JSON 导入导出、区块拆分、锁定片段留后续。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R70/`。
+
+## 79. TASK-003.1-R71 工作副本 Prompt 导出 TXT / JSON（2026-11-18）
+
+### 79.1 落地内容
+
+- 编辑框动作区补「导出 TXT / 导出 JSON」：通用 `downloadLocalFile` 本地 Blob 下载，不写库、
+  不覆盖工作副本；TXT 分段（正向/负向），JSON 为 `{version, positive, negative}` 保留原文；
+  两侧空保守提示。后端无改动。
+
+### 79.2 真机闭环与回归
+
+- `r31-compare.json` 下两按钮在位；TXT 落盘回读正/负段齐全，JSON 导出消息成功、console 无报错。
+  JSON 文件本会话受浏览器 multiple_downloads 权限挂起未落盘，路径与 TXT 同构、编译通过。
+- 后端 **231 passed, 1 warning**；前端 `tsc -b && vite build` 绿，产物
+  `index-4-4meC4x.js` 183.70 kB / gzip 58.51 kB，`index-CE0WX0Hl.css` 9.75 kB / gzip 2.38 kB。
+
+### 79.3 边界与 backlog
+
+- 导入侧（文件/粘贴先作候选预览、正负向拆分、不覆盖）未实现，另切片；导出不携带模型快照/元数据。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R71/`。
