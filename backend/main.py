@@ -770,6 +770,7 @@ def diagnostics():
         "profiles": None,
     }
     db_error: str | None = None
+    db_integrity: str | None = None
 
     database_dir = Path(storage.get("database", "")).expanduser()
     database_path = database_dir / "workbench.sqlite3"
@@ -787,6 +788,13 @@ def diagnostics():
             counts["history"] = _count("generation_history")
             counts["tasks"] = _count("comfy_task")
             counts["model_identities"] = _count("model_identity")
+
+            # Read-only integrity probe; "ok" means the schema-level check
+            # passed. A non-ok result is surfaced verbatim, never guessed away.
+            integrity_row = connection.execute(
+                "PRAGMA integrity_check"
+            ).fetchone()
+            db_integrity = str(integrity_row[0]) if integrity_row else "unknown"
     except Exception as exc:  # conservative: report the failure, do not 500
         db_error = f"{type(exc).__name__}: {exc}"
 
@@ -815,6 +823,7 @@ def diagnostics():
         "platform": platform.platform(),
         "data_root": str(DATA_ROOT),
         "database_path": str(database_path),
+        "database": {"integrity": db_integrity},
         "counts": counts,
         "directories": managed_dirs,
         "external_directories": external_dirs,

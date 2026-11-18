@@ -363,6 +363,7 @@ def test_diagnostics_report_is_read_only_and_conservative(client):
     assert body["version"]
     assert body["uploaded"] is False
     assert body["database_error"] is None
+    assert body["database"]["integrity"] == "ok"
     assert set(body["counts"]) == {
         "rules",
         "history",

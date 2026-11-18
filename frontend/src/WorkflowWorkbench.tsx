@@ -417,6 +417,16 @@ export default function WorkflowWorkbench() {
   function adoptCandidate() {
     if (candidate) setPositiveText(candidate);
   }
+
+  async function copyCandidate() {
+    if (!candidate) return;
+    try {
+      await navigator.clipboard.writeText(candidate);
+      setMessage("候选已复制到剪贴板（未写入工作副本）。");
+    } catch (error) {
+      setMessage(`复制候选失败：${String(error)}`);
+    }
+  }
   async function loadTasks(refresh: boolean) {
     if (!workflowId) return;
     try {
@@ -914,6 +924,7 @@ export default function WorkflowWorkbench() {
                       <textarea readOnly rows={7} value={candidate} />
                       <div className="actions">
                         <button onClick={adoptCandidate}>采用到正向 Prompt</button>
+                        <button onClick={() => void copyCandidate()}>复制候选</button>
                         <span className="muted">
                           候选不会自动写入工作副本，需在下方确认写入。
                         </span>

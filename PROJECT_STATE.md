@@ -1684,3 +1684,28 @@
 - 本切片只导出；备份恢复写入、恢复前完整性校验与冲突合并、数据库迁移、崩溃恢复巡检留后续切片（高风险）。
 - 备份不含模型权重与原图；换机迁移需在目标机另行就位 ComfyUI 模型目录。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R67/`。
+
+## 76. TASK-003.1-R68 候选复制按钮 + 诊断完整性巡检字段（2026-11-18）
+
+### 76.1 落地内容
+
+- 后端 `/api/diagnostics`：库连接成功时跑 `PRAGMA integrity_check`，响应补
+  `database.integrity`（通过 `ok`，非 ok 原样返回）；连接异常保守置 `null`，既有
+  `database_error` 保留兼容。
+- 前端候选面板在「采用到正向 Prompt」旁补「复制候选」：`navigator.clipboard` 写入候选文本，
+  成功提示「候选已复制到剪贴板（未写入工作副本）。」；纯前端，不改动工作副本。
+
+### 76.2 真机闭环与回归
+
+- 后端直连：`database_error=None`、`database.integrity="ok"`；计数 rules 0 / history 0 /
+  tasks 0 / identities 16 / workflows 22 / profiles 13。
+- 浏览器：生成候选后双按钮在位，点击复制消息成功，编辑框工作副本未被覆盖，无 console 报错。
+- 纯前端剪贴板操作无后端写入，基线计数不变；stopper 按身份回收 PID 19280，端口关闭；
+  Ollama / ComfyUI 未触碰。
+- 后端 **231 passed, 1 warning**（无新增用例，诊断用例补完整性断言）；前端 `tsc -b && vite build`
+  绿，产物 `index-MWBS5jDJ.js` 181.66 kB / gzip 57.92 kB，`index-X0JFovQF.css` 9.42 kB / gzip 2.33 kB。
+
+### 76.3 边界与 backlog
+
+- 完整性巡检为只读 `integrity_check`；崩溃恢复、自动修复、备份恢复写入与冲突合并留后续。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R68/`。
