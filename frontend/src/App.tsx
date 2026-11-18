@@ -38,6 +38,37 @@ type ServiceStatus = {
   comfyui: ServiceResult;
 };
 
+type ComfyDevice = {
+  index: number | null;
+  name: string | null;
+  type: string | null;
+  vram_total: number | null;
+  vram_free: number | null;
+};
+
+type ComfyStatus = {
+  online: boolean;
+  error: string | null;
+  version: string | null;
+  pytorch_version: string | null;
+  ram_total: number | null;
+  ram_free: number | null;
+  devices: ComfyDevice[];
+};
+
+type ComfyQueue = {
+  online: boolean;
+  error: string | null;
+  running: string[];
+  pending: string[];
+  history: string[];
+};
+
+function formatGiB(bytes: number | null): string {
+  if (bytes === null || Number.isNaN(bytes) || bytes < 0) return "—";
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
 type Settings = {
   storage: Record<string, string>;
   connections: {
@@ -229,6 +260,8 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [services, setServices] = useState<ServiceStatus | null>(null);
+  const [comfyStatus, setComfyStatus] = useState<ComfyStatus | null>(null);
+  const [comfyQueue, setComfyQueue] = useState<ComfyQueue | null>(null);
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
   const [rules, setRules] = useState<RuleRecord[] | null>(null);
   const [profiles, setProfiles] = useState<ProfileSummary[] | null>(null);
@@ -271,6 +304,14 @@ export default function App() {
     setCatalog(catalogResult);
     setRules(ruleResult.items);
     setProfiles(profileResult.items);
+
+    // 显存与队列为只读摘要；独立容错，取不到置空，不影响主面板连接状态。
+    apiGet<ComfyStatus>("/api/comfyui/status")
+      .then(setComfyStatus)
+      .catch(() => setComfyStatus(null));
+    apiGet<ComfyQueue>("/api/comfyui/queue")
+      .then(setComfyQueue)
+      .catch(() => setComfyQueue(null));
   }
 
   useEffect(() => {
@@ -716,6 +757,25 @@ export default function App() {
           </div>
           <small>
             {settings?.connections.comfyui_url ?? "等待读取设置"}
+          </small>
+          {comfyStatus?.version ? (
+            <small>版本 {comfyStatus.version}</small>
+          ) : null}
+          {comfyStatus?.online === true && comfyStatus.devices.length > 0 ? (
+            comfyStatus.devices.map((device) => (
+              <small key={device.index ?? device.name ?? "device"}>
+                {device.name ?? device.type ?? `设备 ${device.index ?? "?"}`}
+                ：显存 {formatGiB(device.vram_free)} 空闲 /{" "}
+                {formatGiB(device.vram_total)}
+              </small>
+            ))
+          ) : comfyStatus?.online === true ? (
+            <small>显存信息未知</small>
+          ) : null}
+          <small>
+            {comfyQueue?.online === true
+              ? `队列：运行中 ${comfyQueue.running.length} · 待执行 ${comfyQueue.pending.length}`
+              : "队列状态未知"}
           </small>
         </article>
       </section>
