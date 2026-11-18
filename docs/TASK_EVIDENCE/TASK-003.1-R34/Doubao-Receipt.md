@@ -29,8 +29,8 @@ M3 第二十九切片：VAE/CLIP 目录只读核对链路。catalog 的 CLIP/VAE
 
 ## Git
 
-- 功能提交：见下方回填。
-- 回执提交：见下方回填。
+- 功能提交：`e8ca236b415a4793e31d2e17b5498627a022f9fa`（本地 dev，已推送 origin/dev）。
+- 远端核对：连接器 `list_commits(dev)` 最新提交即 `e8ca236b`，消息「feat(workbench): M3 第二十九切片 CLIP/VAE 目录只读核对链路」，作者 Roy-Anan / 1538072315@qq.com。
 - main 分支未改动。
 
 ## 边界
