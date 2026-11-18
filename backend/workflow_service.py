@@ -1076,6 +1076,7 @@ class WorkflowStore:
                     "note": record.get("note") or "",
                     "positive": record.get("positive") or "",
                     "negative": record.get("negative") or "",
+                    "favored": bool(record.get("favored") or False),
                     "created_at": record.get("created_at"),
                     "updated_at": record.get("updated_at"),
                 }
@@ -1133,6 +1134,7 @@ class WorkflowStore:
             record["positive"] = clean_positive
             record["negative"] = clean_negative
             record["note"] = clean_note
+            record.setdefault("favored", False)
             record["updated_at"] = _now()
             record.setdefault("created_at", record.get("updated_at"))
         else:
@@ -1144,6 +1146,7 @@ class WorkflowStore:
                 "positive": clean_positive,
                 "negative": clean_negative,
                 "note": clean_note,
+                "favored": False,
                 "created_at": _now(),
                 "updated_at": _now(),
             }
@@ -1169,3 +1172,19 @@ class WorkflowStore:
             raise WorkflowError("指定的草稿不存在")
         path.unlink()
         return {"ok": True, "id": draft_id}
+
+    def toggle_favored(self, workflow_id: str, draft_id: str) -> dict[str, Any]:
+        """Flip the favored flag on one draft.
+
+        Favored is a reversible marker only; it does not reorder the list and
+        does not bump ``updated_at``. The working copy and snapshots are
+        untouched.
+        """
+        drafts_dir = self._drafts_dir(workflow_id)
+        path = self._draft_path(drafts_dir, draft_id)
+        if not path.is_file():
+            raise WorkflowError("指定的草稿不存在")
+        record = self._read_draft_file(path)
+        record["favored"] = not bool(record.get("favored") or False)
+        _atomic_json(path, record)
+        return record

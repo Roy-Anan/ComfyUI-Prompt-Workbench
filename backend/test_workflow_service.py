@@ -783,3 +783,32 @@ def test_draft_rejects_empty_prompt_and_blank_name(tmp_path):
 
     with pytest.raises(WorkflowError, match="名称不能为空"):
         store.save_draft(workflow_id, None, "   ", "positive", None, "")
+
+
+def test_draft_favored_toggle_and_preserved_on_update(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+
+    draft = store.save_draft(
+        workflow_id, None, "收藏测试", "positive", None, ""
+    )
+    assert store.list_drafts(workflow_id)[0]["favored"] is False
+
+    toggled = store.toggle_favored(workflow_id, draft["id"])
+    assert toggled["favored"] is True
+    assert store.list_drafts(workflow_id)[0]["favored"] is True
+
+    # Updating the draft keeps the favored marker and does not reset it.
+    updated = store.save_draft(
+        workflow_id, draft["id"], "收藏测试改", "positive2", None, ""
+    )
+    assert updated["favored"] is True
+
+    back = store.toggle_favored(workflow_id, draft["id"])
+    assert back["favored"] is False
+
+    with pytest.raises(WorkflowError, match="草稿不存在"):
+        store.toggle_favored(
+            workflow_id, "11111111-1111-4111-8111-111111111111"
+        )

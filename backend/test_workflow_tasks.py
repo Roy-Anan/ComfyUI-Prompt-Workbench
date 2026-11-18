@@ -785,3 +785,38 @@ def test_draft_rejects_empty_prompt_duplicate_name_and_missing(client):
         json={"name": "x", "positive": "a"},
     )
     assert missing_wf.status_code == 404
+
+
+def test_draft_favorite_toggle_roundtrip(client):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+
+    create = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"name": "收藏草稿", "positive": "p1"},
+    )
+    assert create.status_code == 200
+    draft_id = create.json()["id"]
+    assert create.json()["favored"] is False
+
+    on = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts/{draft_id}/favorite", headers=AUTH
+    )
+    assert on.status_code == 200
+    assert on.json()["favored"] is True
+    assert test_client.get(
+        f"/api/workflows/{workflow_id}/drafts", headers=AUTH
+    ).json()["items"][0]["favored"] is True
+
+    off = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts/{draft_id}/favorite", headers=AUTH
+    )
+    assert off.status_code == 200
+    assert off.json()["favored"] is False
+
+    missing = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts/11111111-1111-4111-8111-111111111111/favorite",
+        headers=AUTH,
+    )
+    assert missing.status_code == 400

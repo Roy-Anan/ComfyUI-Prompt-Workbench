@@ -139,6 +139,7 @@ type DraftEntry = {
   positive: string;
   negative: string;
   note: string;
+  favored?: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -769,6 +770,20 @@ export default function WorkflowWorkbench() {
       setMessage("草稿已删除。");
     } catch (error) {
       setMessage(`删除草稿失败：${String(error)}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function toggleFavorite(draft: DraftEntry) {
+    if (!workflowId) return;
+    setDraftBusy(true);
+    try {
+      await apiPost(`/api/workflows/${workflowId}/drafts/${draft.id}/favorite`, {});
+      await loadDrafts(workflowId);
+      setMessage(draft.favored ? `已取消收藏草稿「${draft.name}」。` : `已收藏草稿「${draft.name}」。`);
+    } catch (error) {
+      setMessage(`切换收藏失败：${String(error)}`);
     } finally {
       setDraftBusy(false);
     }
@@ -1512,6 +1527,12 @@ export default function WorkflowWorkbench() {
                           disabled={draftBusy || busy}
                         >
                           载入到编辑框
+                        </button>
+                        <button
+                          onClick={() => void toggleFavorite(draft)}
+                          disabled={draftBusy || busy}
+                        >
+                          {draft.favored ? "取消收藏" : "收藏"}
                         </button>
                         {updatingDraftId === draft.id ? (
                           <>

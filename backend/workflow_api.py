@@ -293,6 +293,15 @@ def delete_draft(workflow_id: str, draft_id: str):
         _raise_api_error(exc)
 
 
+@router.post("/{workflow_id}/drafts/{draft_id}/favorite")
+def toggle_draft_favored(workflow_id: str, draft_id: str):
+    """Flip the favored marker on one draft. Does not reorder or touch the working copy."""
+    try:
+        return store().toggle_favored(workflow_id, draft_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
 @router.post("/{workflow_id}/confirm")
 def confirm_prompt_nodes(
     workflow_id: str,
