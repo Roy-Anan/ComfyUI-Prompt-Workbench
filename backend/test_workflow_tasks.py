@@ -501,6 +501,26 @@ def test_retry_unknown_prompt_returns_404(client, monkeypatch):
     assert response.status_code == 404
 
 
+def test_versions_empty_for_fresh_workflow(client):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+
+    response = test_client.get(
+        f"/api/workflows/{workflow_id}/versions", headers=AUTH
+    )
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+
+def test_versions_unknown_workflow_returns_404(client):
+    test_client, _ = client
+    response = test_client.get(
+        "/api/workflows/00000000-0000-4000-8000-000000000000/versions",
+        headers=AUTH,
+    )
+    assert response.status_code == 404
+
+
 def test_candidate_blocked_when_comfyui_queue_active(client, monkeypatch):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())

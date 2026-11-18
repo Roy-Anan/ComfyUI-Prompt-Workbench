@@ -1426,3 +1426,20 @@
 
 - 缩略图索引、时间轴视图、日期范围导出、历史反向创建草稿留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R53/`。
+
+## 64. TASK-003.1-R54 版本快照只读列表（2026-11-18）
+
+### 64.1 落地内容
+
+- 后端 `WorkflowStore.list_versions(workflow_id)`：扫描 `versions/*.json` 快照按文件名时间戳
+  降序，按白名单提取各快照正/负 Prompt 文本；损坏快照保守跳过；不提供恢复动作。
+- 新增只读端点 `GET /api/workflows/{id}/versions`，返回 `{"items": [...]}`；未知工作流 404。
+- 前端工作流详情面板新增「历史版本（只读）」小节，展示版本时间与正/负 Prompt 摘要，
+  无恢复/差异按钮。
+- 后端 **224 passed, 1 warning**；前端 `tsc -b && vite build` 绿
+  （`index-vwJ__kjB.js 176.08 kB gzip 56.11 kB`）。
+
+### 64.2 边界与 backlog
+
+- 版本恢复、差异比对、备注、标签收藏、多草稿与草稿箱留后续切片；当前仅只读列表。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R54/`。

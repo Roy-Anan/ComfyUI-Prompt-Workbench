@@ -207,6 +207,21 @@ def get_workflow(workflow_id: str):
         return store().get_workflow(workflow_id)
     except (WorkflowError, FileNotFoundError, OSError) as exc:
         _raise_api_error(exc)
+
+
+@router.get("/{workflow_id}/versions")
+def list_versions(workflow_id: str):
+    """Read-only list of saved pre-write snapshots, newest first.
+
+    Each entry exposes only the whitelist Prompt texts captured at save time;
+    no restore action is offered here.
+    """
+    try:
+        return {"items": store().list_versions(workflow_id)}
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
 @router.post("/{workflow_id}/confirm")
 def confirm_prompt_nodes(
     workflow_id: str,

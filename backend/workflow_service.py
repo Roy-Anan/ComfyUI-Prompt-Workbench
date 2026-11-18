@@ -738,6 +738,47 @@ class WorkflowStore:
         if not folder.is_dir():
             raise FileNotFoundError("工作流不存在")
         return _read_json(folder / "working.json")
+
+    def list_versions(self, workflow_id: str) -> list[dict[str, Any]]:
+        """List saved pre-write snapshots under ``versions/``, newest first.
+
+        Read-only: a snapshot exposes only the whitelist Prompt texts captured
+        at save time. Corrupt snapshot files are skipped conservatively; no
+        restore action is offered from this layer.
+        """
+        folder = self._folder(workflow_id)
+        if not folder.is_dir():
+            raise FileNotFoundError("工作流不存在")
+        manifest = _read_json(folder / "manifest.json")
+        versions_dir = folder / "versions"
+        whitelist = manifest.get("whitelist", [])
+        entries: list[dict[str, Any]] = []
+        if not versions_dir.is_dir():
+            return entries
+        for file in sorted(versions_dir.glob("*.json"), reverse=True):
+            stamp = file.stem
+            try:
+                snapshot = _read_json(file)
+            except WorkflowError:
+                continue
+            nodes = (
+                _api_nodes(snapshot)
+                if manifest.get("format") == "api"
+                else {}
+            )
+            prompts: list[dict[str, Any]] = []
+            for item in whitelist:
+                node_id = str(item.get("node_id", ""))
+                node = nodes.get(node_id, {})
+                prompts.append(
+                    {
+                        "node_id": node_id,
+                        "role": item.get("role"),
+                        "text": node.get("inputs", {}).get("text", ""),
+                    }
+                )
+            entries.append({"stamp": stamp, "prompts": prompts})
+        return entries
     def confirm_prompt_nodes(
         self,
         workflow_id: str,

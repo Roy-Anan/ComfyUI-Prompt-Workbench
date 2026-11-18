@@ -56,6 +56,14 @@ type WorkflowDetail = {
     text: string;
   }>;
 };
+type VersionEntry = {
+  stamp: string;
+  prompts: Array<{
+    node_id: string;
+    role: "positive" | "negative";
+    text: string;
+  }>;
+};
 type ImportResult = {
   id: string;
   filename: string;
@@ -147,6 +155,20 @@ function formatTaskTime(value: string): string {
   return value.replace("T", " ").slice(0, 16);
 }
 
+function formatVersionStamp(stamp: string): string {
+  if (!stamp) return "—";
+  const [date, time] = stamp.split("-");
+  if (date && time && date.length === 8 && time.length >= 6) {
+    return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)} ${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}`;
+  }
+  return stamp;
+}
+
+function clipText(text: string, limit = 80): string {
+  if (!text) return "—";
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
 function outputFilenames(outputs: unknown): string[] {
   if (typeof outputs !== "object" || outputs === null) return [];
   const record = outputs as Record<string, unknown>;
@@ -190,6 +212,7 @@ export default function WorkflowWorkbench() {
   const [comfyTasks, setComfyTasks] = useState<ComfyTask[]>([]);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskSyncError, setTaskSyncError] = useState<string | null>(null);
+  const [versions, setVersions] = useState<VersionEntry[]>([]);
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -248,7 +271,9 @@ export default function WorkflowWorkbench() {
       );
       setComfyTasks([]);
       setTaskSyncError(null);
+      setVersions([]);
       void loadTasks(false);
+      void loadVersions(id);
       setMessage(`已打开：${result.manifest.filename}`);
     } catch (error) {
       setMessage(`打开失败：${String(error)}`);
@@ -403,6 +428,17 @@ export default function WorkflowWorkbench() {
       setTaskSyncError(String(error));
     }
   }
+
+  async function loadVersions(id: string) {
+    try {
+      const result = await apiGet<{ items: VersionEntry[] }>(
+        `/api/workflows/${id}/versions`,
+      );
+      setVersions(result.items);
+    } catch {
+      setVersions([]);
+    }
+  }
   async function submitTask() {
     if (!workflowId) return;
     setTaskBusy(true);
@@ -544,6 +580,28 @@ export default function WorkflowWorkbench() {
                         ))}
                       </li>
                     ))}
+                  </ul>
+                )}
+                <h4>历史版本（只读）</h4>
+                {versions.length === 0 ? (
+                  <p className="muted">暂无保存过的历史版本。</p>
+                ) : (
+                  <ul>
+                    {versions.map((entry) => {
+                      const positive =
+                        entry.prompts.find((p) => p.role === "positive")?.text ?? "";
+                      const negative =
+                        entry.prompts.find((p) => p.role === "negative")?.text ?? "";
+                      return (
+                        <li key={entry.stamp}>
+                          <small className="workflow-meta">
+                            {formatVersionStamp(entry.stamp)}
+                          </small>
+                          <div>正向：{clipText(positive)}</div>
+                          <div>负向：{clipText(negative)}</div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </>

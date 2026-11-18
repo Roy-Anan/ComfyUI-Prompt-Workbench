@@ -184,6 +184,40 @@ def test_prompt_write_changes_only_confirmed_text_fields(tmp_path):
     )
     assert versions.is_dir()
     assert list(versions.glob("*.json"))
+
+
+def test_list_versions_returns_saved_snapshots_newest_first(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+    store.confirm_prompt_nodes(
+        workflow_id,
+        positive_node_ids=["1"],
+        negative_node_ids=["2"],
+    )
+
+    store.write_prompts(
+        workflow_id,
+        positive_text="v1 positive",
+        negative_text="v1 negative",
+    )
+    store.write_prompts(
+        workflow_id,
+        positive_text="v2 positive",
+        negative_text="v2 negative",
+    )
+
+    entries = store.list_versions(workflow_id)
+    assert len(entries) == 2
+    first = {p["role"]: p["text"] for p in entries[0]["prompts"]}
+    second = {p["role"]: p["text"] for p in entries[1]["prompts"]}
+    assert first["positive"] == "v1 positive"
+    assert first["negative"] == "v1 negative"
+    assert second["positive"] == "old positive"
+    assert second["negative"] == "old negative"
+    assert entries[0]["stamp"] and entries[1]["stamp"]
+
+
 def test_write_rejects_unconfirmed_nodes(tmp_path):
     store = WorkflowStore(tmp_path / "workflows")
     imported = store.import_workflow(
