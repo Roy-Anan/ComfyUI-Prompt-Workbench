@@ -547,6 +547,32 @@ def probe_url(url: str, path: str) -> dict[str, Any]:
         }
 
 
+def fetch_ollama_models(url: str) -> dict[str, Any]:
+    """Read-only list local Ollama model names from ``/api/tags``.
+
+    Never falls back to a cloud model; an unreachable or malformed response is
+    reported conservatively as offline with an empty list and no fabricated
+    entries.
+    """
+    target = url.rstrip("/") + "/api/tags"
+    request = UrlRequest(target)
+    request.add_header("User-Agent", APP_NAME)
+
+    try:
+        with urlopen(request, timeout=2.5) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        data = json.loads(raw)
+        entries = data.get("models") if isinstance(data, dict) else None
+        names: list[str] = []
+        if isinstance(entries, list):
+            for item in entries:
+                if isinstance(item, dict) and isinstance(item.get("name"), str):
+                    names.append(item["name"])
+        return {"online": True, "models": names, "error": None}
+    except (URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        return {"online": False, "models": [], "error": str(exc)}
+
+
 @app.get("/api/services/status")
 def services_status():
     settings = load_settings()
@@ -562,6 +588,12 @@ def services_status():
             "/system_stats",
         ),
     }
+
+
+@app.get("/api/ollama/models")
+def ollama_models():
+    settings = load_settings()
+    return fetch_ollama_models(settings["connections"]["ollama_url"])
 
 
 @app.get("/api/models/catalog")

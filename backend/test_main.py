@@ -351,6 +351,45 @@ def test_services_status_returns_when_services_offline(client):
     assert "comfyui" in response.json()
 
 
+def test_ollama_models_passes_through_discovered_names(client, monkeypatch):
+    test_client, main = client
+
+    def fake_fetch(url):
+        return {
+            "online": True,
+            "models": ["comfyui-prompt:v1", "qwen3:latest"],
+            "error": None,
+        }
+
+    monkeypatch.setattr(main, "fetch_ollama_models", fake_fetch)
+
+    body = test_client.get("/api/ollama/models", headers=auth()).json()
+    assert body["online"] is True
+    assert body["models"] == ["comfyui-prompt:v1", "qwen3:latest"]
+
+
+def test_ollama_models_passes_through_offline_state(client, monkeypatch):
+    test_client, main = client
+
+    def fake_fetch(url):
+        return {"online": False, "models": [], "error": "connection refused"}
+
+    monkeypatch.setattr(main, "fetch_ollama_models", fake_fetch)
+
+    body = test_client.get("/api/ollama/models", headers=auth()).json()
+    assert body["online"] is False
+    assert body["models"] == []
+    assert body["error"] == "connection refused"
+
+
+def test_fetch_ollama_models_is_conservative_on_unreachable_host(client):
+    _, main = client
+    result = main.fetch_ollama_models("http://127.0.0.1:1")
+    assert result["online"] is False
+    assert result["models"] == []
+    assert result["error"] is not None
+
+
 def test_unknown_api_returns_json_not_html(client):
     test_client, _ = client
 
