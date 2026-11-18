@@ -1320,3 +1320,19 @@
 
 - 缩略图索引、时间轴/图库双视图、搜索筛选导出、历史反向创建草稿留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R47/`。
+
+## 58. TASK-003.1-R48 前端生成历史只读面板（2026-11-18）
+
+### 58.1 落地内容
+
+- 新增 `HistoryPanel.tsx`：导航「生成历史」页，只读列表展示提交时间、任务状态徽章、正向摘要、
+  checkpoint/LoRA 名与图片存在标记；展开详情查看完整正/负向 Prompt、模型快照（Checkpoint/LoRA/
+  VAE/CLIP）与输出图片清单。
+- `App.tsx` 接入第三个导航页；图片存在性沿用后端 `exists`（存在/丢失/目录未配置），不复制原图。
+- 前端 `tsc -b && vite build` 绿（`index-BHp-6yRK.js 172.58 kB gzip 55.14 kB`）。后端本批无改动，
+  保持 215 passed。
+
+### 58.2 边界与 backlog
+
+- 缩略图索引、图库网格视图、搜索筛选导出、历史反向创建草稿留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R48/`。

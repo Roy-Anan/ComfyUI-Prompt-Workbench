@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "./api";
 import { formatStructured } from "./format";
+import HistoryPanel from "./HistoryPanel";
 import WorkflowWorkbench from "./WorkflowWorkbench";
 
 type Health = {
@@ -209,7 +210,7 @@ export default function App() {
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在连接本地服务…");
-  const [activePage, setActivePage] = useState<"settings" | "workflows">("settings");
+  const [activePage, setActivePage] = useState<"settings" | "workflows" | "history">("settings");
 
   async function refresh() {
     const [healthResult, settingsResult, serviceResult, catalogResult, ruleResult, profileResult] =
@@ -431,10 +432,18 @@ export default function App() {
         >
           工作流工作区
         </button>
+        <button
+          className={activePage === "history" ? "" : "secondary"}
+          onClick={() => setActivePage("history")}
+        >
+          生成历史
+        </button>
       </nav>
 
       {activePage === "workflows" ? (
         <WorkflowWorkbench />
+      ) : activePage === "history" ? (
+        <HistoryPanel />
       ) : (
         <>
       <section className="status-grid">
