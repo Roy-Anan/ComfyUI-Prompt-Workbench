@@ -426,6 +426,17 @@ button.secondary {
   gap: 8px;
   margin: 16px 0;
 }
+.workflow-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.workflow-field-head button {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 7px;
+}
 .workflow-text-field textarea {
   resize: vertical;
   line-height: 1.55;

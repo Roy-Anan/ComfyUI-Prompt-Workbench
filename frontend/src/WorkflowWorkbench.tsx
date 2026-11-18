@@ -427,6 +427,38 @@ export default function WorkflowWorkbench() {
       setMessage(`复制候选失败：${String(error)}`);
     }
   }
+
+  async function copyPromptText(text: string, label: string) {
+    if (!text.trim()) {
+      setMessage(`${label}为空，无需复制。`);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage(`${label} 已复制到剪贴板（未写入工作副本）。`);
+    } catch (error) {
+      setMessage(`复制 ${label} 失败：${String(error)}`);
+    }
+  }
+
+  function copyPositive() {
+    void copyPromptText(positiveText, "正向 Prompt");
+  }
+
+  function copyNegative() {
+    void copyPromptText(negativeText, "负向 Prompt");
+  }
+
+  function copyBoth() {
+    const parts: string[] = [];
+    if (positiveText.trim()) parts.push(`正向：\n${positiveText}`);
+    if (negativeText.trim()) parts.push(`负向：\n${negativeText}`);
+    if (parts.length === 0) {
+      setMessage("正向与负向均为空，无需复制。");
+      return;
+    }
+    void copyPromptText(parts.join("\n\n"), "完整 Prompt");
+  }
   async function loadTasks(refresh: boolean) {
     if (!workflowId) return;
     try {
@@ -942,7 +974,10 @@ export default function WorkflowWorkbench() {
                 (item) => item.role === "positive",
               ) && (
                 <label className="workflow-text-field">
-                  <span>正向 Prompt</span>
+                  <div className="workflow-field-head">
+                    <span>正向 Prompt</span>
+                    <button onClick={copyPositive}>复制正向</button>
+                  </div>
                   <textarea
                     value={positiveText}
                     onChange={(event) => setPositiveText(event.target.value)}
@@ -955,7 +990,10 @@ export default function WorkflowWorkbench() {
                 (item) => item.role === "negative",
               ) && (
                 <label className="workflow-text-field">
-                  <span>负向 Prompt</span>
+                  <div className="workflow-field-head">
+                    <span>负向 Prompt</span>
+                    <button onClick={copyNegative}>复制负向</button>
+                  </div>
                   <textarea
                     value={negativeText}
                     onChange={(event) => setNegativeText(event.target.value)}
@@ -968,6 +1006,7 @@ export default function WorkflowWorkbench() {
                 <button disabled={busy} onClick={() => void writePrompts()}>
                   写入工作副本并校验
                 </button>
+                <button onClick={copyBoth}>复制完整</button>
                 <span className="muted">
                   不会修改原始文件，也不会提交 ComfyUI 任务。
                 </span>
