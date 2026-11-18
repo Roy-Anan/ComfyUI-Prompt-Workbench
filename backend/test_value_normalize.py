@@ -43,6 +43,29 @@ def test_normalize_routes_by_field_key():
     assert cfg_text["raw"] == "低步低 CFG"
 
 
+def test_trailing_parenthetical_remark_is_stripped_before_parse():
+    steps = value_normalize.normalize("GENERATION SETTINGS::Steps", "25（使用指南参考，非强制固定值）")
+    assert steps["structured"] == {"kind": "value", "value": 25}
+    assert steps["raw"] == "25（使用指南参考，非强制固定值）"
+
+    cfg = value_normalize.normalize("GENERATION SETTINGS::CFG", "12（示例图参数，不要覆盖作者推荐的 6~8）")
+    assert cfg["structured"] == {"kind": "value", "value": 12}
+
+    scheduler = value_normalize.normalize("GENERATION SETTINGS::Scheduler", "Karras（Euler A 时）")
+    assert scheduler["structured"] == {"kind": "list", "items": ["Karras"]}
+    assert scheduler["raw"] == "Karras（Euler A 时）"
+
+
+def test_single_token_sampler_is_one_item_list():
+    parsed = value_normalize.normalize_list("LCM")
+    assert parsed == {"kind": "list", "items": ["LCM"]}
+
+
+def test_two_semicolon_sets_stay_unstructured():
+    steps = value_normalize.normalize("GENERATION SETTINGS::Steps", "35；25~40")
+    assert steps["structured"] is None
+
+
 def test_candidate_records_carry_structured():
     text = (
         "[IDENTITY]\n"

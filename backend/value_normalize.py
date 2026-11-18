@@ -19,6 +19,20 @@ _RANGE = re.compile(rf"^(?P<lo>{_NUM})\s*(?:~|[-–—])\s*(?P<hi>{_NUM})$")
 _RANGE_PLUS = re.compile(rf"^(?P<lo>{_NUM})\s*\+$")
 _PLAIN_NUM = re.compile(rf"^(?P<lo>{_NUM})$")
 _RESOLUTION = re.compile(rf"{_NUM}\s*[×x]\s*{_NUM}")
+# Trailing parenthetical note: an applicability condition or example remark
+# appended after the core value, e.g. ``Karras（Euler A 时）`` or
+# ``25（使用指南参考，非强制固定值）``. Only a trailing bracket is removed;
+# brackets inside a value or a second semicolon-separated set are untouched.
+_TRAILING_PAREN = re.compile(r"\s*[（(][^（）()]*[）)]\s*$")
+
+
+def _strip_trailing_parenthetical(text: str) -> str:
+    cleaned = text.strip()
+    previous = None
+    while previous != cleaned:
+        previous = cleaned
+        cleaned = _TRAILING_PAREN.sub("", cleaned).strip(" ；;，,")
+    return cleaned
 
 
 def _to_number(text: str) -> int | float:
@@ -53,9 +67,9 @@ def normalize_resolution(raw: str) -> dict[str, Any] | None:
 
 
 def normalize_list(raw: str) -> dict[str, Any] | None:
-    """Split a slash/comma list when at least two clean tokens exist."""
+    """Split a slash/comma list; a single clean token is a one-item list."""
     tokens = [token.strip() for token in re.split(r"\s*/\s*|，|,", raw) if token.strip()]
-    if len(tokens) < 2:
+    if not tokens:
         return None
     return {"kind": "list", "items": tokens}
 
@@ -78,5 +92,9 @@ def normalize(rule_key: str, raw: str) -> dict[str, Any]:
     """
     field_name = rule_key.split("::", 1)[1] if "::" in rule_key else rule_key
     normalizer = _FIELD_NORMALIZERS.get(field_name)
-    structured = normalizer(raw) if normalizer else None
+    # Parse against a copy with trailing parenthetical remarks removed; the
+    # original raw text is kept untouched for audit. A second semicolon-set
+    # value is not split here and stays unstructured when ambiguous.
+    cleaned = _strip_trailing_parenthetical(raw)
+    structured = normalizer(cleaned) if normalizer else None
     return {"raw": raw, "structured": structured}

@@ -1,0 +1,40 @@
+{
+  "focus": {
+    "GENERATION SETTINGS::CFG": {
+      "value": "1.5~2",
+      "structured": {
+        "high": 2,
+        "kind": "range",
+        "low": 1.5
+      }
+    },
+    "GENERATION SETTINGS::Sampler": {
+      "value": "Euler A Karras / Exponential",
+      "structured": {
+        "items": [
+          "Euler A Karras",
+          "Exponential"
+        ],
+        "kind": "list"
+      }
+    },
+    "GENERATION SETTINGS::Scheduler": {
+      "value": "Karras（Euler A 时）",
+      "structured": {
+        "items": [
+          "Karras"
+        ],
+        "kind": "list"
+      }
+    },
+    "GENERATION SETTINGS::Steps": {
+      "value": "6~12",
+      "structured": {
+        "high": 12,
+        "kind": "range",
+        "low": 6
+      }
+    }
+  },
+  "after_cleanup": 0
+}

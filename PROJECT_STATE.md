@@ -759,3 +759,29 @@
 - 归一化仅识别 SD1.5/SDXL/Pony 三个明确家族；其余标签留 other，待证据补充后再扩映射。
 - 架构规则继承仍按家族整体继承；家族内冲突人工裁决界面未实现。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R20/`。
+
+## 31. TASK-003.1-R21 M3 第十六切片：参数值剥离尾部备注后再结构化解析（2026-11-18）
+
+### 31.1 当前状态
+
+- 结构化解析前剥离尾部中文/英文括号备注（适用条件、示例说明）；清洗副本走现有 normalizer，`raw` 保留原值可追溯。
+- Sampler/Scheduler 单值归为单元素列表；分号分隔的两套建议不混并，仍留 unstructured。
+- 后端测试 **151 passed**；前端构建 exit 0。
+
+### 31.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 尾部备注剥离 | 通过 | 单测：`25（使用指南参考…）`→value 25；`Karras（Euler A 时）`→list ["Karras"]；raw 保留原值 |
+| 单值列表 | 通过 | 单测：`LCM`→单元素 list |
+| 两套建议不混并 | 通过 | 单测：`35；25~40`→structured=None |
+| 比对链路 | 通过 | 单测：剥离备注后的 Scheduler 规则与实际 karras 命中 match |
+| 真机闭环 | 通过 | `samples/smoke-notes.json`：Scheduler 结构化 list ["Karras"] 并 resolved；Steps/CFG/Sampler 保持；清理归零 |
+| Python pytest | 通过 | **151 passed, 1 warning in 5.88s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0 |
+
+### 31.3 边界与 backlog
+
+- 仅剥离**尾部**括号；括号内含关键参数、分号第二套建议不在本轮拆分。
+- 多套建议（示例/指南并存）的分组结构化、Resolution 与 latent 尺寸对接在后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R21/`。

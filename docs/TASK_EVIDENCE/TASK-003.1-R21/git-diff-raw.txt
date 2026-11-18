@@ -1,0 +1,103 @@
+diff --git a/backend/test_rule_compare.py b/backend/test_rule_compare.py
+index 2ec362d..295130a 100644
+--- a/backend/test_rule_compare.py
++++ b/backend/test_rule_compare.py
+@@ -48,6 +48,16 @@ def test_sampler_list_match():
+     assert verdict["status"] == "match"
+ 
+ 
++def test_scheduler_list_match_after_note_strip():
++    rule = _field(
++        "GENERATION SETTINGS::Scheduler",
++        value="Karras（Euler A 时）",
++        structured={"kind": "list", "items": ["Karras"]},
++    )
++    verdict = rule_compare.compare_rule(rule, {"scheduler": "karras"})
++    assert verdict["status"] == "match"
++
++
+ def test_non_numeric_actual_stays_unknown():
+     rule = _field(
+         "GENERATION SETTINGS::Steps",
+diff --git a/backend/test_value_normalize.py b/backend/test_value_normalize.py
+index a67d3f5..3e15bcf 100644
+--- a/backend/test_value_normalize.py
++++ b/backend/test_value_normalize.py
+@@ -43,6 +43,29 @@ def test_normalize_routes_by_field_key():
+     assert cfg_text["raw"] == "低步低 CFG"
+ 
+ 
++def test_trailing_parenthetical_remark_is_stripped_before_parse():
++    steps = value_normalize.normalize("GENERATION SETTINGS::Steps", "25（使用指南参考，非强制固定值）")
++    assert steps["structured"] == {"kind": "value", "value": 25}
++    assert steps["raw"] == "25（使用指南参考，非强制固定值）"
++
++    cfg = value_normalize.normalize("GENERATION SETTINGS::CFG", "12（示例图参数，不要覆盖作者推荐的 6~8）")
++    assert cfg["structured"] == {"kind": "value", "value": 12}
++
++    scheduler = value_normalize.normalize("GENERATION SETTINGS::Scheduler", "Karras（Euler A 时）")
++    assert scheduler["structured"] == {"kind": "list", "items": ["Karras"]}
++    assert scheduler["raw"] == "Karras（Euler A 时）"
++
++
++def test_single_token_sampler_is_one_item_list():
++    parsed = value_normalize.normalize_list("LCM")
++    assert parsed == {"kind": "list", "items": ["LCM"]}
++
++
++def test_two_semicolon_sets_stay_unstructured():
++    steps = value_normalize.normalize("GENERATION SETTINGS::Steps", "35；25~40")
++    assert steps["structured"] is None
++
++
+ def test_candidate_records_carry_structured():
+     text = (
+         "[IDENTITY]\n"
+diff --git a/backend/value_normalize.py b/backend/value_normalize.py
+index 0c8df04..ecc969a 100644
+--- a/backend/value_normalize.py
++++ b/backend/value_normalize.py
+@@ -19,6 +19,20 @@ _RANGE = re.compile(rf"^(?P<lo>{_NUM})\s*(?:~|[-–—])\s*(?P<hi>{_NUM})$")
+ _RANGE_PLUS = re.compile(rf"^(?P<lo>{_NUM})\s*\+$")
+ _PLAIN_NUM = re.compile(rf"^(?P<lo>{_NUM})$")
+ _RESOLUTION = re.compile(rf"{_NUM}\s*[×x]\s*{_NUM}")
++# Trailing parenthetical note: an applicability condition or example remark
++# appended after the core value, e.g. ``Karras（Euler A 时）`` or
++# ``25（使用指南参考，非强制固定值）``. Only a trailing bracket is removed;
++# brackets inside a value or a second semicolon-separated set are untouched.
++_TRAILING_PAREN = re.compile(r"\s*[（(][^（）()]*[）)]\s*$")
++
++
++def _strip_trailing_parenthetical(text: str) -> str:
++    cleaned = text.strip()
++    previous = None
++    while previous != cleaned:
++        previous = cleaned
++        cleaned = _TRAILING_PAREN.sub("", cleaned).strip(" ；;，,")
++    return cleaned
+ 
+ 
+ def _to_number(text: str) -> int | float:
+@@ -53,9 +67,9 @@ def normalize_resolution(raw: str) -> dict[str, Any] | None:
+ 
+ 
+ def normalize_list(raw: str) -> dict[str, Any] | None:
+-    """Split a slash/comma list when at least two clean tokens exist."""
++    """Split a slash/comma list; a single clean token is a one-item list."""
+     tokens = [token.strip() for token in re.split(r"\s*/\s*|，|,", raw) if token.strip()]
+-    if len(tokens) < 2:
++    if not tokens:
+         return None
+     return {"kind": "list", "items": tokens}
+ 
+@@ -78,5 +92,9 @@ def normalize(rule_key: str, raw: str) -> dict[str, Any]:
+     """
+     field_name = rule_key.split("::", 1)[1] if "::" in rule_key else rule_key
+     normalizer = _FIELD_NORMALIZERS.get(field_name)
+-    structured = normalizer(raw) if normalizer else None
++    # Parse against a copy with trailing parenthetical remarks removed; the
++    # original raw text is kept untouched for audit. A second semicolon-set
++    # value is not split here and stays unstructured when ambiguous.
++    cleaned = _strip_trailing_parenthetical(raw)
++    structured = normalizer(cleaned) if normalizer else None
+     return {"raw": raw, "structured": structured}

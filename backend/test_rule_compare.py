@@ -48,6 +48,16 @@ def test_sampler_list_match():
     assert verdict["status"] == "match"
 
 
+def test_scheduler_list_match_after_note_strip():
+    rule = _field(
+        "GENERATION SETTINGS::Scheduler",
+        value="Karras（Euler A 时）",
+        structured={"kind": "list", "items": ["Karras"]},
+    )
+    verdict = rule_compare.compare_rule(rule, {"scheduler": "karras"})
+    assert verdict["status"] == "match"
+
+
 def test_non_numeric_actual_stays_unknown():
     rule = _field(
         "GENERATION SETTINGS::Steps",
