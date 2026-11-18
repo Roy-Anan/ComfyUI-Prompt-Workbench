@@ -810,3 +810,28 @@
 - 仅取首个有效 latent 节点；多采样器组逐组比对、多 latent 节点取舍在后续切片。
 - 括号内分辨率提取、分号两套建议分组结构化仍未实现；散文型 Resolution（如「SDXL 友好分辨率」）structured=None，保持 unknown。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R22/`。
+
+## 33. TASK-003.1-R23 M3 第十八切片：Resolution 解析保留括号内尺寸（2026-11-18）
+
+### 33.1 当前状态
+
+- Resolution 字段直接在原始文本上提取 `W×H`（含括号备注内的尺寸），不再被尾部备注剥离误伤；重复尺寸按首次出现去重。
+- 数值/列表字段维持 R21 口径：先剥离尾部括号备注再解析，`raw` 保留原值。
+- 后端测试 **158 passed**；前端构建 exit 0。
+
+### 33.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 括号内尺寸提取 | 通过 | 单测：`（768×1152 / 648×1152 / 864×1152，待核对 V3）`→resolutions 三项 |
+| 重复尺寸去重 | 通过 | 单测：`832×1216 / 832×1216`→单元素 |
+| 数值字段备注剥离不受影响 | 通过 | 真机：Clip Skip `2（非 V3 独立参数）`→value 2；Steps `30~32` range |
+| 真机闭环 | 通过 | `samples/smoke-res-paren.json`：Resolution 三组尺寸结构化；清理归零 |
+| Python pytest | 通过 | **158 passed, 1 warning in 5.81s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0 |
+
+### 33.3 边界与 backlog
+
+- 分号两套建议（示例/指南）仍未分组结构化；散文型 Resolution（无任何 `W×H`）structured=None，保持 unknown。
+- 括号内非尺寸备注（待核对、版本说明）仍保留在 `raw`，不参与结构化。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R23/`。

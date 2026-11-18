@@ -1,0 +1,42 @@
+{
+  "focus": {
+    "GENERATION SETTINGS::Resolution": {
+      "value": "系列普通版友好分辨率（768×1152 / 648×1152 / 864×1152，待核对 V3）",
+      "structured": {
+        "items": [
+          {
+            "height": 1152,
+            "width": 768
+          },
+          {
+            "height": 1152,
+            "width": 648
+          },
+          {
+            "height": 1152,
+            "width": 864
+          }
+        ],
+        "kind": "resolutions"
+      }
+    },
+    "GENERATION SETTINGS::Scheduler": {
+      "value": "Karras",
+      "structured": {
+        "items": [
+          "Karras"
+        ],
+        "kind": "list"
+      }
+    },
+    "GENERATION SETTINGS::Steps": {
+      "value": "30~32",
+      "structured": {
+        "high": 32,
+        "kind": "range",
+        "low": 30
+      }
+    }
+  },
+  "after_cleanup": 0
+}

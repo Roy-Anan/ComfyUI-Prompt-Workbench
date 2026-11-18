@@ -27,6 +27,26 @@ def test_resolution_list():
     assert value_normalize.normalize_resolution("SDXL 友好分辨率") is None
 
 
+def test_resolution_keeps_sizes_inside_parenthetical():
+    parsed = value_normalize.normalize(
+        "GENERATION SETTINGS::Resolution",
+        "系列普通版友好分辨率（768×1152 / 648×1152 / 864×1152，待核对 V3）",
+    )
+    assert parsed["structured"] == {
+        "kind": "resolutions",
+        "items": [
+            {"width": 768, "height": 1152},
+            {"width": 648, "height": 1152},
+            {"width": 864, "height": 1152},
+        ],
+    }
+
+
+def test_resolution_de_duplicates_repeated_sizes():
+    parsed = value_normalize.normalize_resolution("832×1216 / 832×1216")
+    assert parsed["items"] == [{"width": 832, "height": 1216}]
+
+
 def test_sampler_list():
     parsed = value_normalize.normalize_list("DPM++ SDE Karras / Euler a")
     assert parsed == {

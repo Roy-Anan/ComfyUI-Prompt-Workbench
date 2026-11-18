@@ -55,14 +55,25 @@ def normalize_number_range(raw: str) -> dict[str, Any] | None:
 
 
 def normalize_resolution(raw: str) -> dict[str, Any] | None:
-    """Parse slash-separated ``W×H`` resolutions; keep non-resolution text aside."""
+    """Parse ``W×H`` resolutions anywhere in the text, including inside remarks.
+
+    Unlike numeric/list fields, a resolution's own dimensions often sit inside
+    a parenthetical note, so extraction runs against the original text instead
+    of the trailing-remark-stripped copy. Duplicate sizes are de-duplicated
+    while preserving first-seen order.
+    """
     found = _RESOLUTION.findall(raw)
     if not found:
         return None
     resolutions: list[dict[str, int]] = []
+    seen: set[tuple[int, int]] = set()
     for item in found:
         width, height = re.split(r"\s*[×x]\s*", item)
-        resolutions.append({"width": int(width), "height": int(height)})
+        pair = (int(width), int(height))
+        if pair in seen:
+            continue
+        seen.add(pair)
+        resolutions.append({"width": pair[0], "height": pair[1]})
     return {"kind": "resolutions", "items": resolutions}
 
 
@@ -92,9 +103,12 @@ def normalize(rule_key: str, raw: str) -> dict[str, Any]:
     """
     field_name = rule_key.split("::", 1)[1] if "::" in rule_key else rule_key
     normalizer = _FIELD_NORMALIZERS.get(field_name)
-    # Parse against a copy with trailing parenthetical remarks removed; the
-    # original raw text is kept untouched for audit. A second semicolon-set
-    # value is not split here and stays unstructured when ambiguous.
+    # Numeric/list fields parse against a copy with trailing parenthetical
+    # remarks removed; Resolution keeps the original text because its dimensions
+    # may live inside a remark. The original raw text is kept untouched for
+    # audit. A second semicolon-set value is not split here and stays
+    # unstructured when ambiguous.
     cleaned = _strip_trailing_parenthetical(raw)
-    structured = normalizer(cleaned) if normalizer else None
+    source = raw if field_name == "Resolution" else cleaned
+    structured = normalizer(source) if normalizer else None
     return {"raw": raw, "structured": structured}
