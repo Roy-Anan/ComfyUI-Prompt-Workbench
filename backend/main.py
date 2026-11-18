@@ -573,6 +573,83 @@ def fetch_ollama_models(url: str) -> dict[str, Any]:
         return {"online": False, "models": [], "error": str(exc)}
 
 
+def _as_nonneg_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    if isinstance(value, float) and value >= 0:
+        return int(value)
+    return None
+
+
+def fetch_comfyui_status(url: str) -> dict[str, Any]:
+    """Read-only ComfyUI connection and device VRAM snapshot from ``/system_stats``.
+
+    Unreachable, malformed, or structurally unexpected responses are reported
+    conservatively as offline with unknown fields; no device or VRAM figure is
+    fabricated. This does not submit a task or otherwise control ComfyUI.
+    """
+    offline: dict[str, Any] = {
+        "online": False,
+        "error": None,
+        "version": None,
+        "pytorch_version": None,
+        "ram_total": None,
+        "ram_free": None,
+        "devices": [],
+    }
+    target = url.rstrip("/") + "/system_stats"
+    request = UrlRequest(target)
+    request.add_header("User-Agent", APP_NAME)
+
+    try:
+        with urlopen(request, timeout=2.5) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        data = json.loads(raw)
+    except (URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        offline["error"] = str(exc)
+        return offline
+
+    if not isinstance(data, dict):
+        offline["error"] = "system_stats 响应结构不符"
+        return offline
+
+    system = data.get("system") if isinstance(data.get("system"), dict) else {}
+    devices_raw = data.get("devices")
+    devices: list[dict[str, Any]] = []
+    if isinstance(devices_raw, list):
+        for item in devices_raw:
+            if not isinstance(item, dict):
+                continue
+            index = item.get("index")
+            dev_type = item.get("type")
+            name = item.get("name")
+            devices.append(
+                {
+                    "index": index if isinstance(index, int) else None,
+                    "name": name if isinstance(name, str) else None,
+                    "type": dev_type if isinstance(dev_type, str) else None,
+                    "vram_total": _as_nonneg_int(item.get("vram_total")),
+                    "vram_free": _as_nonneg_int(item.get("vram_free")),
+                }
+            )
+
+    def _sys_str(key: str) -> str | None:
+        value = system.get(key)
+        return value if isinstance(value, str) else None
+
+    return {
+        "online": True,
+        "error": None,
+        "version": _sys_str("comfyui_version"),
+        "pytorch_version": _sys_str("pytorch_version"),
+        "ram_total": _as_nonneg_int(system.get("ram_total")),
+        "ram_free": _as_nonneg_int(system.get("ram_free")),
+        "devices": devices,
+    }
+
+
 @app.get("/api/services/status")
 def services_status():
     settings = load_settings()
@@ -594,6 +671,12 @@ def services_status():
 def ollama_models():
     settings = load_settings()
     return fetch_ollama_models(settings["connections"]["ollama_url"])
+
+
+@app.get("/api/comfyui/status")
+def comfyui_status():
+    settings = load_settings()
+    return fetch_comfyui_status(settings["connections"]["comfyui_url"])
 
 
 @app.get("/api/models/catalog")

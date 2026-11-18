@@ -390,6 +390,108 @@ def test_fetch_ollama_models_is_conservative_on_unreachable_host(client):
     assert result["error"] is not None
 
 
+def test_comfyui_status_passes_through(client, monkeypatch):
+    test_client, main = client
+    snapshot = {
+        "online": True,
+        "error": None,
+        "version": "0.30.2",
+        "pytorch_version": "2.13.0+cu130",
+        "ram_total": 16905289728,
+        "ram_free": 7933489152,
+        "devices": [
+            {
+                "index": 0,
+                "name": "cuda:0 RTX 4060 Laptop",
+                "type": "cuda",
+                "vram_total": 8585216000,
+                "vram_free": 7451181056,
+            }
+        ],
+    }
+
+    monkeypatch.setattr(main, "fetch_comfyui_status", lambda url: snapshot)
+
+    body = test_client.get("/api/comfyui/status", headers=auth()).json()
+    assert body == snapshot
+
+
+def test_comfyui_status_passes_through_offline(client, monkeypatch):
+    test_client, main = client
+
+    def fake_fetch(url):
+        return {
+            "online": False,
+            "error": "connection refused",
+            "version": None,
+            "pytorch_version": None,
+            "ram_total": None,
+            "ram_free": None,
+            "devices": [],
+        }
+
+    monkeypatch.setattr(main, "fetch_comfyui_status", fake_fetch)
+
+    body = test_client.get("/api/comfyui/status", headers=auth()).json()
+    assert body["online"] is False
+    assert body["devices"] == []
+    assert body["error"] == "connection refused"
+
+
+def test_fetch_comfyui_status_is_conservative_on_unreachable_host(client):
+    _, main = client
+    result = main.fetch_comfyui_status("http://127.0.0.1:1")
+    assert result["online"] is False
+    assert result["devices"] == []
+    assert result["error"] is not None
+
+
+def test_fetch_comfyui_status_parses_devices_conservatively(client, monkeypatch):
+    _, main = client
+    payload = {
+        "system": {
+            "comfyui_version": "0.30.2",
+            "ram_total": 16905289728,
+            "ram_free": "not-a-number",
+        },
+        "devices": [
+            {
+                "name": "cuda:0 RTX 4060 Laptop",
+                "type": "cuda",
+                "index": 0,
+                "vram_total": 8585216000,
+                "vram_free": 7451181056,
+            },
+            "not-a-dict",
+            {"vram_total": -5, "vram_free": None},
+        ],
+    }
+
+    class _Resp:
+        status = 200
+
+        def read(self):
+            return json.dumps(payload).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(main, "urlopen", lambda req, timeout=2.5: _Resp())
+
+    result = main.fetch_comfyui_status("http://127.0.0.1:8188")
+    assert result["online"] is True
+    assert result["version"] == "0.30.2"
+    assert result["ram_total"] == 16905289728
+    assert result["ram_free"] is None
+    assert len(result["devices"]) == 2
+    assert result["devices"][0]["vram_free"] == 7451181056
+    assert result["devices"][1]["vram_total"] is None
+    assert result["devices"][1]["vram_free"] is None
+
+
 def test_unknown_api_returns_json_not_html(client):
     test_client, _ = client
 
