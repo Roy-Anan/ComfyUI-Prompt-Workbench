@@ -145,6 +145,34 @@ def loaded_ollama_models(
     return {"online": True, "models": names, "error": None}
 
 
+def cancel_pending(
+    comfyui_url: str,
+    prompt_id: str,
+    timeout: float = 5.0,
+) -> dict[str, Any]:
+    """Remove a pending prompt from the ComfyUI queue (``/queue`` delete)."""
+    _status, _data, error = _post_json(
+        comfyui_url.rstrip("/") + "/queue",
+        {"delete": [prompt_id]},
+        timeout,
+    )
+    return {"ok": error is None, "error": error}
+
+
+def interrupt_running(
+    comfyui_url: str,
+    prompt_id: str,
+    timeout: float = 5.0,
+) -> dict[str, Any]:
+    """Interrupt the running prompt identified by ``prompt_id`` (``/interrupt``)."""
+    _status, _data, error = _post_json(
+        comfyui_url.rstrip("/") + "/interrupt",
+        {"prompt_id": prompt_id},
+        timeout,
+    )
+    return {"ok": error is None, "error": error}
+
+
 def submit_prompt(
     comfyui_url: str,
     prompt_api: dict[str, Any],

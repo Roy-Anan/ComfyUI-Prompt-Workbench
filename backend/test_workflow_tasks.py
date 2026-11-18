@@ -316,3 +316,106 @@ def test_classify_history_status_is_conservative():
     assert classify("interrupted", None) == "interrupted"
     assert classify(None, None) == "unknown"
     assert classify("running", None) == "unknown"
+
+
+def _set_status(main, prompt_id: str, status: str) -> None:
+    db = main.DATA_ROOT / "database" / "workbench.sqlite3"
+    with workflow_api.model_identity.connect(db) as connection:
+        workflow_api.comfy_tasks.ensure_schema(connection)
+        workflow_api.comfy_tasks.update_status(connection, prompt_id, status)
+
+
+def test_cancel_pending_task_dequeues_and_marks_interrupted(client, monkeypatch):
+    test_client, main = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+    dequeued: list[str] = []
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "cancel_pending",
+        lambda url, pid: dequeued.append(pid) or {"ok": True, "error": None},
+    )
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "interrupt_running",
+        lambda url, pid: {"ok": False, "error": "should not call"},
+    )
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/prompt-1/cancel", headers=AUTH
+    )
+    assert response.status_code == 200
+    assert dequeued == ["prompt-1"]
+    assert response.json()["status"] == "interrupted"
+
+
+def test_interrupt_running_task_targets_prompt(client, monkeypatch):
+    test_client, main = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+    _set_status(main, "prompt-1", "running")
+    interrupted: list[str] = []
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "interrupt_running",
+        lambda url, pid: interrupted.append(pid) or {"ok": True, "error": None},
+    )
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "cancel_pending",
+        lambda url, pid: {"ok": False, "error": "should not call"},
+    )
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/prompt-1/cancel", headers=AUTH
+    )
+    assert response.status_code == 200
+    assert interrupted == ["prompt-1"]
+    assert response.json()["status"] == "interrupted"
+
+
+def test_cancel_refuses_terminal_task(client, monkeypatch):
+    test_client, main = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+    _set_status(main, "prompt-1", "succeeded")
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/prompt-1/cancel", headers=AUTH
+    )
+    assert response.status_code == 409
+
+
+def test_cancel_refuses_unknown_task(client, monkeypatch):
+    test_client, main = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+    _set_status(main, "prompt-1", "unknown")
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/prompt-1/cancel", headers=AUTH
+    )
+    assert response.status_code == 409
+
+
+def test_cancel_offline_leaves_local_status(client, monkeypatch):
+    test_client, main = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+    monkeypatch.setattr(
+        workflow_api.comfy_client, "comfyui_online", lambda url: False
+    )
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/prompt-1/cancel", headers=AUTH
+    )
+    assert response.status_code == 502
+    listed = test_client.get(
+        f"/api/workflows/{workflow_id}/tasks", headers=AUTH
+    ).json()
+    assert listed["items"][0]["status"] == "submitted"
+
+
+def test_cancel_unknown_prompt_returns_404(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _submit_one(test_client, monkeypatch)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks/does-not-exist/cancel", headers=AUTH
+    )
+    assert response.status_code == 404

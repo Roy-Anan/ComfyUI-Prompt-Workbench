@@ -482,6 +482,64 @@ def list_tasks(workflow_id: str, refresh: bool = False):
         return {"items": items, "sync_error": sync_error}
 
 
+@router.post("/{workflow_id}/tasks/{prompt_id}/cancel")
+def cancel_task(workflow_id: str, prompt_id: str):
+    """Cancel a pending task or interrupt a running task for this workflow.
+
+    Routing follows the locally recorded status: ``submitted`` is dequeued via
+    ``/queue`` delete, ``running`` is interrupted via ``/interrupt``. Terminal
+    and ``unknown`` tasks are refused rather than guessed at. A failed remote
+    call leaves the local record untouched; nothing is retried automatically.
+    """
+    try:
+        store().get_workflow(workflow_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+    with model_identity.connect(_database_path()) as connection:
+        comfy_tasks.ensure_schema(connection)
+        record = comfy_tasks.get_by_prompt_id(connection, prompt_id)
+        if record is None or record["workflow_id"] != workflow_id:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        status = record["status"]
+        if status in ("succeeded", "failed", "interrupted"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"任务已是终态（{status}），不能取消或中断。",
+            )
+        if status == "unknown":
+            raise HTTPException(
+                status_code=409,
+                detail="任务状态未知，请先刷新校准后再操作。",
+            )
+
+        if not comfy_client.comfyui_online(_comfyui_url()):
+            raise HTTPException(
+                status_code=502,
+                detail={"online": False, "error": "ComfyUI 不可达，未执行取消/中断。"},
+            )
+
+        if status == "running":
+            result = comfy_client.interrupt_running(_comfyui_url(), prompt_id)
+        else:
+            result = comfy_client.cancel_pending(_comfyui_url(), prompt_id)
+
+        if not result["ok"]:
+            raise HTTPException(
+                status_code=502,
+                detail={"online": True, "error": result["error"]},
+            )
+
+        comfy_tasks.update_status(
+            connection,
+            prompt_id,
+            "interrupted",
+            last_error="已手动取消/中断",
+        )
+        return comfy_tasks.get_by_prompt_id(connection, prompt_id)
+
+
 @router.get("/{workflow_id}/rules/compare")
 def workflow_rule_compare(workflow_id: str):
     """Compare the resolved rule payload against this workflow's sampler actuals.

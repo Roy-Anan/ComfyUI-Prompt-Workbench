@@ -416,6 +416,22 @@ export default function WorkflowWorkbench() {
       setTaskBusy(false);
     }
   }
+  async function cancelTask(promptId: string) {
+    if (!workflowId) return;
+    setTaskBusy(true);
+    try {
+      await apiPost(
+        `/api/workflows/${workflowId}/tasks/${promptId}/cancel`,
+        {},
+      );
+      setMessage("任务已取消/中断。");
+      await loadTasks(true);
+    } catch (error) {
+      setMessage(`取消/中断失败：${String(error)}`);
+    } finally {
+      setTaskBusy(false);
+    }
+  }
   const canWrite =
     detail?.report.safe_prompt_write_supported === true &&
     detail.manifest.confirmed === true;
@@ -860,9 +876,20 @@ export default function WorkflowWorkbench() {
                               </small>
                             )}
                           </div>
-                          <span className={`compare-badge ${task.status}`}>
-                            {TASK_STATUS_LABEL[task.status] ?? task.status}
-                          </span>
+                          <div className="actions">
+                            {(task.status === "submitted" ||
+                              task.status === "running") && (
+                              <button
+                                onClick={() => void cancelTask(task.prompt_id)}
+                                disabled={taskBusy || busy}
+                              >
+                                {task.status === "running" ? "中断" : "取消"}
+                              </button>
+                            )}
+                            <span className={`compare-badge ${task.status}`}>
+                              {TASK_STATUS_LABEL[task.status] ?? task.status}
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>

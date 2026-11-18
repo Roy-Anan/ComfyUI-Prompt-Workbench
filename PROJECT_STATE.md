@@ -1253,3 +1253,21 @@
 
 - WebSocket 实时进度、队列暂停/恢复/取消/重试、断线恢复状态机、中断任务通知与图库视图留后续切片。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R43/`。
+
+## 54. TASK-003.1-R44 M6 第六切片：任务取消与中断（2026-11-18）
+
+### 54.1 落地内容
+
+- `comfy_client.cancel_pending`（POST `/queue` `{"delete":[prompt_id]}`）与
+  `interrupt_running`（POST `/interrupt` `{"prompt_id":...}`），接口形状核对自真机 ComfyUI 0.30.2
+  `server.py`。
+- `POST /api/workflows/{id}/tasks/{prompt_id}/cancel`：按本地状态路由；终态（succeeded/failed/
+  interrupted）与 unknown 拒绝 409；ComfyUI 离线 502；远端失败不改本地记录；成功记 interrupted。
+- 前端任务项对 submitted/running 提供取消/中断按钮，操作后刷新校准。
+- 新增 6 个单测：待执行出队、运行中定向中断、终态拒绝、unknown 拒绝、离线状态不变、未知任务 404。
+- 后端 **203 passed**；前端 `tsc -b && vite build` 绿（`index-CGPpLaRC.js 169.61 kB gzip 54.44 kB`）。
+
+### 54.2 边界与 backlog
+
+- 队列暂停/恢复、失败重试、WebSocket 实时进度、断线恢复状态机、通知与图库视图留后续切片。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R44/`。
