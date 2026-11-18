@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiGetBlob, apiPost } from "./api";
 import { formatStructured } from "./format";
 import HistoryPanel from "./HistoryPanel";
 import WorkflowWorkbench from "./WorkflowWorkbench";
@@ -484,6 +484,27 @@ export default function App() {
     anchor.remove();
     URL.revokeObjectURL(url);
     setMessage("设置已导出（仅本地，未上传；不含模型权重与原图）。");
+  }
+
+  async function exportBackup() {
+    setBusy(true);
+    try {
+      const blob = await apiGetBlob("/api/backup/export");
+      const url = URL.createObjectURL(blob);
+      const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `workbench-backup-${stamp}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setMessage("整库备份已导出（仅本地 ZIP；不含模型权重与原图）。");
+    } catch (error) {
+      setMessage(`导出整库备份失败：${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function importSettingsFile(event: ChangeEvent<HTMLInputElement>) {
@@ -1064,6 +1085,13 @@ export default function App() {
             disabled={busy || !settings}
           >
             导出设置
+          </button>
+
+          <button
+            onClick={() => void exportBackup()}
+            disabled={busy}
+          >
+            导出整库备份
           </button>
 
           <button

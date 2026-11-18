@@ -91,3 +91,15 @@ export function apiDelete<T>(
     body: JSON.stringify(body),
   });
 }
+
+// Read-only binary download (e.g. the local backup ZIP). GET requests carry
+// the session cookie automatically and need no CSRF header.
+export async function apiGetBlob(path: string): Promise<Blob> {
+  await ensureSession();
+  const response = await fetch(path, { method: "GET" });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`${response.status}: ${detail}`);
+  }
+  return response.blob();
+}

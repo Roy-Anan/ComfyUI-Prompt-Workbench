@@ -16,9 +16,10 @@ from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
+import backup_export
 import comfy_tasks
 import datadir
 import generation_history
@@ -824,6 +825,28 @@ def diagnostics():
         "database_error": db_error,
         "uploaded": False,
     }
+
+
+@app.get("/api/backup/export")
+def backup_export_archive():
+    """Read-only local backup ZIP of the managed persistent data domains.
+
+    Archives settings, the SQLite database (online backup), workflow copies
+    and snapshots, knowledge material, prompt templates, drafts and history
+    index records. Cache, logs, prior backups and prior exports are excluded;
+    model weights and original images are never copied (external paths are
+    recorded in the manifest only). Restore / verified recovery is a later
+    slice. The report manifest is stored inside the archive as ``manifest.json``.
+    """
+    load_settings()  # ensure the managed root and database are ready
+    data, manifest = backup_export.build_backup_archive(DATA_ROOT, APP_VERSION)
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="{backup_export.backup_filename()}"'
+        ),
+        "X-Workbench-Backup-Integrity": str(manifest["database"]["integrity"]),
+    }
+    return Response(content=data, media_type="application/zip", headers=headers)
 
 
 @app.get("/api/ollama/models")

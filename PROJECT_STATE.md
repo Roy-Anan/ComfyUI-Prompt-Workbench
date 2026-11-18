@@ -1654,3 +1654,33 @@
 - 同 role 多节点沿用既有 `write_prompts` 聚合口径；恢复按 role 取首个节点文本，不做多节点逐字段合并。
 - 多草稿 / 草稿箱、版本备注、版本差异对照、标签 / 收藏 / 搜索 / 回收站仍属 M5 backlog。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R66/`。
+
+## 75. TASK-003.1-R67 M9 整库备份只读导出（ZIP + 清单）（2026-11-18）
+
+### 75.1 落地内容
+
+- 后端 `backup_export.py`：纳入 `settings/settings.json`、SQLite 库、`workflows/`（副本 + 版本快照）、
+  `knowledge/`、`prompts/`、`drafts/`、`history/`；排除 `cache/`、`logs/`、`backups/`、`exports/`
+  与损坏设置旁车；外部 checkpoint / LoRA / CLIP / VAE / output 仅在清单登记路径与存在性，不拷贝权重或原图。
+- 数据库经 SQLite backup API 在线备份到临时文件，归档为可直接打开的真实 `.sqlite3`；
+  `PRAGMA integrity_check` 结果记入 `manifest.json`；清单含导出时间、版本、各域文件计数 / 字节数、
+  排除域、外部路径与连接地址。
+- 端点 `GET /api/backup/export` 返回 `application/zip`（GET 免 CSRF，走既有会话鉴权）；
+  前端设置页「导出整库备份」按钮，`apiGetBlob` 取 Blob 按时间戳下载 ZIP。
+
+### 75.2 真机闭环与回归
+
+- 后端直连：200 / `application/zip` / 77,986 字节；包内清单、设置、库（69,632 字节，integrity `ok`）、
+  workflows 90 文件；归档库回写后 integrity `ok`，表齐全；排除域与损坏旁车未进包；外部目录未配置记空。
+- 浏览器：按钮在位，点击后 `/api/backup/export` GET `ok`、无 console 报错，消息
+  「整库备份已导出（仅本地 ZIP；不含模型权重与原图）。」。
+- 只读导出未改用户数据，`rules=0`、`profiles=13`、`workflows=22` 保持基线；stopper 按身份回收 PID 11800，
+  端口关闭；Ollama / ComfyUI 未触碰。
+- 后端 **231 passed, 1 warning**（较 229 基线 +2）；前端 `tsc -b && vite build` 绿，产物
+  `index-Cy3p6Q7D.js` 181.47 kB / gzip 57.84 kB，`index-X0JFovQF.css` 9.42 kB / gzip 2.33 kB。
+
+### 75.3 边界与 backlog
+
+- 本切片只导出；备份恢复写入、恢复前完整性校验与冲突合并、数据库迁移、崩溃恢复巡检留后续切片（高风险）。
+- 备份不含模型权重与原图；换机迁移需在目标机另行就位 ComfyUI 模型目录。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R67/`。
