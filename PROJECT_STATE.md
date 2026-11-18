@@ -1094,3 +1094,22 @@
 - CLIP/VAE 未进身份哈希索引；无大小/摘要/校验标注，不参与身份归并。
 - 目录索引不递归子文件夹；真机未配置 CLIP/VAE 目录，命中分支由临时目录单测覆盖。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R34/`。
+
+## 45. TASK-003.1-R35 CLIP/VAE 接入身份索引与摘要挂载（2026-11-18，批量终验节奏首批）
+
+### 45.1 落地内容
+
+- catalog 端点目录索引、摘要构建、identity 回填三段循环合并为统一 `identity_groups`，
+  扩入 `clip`/`vae`；CLIP/VAE 沿用与 Checkpoint/LoRA 同一套身份库：按需哈希、不 eager、
+  文件 size/mtime 变化使缓存失效，无摘要不推断身份。
+- 前端 CLIP/VAE 清单条目由 `diskLabel` 改为统一 `identityLabel`；身份未命中时回退磁盘标签，
+  保守口径不变。
+- 新增端点单测：配置临时 clip/vae 目录后，两条目 `identity.known=True`、`on_disk=True`、
+  大小与磁盘一致。
+- 后端测试 **170 passed**；前端 `tsc -b && vite build` exit 0（`index-CPKxdkMV.js 165.62 kB`）。
+
+### 45.2 边界与 backlog
+
+- CLIP/VAE 哈希仍按需触发，无全量/定时哈希策略与前端哈希触发入口。
+- 真机未配置 CLIP/VAE 目录，命中分支由临时目录单测覆盖；本批按批量终验节奏，真机验收在阶段收口统一进行。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R35/`。

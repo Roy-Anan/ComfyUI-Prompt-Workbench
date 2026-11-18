@@ -596,7 +596,7 @@ export default function App() {
                   {catalog.clips.map((entry) => (
                     <li key={entry.name}>
                       <span>{entry.name}</span>
-                      <small>{diskLabel(entry.on_disk)}</small>
+                      <small>{identityLabel(entry)}</small>
                     </li>
                   ))}
                   {catalog.clips.length === 0 && (
@@ -612,9 +612,10 @@ export default function App() {
                   {catalog.vaes.map((entry) => (
                     <li key={entry.name}>
                       <span>{entry.name}</span>
-                      <small>{diskLabel(entry.on_disk)}</small>
+                      <small>{identityLabel(entry)}</small>
                     </li>
                   ))}
+                
                   {catalog.vaes.length === 0 && (
                     <li className="catalog-empty">ComfyUI 未列出 VAE</li>
                   )}

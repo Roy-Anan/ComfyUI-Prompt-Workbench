@@ -247,3 +247,60 @@ def test_catalog_endpoint_attaches_identity_for_configured_dir(
     assert identity["size_bytes"] == len(b"weight")
     assert identity["hashed"] is False
     assert identity["sha256"] is None
+
+
+def test_catalog_endpoint_attaches_identity_for_clip_vae_dirs(
+    client, monkeypatch, tmp_path
+):
+    test_client, main = client
+    clip_dir = tmp_path / "clip"
+    vae_dir = tmp_path / "vae"
+    clip_dir.mkdir()
+    vae_dir.mkdir()
+    (clip_dir / "clip-l.safetensors").write_bytes(b"clip-bytes")
+    (vae_dir / "animevae.pt").write_bytes(b"vae-bytes")
+
+    settings = test_client.get("/api/settings", headers=auth()).json()
+    settings["storage"]["clip"] = str(clip_dir)
+    settings["storage"]["vae"] = str(vae_dir)
+    test_client.post(
+        "/api/settings",
+        headers=auth(),
+        json={
+            "storage": {
+                k: v for k, v in settings["storage"].items() if k != "root"
+            },
+            "connections": settings["connections"],
+        },
+    )
+
+    def fake_catalog(
+        comfyui_url,
+        checkpoint_dir="",
+        lora_dir="",
+        clip_dir="",
+        vae_dir="",
+        timeout=4.0,
+    ):
+        return {
+            "online": True,
+            "error": None,
+            "checkpoints": [],
+            "clips": [{"name": "clip-l.safetensors", "on_disk": True}],
+            "vaes": [{"name": "animevae.pt", "on_disk": True}],
+            "loras": [],
+        }
+
+    monkeypatch.setattr(main.model_catalog, "fetch_catalog", fake_catalog)
+
+    body = test_client.get(
+        "/api/models/catalog", headers=auth()
+    ).json()
+    clip_identity = body["clips"][0]["identity"]
+    vae_identity = body["vaes"][0]["identity"]
+    assert clip_identity["known"] is True
+    assert clip_identity["on_disk"] is True
+    assert clip_identity["size_bytes"] == len(b"clip-bytes")
+    assert vae_identity["known"] is True
+    assert vae_identity["on_disk"] is True
+    assert vae_identity["size_bytes"] == len(b"vae-bytes")

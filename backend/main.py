@@ -586,21 +586,22 @@ def models_catalog():
     )
 
     database_path = Path(storage["database"]).expanduser() / "workbench.sqlite3"
+    # catalog group -> identity category -> storage directory key.
+    identity_groups = (
+        ("checkpoints", "checkpoint", "checkpoint"),
+        ("loras", "lora", "lora"),
+        ("clips", "clip", "clip"),
+        ("vaes", "vae", "vae"),
+    )
     with model_identity.connect(database_path) as connection:
         model_identity.ensure_schema(connection)
-        for category, dir_key in (
-            ("checkpoint", "checkpoint"),
-            ("lora", "lora"),
-        ):
+        for _group, category, dir_key in identity_groups:
             directory = storage.get(dir_key, "")
             if directory:
                 model_identity.index_directory(connection, category, directory)
 
         summaries: dict[str, dict[str, Any]] = {}
-        for group, category in (
-            ("checkpoints", "checkpoint"),
-            ("loras", "lora"),
-        ):
+        for group, category, _dir_key in identity_groups:
             summaries[group] = {
                 entry["name"]: model_identity.identity_summary(
                     connection, category, entry["name"]
@@ -608,10 +609,7 @@ def models_catalog():
                 for entry in catalog.get(group, [])
             }
 
-    for group, category in (
-        ("checkpoints", "checkpoint"),
-        ("loras", "lora"),
-    ):
+    for group, _category, _dir_key in identity_groups:
         for entry in catalog.get(group, []):
             entry["identity"] = summaries[group].get(
                 entry["name"], {"known": False}
