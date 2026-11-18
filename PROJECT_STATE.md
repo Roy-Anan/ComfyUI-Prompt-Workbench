@@ -573,3 +573,30 @@
 - 本轮为只读预览：候选审核导入落库、三级规则实际数据装载、前端规则/档案管理界面未实现。
 - 参数仍为原文散文；多模型/LoRA 组合、冲突裁决、动态检索、LLM 上下文装配、版本/差异回退未实现。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R13/`。
+
+## 24. TASK-003.1-R14 M3 第九切片：档案候选审核导入规则库（2026-11-18）
+
+### 24.1 当前状态
+
+- `profile_source.py` 新增 `import_profile(connection, file_name)`：把单份档案候选导入为 **checkpoint 级**规则；每条落库前过引擎 `RuleRecord.validate()`，非法候选记入 `rejected` 不中断整批；无完整 checkpoint 文件名的档案 400 拒绝。
+- `main.py` 新增 `POST /api/profiles/import`（`ProfileImport.file_name`），走既有本地会话与 CSRF 中间件；404 档案、400 无身份/非法记录分别处理。
+- 导入报告返回 `imported` 条数、`rejected` 明细、`unknown_fields`。
+- 后端测试 **112 passed**；前端构建 exit 0。
+
+### 24.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 导入落库 | 通过 | 接口测试：Alpha 档案 2 条 checkpoint 规则入库，清单可见 |
+| 引擎校验 | 通过 | 非法候选跳过记 rejected；无文件名档案 400 |
+| 解析回读 | 通过 | 接口测试：入库 Steps=20 经引擎 resolve 为 resolved |
+| 缺失档案 404 | 通过 | 接口测试：Nope.txt 返回 404 |
+| 真机闭环 | 通过 | `samples/smoke-import.json`：Anything_V5 导入 11 条、0 拒绝、解析回读、清理归零 |
+| Python pytest | 通过 | **112 passed, 1 warning in 5.08s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 24.3 边界与 backlog
+
+- 本轮仅 checkpoint 级导入；architecture/global 级规则装载、参数结构化拆分、前端导入/审核界面未实现。
+- 导入为整档 upsert，无逐候选勾选/驳回/差异预览；多模型/LoRA 组合、冲突人工裁决、动态检索、LLM 上下文装配、版本/差异回退未实现。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R14/`。

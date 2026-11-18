@@ -12,10 +12,13 @@ temporary directory.
 from __future__ import annotations
 
 import os
+import sqlite3
 from pathlib import Path
 from typing import Any
 
 import profile_parser
+import rule_engine
+import rule_store
 
 
 def profiles_dir() -> Path:
@@ -87,4 +90,51 @@ def preview_profile(file_name: str, source_dir: Path | None = None) -> dict[str,
         "architecture": parsed.architecture,
         "unknown_fields": parsed.unknown_fields,
         "candidates": records,
+    }
+
+
+def import_profile(
+    connection: sqlite3.Connection,
+    file_name: str,
+    source_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Persist one profile's reviewed candidates as checkpoint-level rules.
+
+    Each candidate goes through the engine record validator before upsert;
+    invalid candidates are skipped and reported rather than aborting the whole
+    import. A profile without an exact checkpoint filename has no checkpoint
+    scope and is rejected up front. Returns an import report; does not call any
+    external service.
+    """
+    preview = preview_profile(file_name, source_dir)
+    scope_key = preview["filename"]
+    if not scope_key:
+        raise rule_engine.RuleError("Profile has no exact checkpoint filename; cannot scope checkpoint rules")
+
+    imported: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+
+    for record in preview["candidates"]:
+        try:
+            stored = rule_store.upsert_rule(
+                connection,
+                level="checkpoint",
+                scope_key=scope_key,
+                rule_key=record["rule_key"],
+                value=record["value"],
+                provenance=record["provenance"],
+                confidence=record["confidence"],
+                version=record["version"],
+                note=record["note"],
+            )
+            imported.append(stored)
+        except rule_engine.RuleError as exc:
+            rejected.append({"rule_key": record["rule_key"], "reason": str(exc)})
+
+    return {
+        "file": preview["file"],
+        "filename": scope_key,
+        "imported": len(imported),
+        "rejected": rejected,
+        "unknown_fields": preview["unknown_fields"],
     }

@@ -248,6 +248,10 @@ class RuleDelete(BaseModel):
     rule_key: str = Field(min_length=1, max_length=120)
 
 
+class ProfileImport(BaseModel):
+    file_name: str = Field(min_length=1, max_length=120)
+
+
 app = FastAPI(
     title=APP_NAME,
     version=APP_VERSION,
@@ -706,6 +710,27 @@ def preview_profile(file_name: str):
         return profile_source.preview_profile(file_name)
     except FileNotFoundError:
         raise HTTPException(404, f"Profile not found: {file_name}") from None
+
+
+@app.post("/api/profiles/import")
+def import_profile(payload: ProfileImport):
+    """Import one reviewed profile's candidates as checkpoint-level rules.
+
+    Candidates are validated by the engine before upsert; invalid ones are
+    reported as rejected without aborting the rest. This is a local write behind
+    the existing session/CSRF middleware; no external service is called.
+    """
+    settings = load_settings()
+    database_path = Path(settings["storage"]["database"]).expanduser() / "workbench.sqlite3"
+    try:
+        with model_identity.connect(database_path) as connection:
+            rule_store.ensure_schema(connection)
+            report = profile_source.import_profile(connection, payload.file_name)
+        return report
+    except FileNotFoundError:
+        raise HTTPException(404, f"Profile not found: {payload.file_name}") from None
+    except rule_engine.RuleError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 # ---- Static frontend hosting (local Web runtime) ---------------------------

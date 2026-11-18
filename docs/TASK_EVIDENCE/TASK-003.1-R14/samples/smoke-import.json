@@ -1,0 +1,12 @@
+{
+  "target": {"file": "Anything_V5.txt", "filename": "anything-v5.safetensors", "preview_candidates": 11},
+  "import": {"status": 200, "imported": 11, "rejected": 0, "unknown_fields": 26},
+  "stored_rules": {"status": 200, "items": 11},
+  "sample_records": [
+    {"rule_key": "ARCHITECTURE::Base Architecture", "provenance": "verified_mirror", "confidence": "partial", "value": "SD1.5（SHA256 一致）"},
+    {"rule_key": "ARCHITECTURE::Model Type", "provenance": "verified_mirror", "confidence": "partial", "value": "Checkpoint；文件身份经哈希对照确认"},
+    {"rule_key": "CONFIDENCE::Last Updated", "provenance": "unverified", "confidence": "unverified", "value": "2026-11-07"}
+  ],
+  "resolve": {"status": 200, "key": "ARCHITECTURE::Base Architecture", "result": "resolved", "value": "SD1.5（SHA256 一致）"},
+  "after_cleanup": {"items": 0}
+}

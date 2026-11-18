@@ -77,6 +77,63 @@ def test_preview_profile_unknown_file_returns_404(client, tmp_path, monkeypatch)
     assert response.status_code == 404
 
 
+def test_import_profile_persists_candidates(client, tmp_path, monkeypatch):
+    test_client, _ = client
+    _seed_profiles(tmp_path, monkeypatch)
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    imported = test_client.post(
+        "/api/profiles/import", headers=headers, json={"file_name": "Alpha.txt"}
+    )
+    assert imported.status_code == 200
+    report = imported.json()
+    assert report["filename"] == "alpha.safetensors"
+    assert report["imported"] == 2
+    assert report["rejected"] == []
+
+    stored = test_client.get(
+        "/api/rules?level=checkpoint&scope_key=alpha.safetensors", headers=headers
+    )
+    items = stored.json()["items"]
+    keys = {item["rule_key"] for item in items}
+    assert "ARCHITECTURE::Base Architecture" in keys
+    assert "GENERATION SETTINGS::Steps" in keys
+
+    resolved = test_client.get(
+        "/api/rules/resolve?level=checkpoint&scope_key=alpha.safetensors"
+        "&keys=GENERATION SETTINGS::Steps",
+        headers=headers,
+    )
+    body = resolved.json()
+    assert body["fields"]["GENERATION SETTINGS::Steps"]["status"] == "resolved"
+    assert body["fields"]["GENERATION SETTINGS::Steps"]["value"] == "20"
+
+
+def test_import_missing_profile_returns_404(client, tmp_path, monkeypatch):
+    test_client, _ = client
+    _seed_profiles(tmp_path, monkeypatch)
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    response = test_client.post(
+        "/api/profiles/import", headers=headers, json={"file_name": "Nope.txt"}
+    )
+    assert response.status_code == 404
+
+
+def test_import_profile_without_filename_is_rejected(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("WORKBENCH_PROFILES_DIR", str(tmp_path))
+    (tmp_path / "NoId.txt").write_text(
+        "[GENERATION SETTINGS]\nSteps: [作者推荐] 20\n", encoding="utf-8"
+    )
+    test_client, _ = client
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    response = test_client.post(
+        "/api/profiles/import", headers=headers, json={"file_name": "NoId.txt"}
+    )
+    assert response.status_code == 400
+
+
 def test_list_missing_directory_is_empty_not_error(client, monkeypatch):
     test_client, _ = client
     monkeypatch.setenv("WORKBENCH_PROFILES_DIR", "Z:/does/not/exist")
