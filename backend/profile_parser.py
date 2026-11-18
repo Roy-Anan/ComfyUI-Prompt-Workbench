@@ -184,6 +184,11 @@ def parse_profile_text(text: str, source_filename: str | None = None) -> ParsedP
                 # "SD1.5（SHA256 一致）" so the architecture stays a clean label.
                 architecture = _strip_trailing_parens(clean) or None
 
+            # The IDENTITY section carries matching metadata only; its fields
+            # are extracted above and must not become rule candidates.
+            if section == "IDENTITY":
+                continue
+
             if _is_missing(clean, field_name):
                 unknown_fields.append(f"{section}::{field_name}")
                 continue

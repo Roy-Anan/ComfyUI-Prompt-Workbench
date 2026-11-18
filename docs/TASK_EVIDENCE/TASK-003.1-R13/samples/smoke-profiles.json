@@ -1,0 +1,17 @@
+{
+  "list": {"status": 200, "files": 13},
+  "preview": {
+    "file": "Anything_V5.txt",
+    "filename": "anything-v5.safetensors",
+    "architecture": "SD1.5",
+    "candidates": 11,
+    "unknown_fields": 26,
+    "sample_record": {
+      "rule_key": "ARCHITECTURE::Base Architecture",
+      "provenance": "verified_mirror",
+      "confidence": "partial"
+    }
+  },
+  "missing": {"status": 404, "detail": "Profile not found: DoesNotExist.txt"},
+  "stored_rules_after_preview": {"status": 200, "items": 0}
+}

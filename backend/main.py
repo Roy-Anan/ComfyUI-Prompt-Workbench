@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 import datadir
 import model_catalog
 import model_identity
+import profile_source
 import rule_engine
 import rule_store
 from workflow_api import router as workflow_router
@@ -687,6 +688,24 @@ def delete_rule(payload: RuleDelete):
             connection, payload.level, payload.scope_key, payload.rule_key
         )
     return {"removed": removed}
+
+
+@app.get("/api/profiles")
+def list_profiles():
+    """List legacy profile notes with parsed identity and candidate counts.
+
+    Read-only: no candidate is persisted to the rule store by this endpoint.
+    """
+    return {"items": profile_source.list_profiles()}
+
+
+@app.get("/api/profiles/{file_name}")
+def preview_profile(file_name: str):
+    """Return parsed candidates for one legacy profile note (read-only)."""
+    try:
+        return profile_source.preview_profile(file_name)
+    except FileNotFoundError:
+        raise HTTPException(404, f"Profile not found: {file_name}") from None
 
 
 # ---- Static frontend hosting (local Web runtime) ---------------------------

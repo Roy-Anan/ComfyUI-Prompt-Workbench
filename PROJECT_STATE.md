@@ -546,3 +546,30 @@
 - 本轮只产出候选与投影 dict；候选→规则库的审核导入流程、三级规则实际数据装载、前端规则管理界面未实现。
 - 解析为保守口径：值内散文不作参数解析（步长/分辨率/CFG 保留原文）；哈希按需；VAE/CLIP 目录未索引；并发写锁未加；stopper 身份校验缺陷未修。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R12/`。
+
+## 23. TASK-003.1-R13 M3 第八切片：旧档案扫描清单与候选预览只读接口（2026-11-18）
+
+### 23.1 当前状态
+
+- 新增 `backend/profile_source.py`：扫描 `legacy-materials/profiles/*.txt`（目录可由 `WORKBENCH_PROFILES_DIR` 覆盖，便于测试）；清单返回文件名/身份/架构/候选数/未知字段；损坏或不可读文件记 `error` 不抛 500。
+- `main.py` 新增只读接口：`GET /api/profiles`（清单）、`GET /api/profiles/{file_name}`（单档案候选预览，404 处理）。预览复用 `candidates_to_records` 投影，**不写规则库**。
+- 解析口径修正：IDENTITY 节只提取匹配身份（filename/display_name），不再产生规则候选。
+- 后端测试 **109 passed**；前端构建 exit 0。
+
+### 23.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 清单汇总 | 通过 | 接口测试：两份样本身份/架构/候选数/未知字段正确 |
+| 候选预览 | 通过 | 接口测试：记录含 level/scope_key/rule_key/value/来源/可信度；预览后规则库为空 |
+| 缺失档案 404 | 通过 | 接口测试：Missing.txt 返回 404 |
+| 目录缺失容错 | 通过 | 接口测试：目录不存在返回空清单，不报错 |
+| 真机闭环 | 通过 | `samples/smoke-profiles.json`：13 份清单、预览 11 候选、404、预览后入库 0 条 |
+| Python pytest | 通过 | **109 passed, 1 warning in 4.79s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 23.3 边界与 backlog
+
+- 本轮为只读预览：候选审核导入落库、三级规则实际数据装载、前端规则/档案管理界面未实现。
+- 参数仍为原文散文；多模型/LoRA 组合、冲突裁决、动态检索、LLM 上下文装配、版本/差异回退未实现。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R13/`。
