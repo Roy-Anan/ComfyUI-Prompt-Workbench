@@ -330,3 +330,29 @@
 - `storage.checkpoint`、`storage.lora` 仍为空串；外部模型目录扫描、身份缓存与输出目录索引属 M3 / M7 / M8。
 - 指纹规范化偏严格、并发写锁、前端星号纯文本渲染、Python 3.12 兼容性、显存阈值等待既有 backlog 不变。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R4/`。
+
+## 15. TASK-003.1-R5 真实 API 样本写入闭环（2026-11-18）
+
+### 15.1 当前状态
+
+- 用用户从 ComfyUI 导出的真实 API 格式样本 `suyuexisdxlapi.json`（8 节点）在真机跑通写入闭环：导入识别 → 白名单确认 → 写回工作副本 → 完整性校验 → 刷新重开持久化；原始文件未改，版本快照保存写入前版本。后端 **64 passed**，前端构建 exit 0。
+- 本轮代码改动仅在 `backend/test_workflow_service.py` 补 1 条全链路回归用例；服务端解析/写入逻辑与前端无改动。
+
+### 15.2 真机闭环结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| API 样本导入识别 | 通过 | 节点 1 Checkpoint `intorealismUltra_v80`；节点 10 LoRA `suyuexifull_c1-st6000` 0.7/0.85；正向 4、负向 5 |
+| 白名单确认 | 通过 | 节点 4 正向、节点 5 负向，状态「已确认白名单」 |
+| 写回与完整性校验 | 通过 | 1 个节点变化；非白名单字段校验通过；篡改 seed 被拒 |
+| 刷新重开持久化 | 通过 | 重开后工作副本标记仍在，负向未变 |
+| 原始文件与快照 | 通过 | `original.json` 未改；`versions/` 1 份写入前快照 |
+| Python pytest | 通过 | **64 passed, 1 warning in 2.68s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 15.3 边界与 backlog
+
+- 未向 ComfyUI 提交出图任务；队列/进度/结果拉取/输出目录索引属 M6，未实现。
+- Ollama 对话生成（M4）、外部模型目录扫描与身份缓存（M3 / M8）未做。
+- R4 `52d8d3a` 与本轮 R5 改动待网络恢复后推送远端 dev；本地已落盘。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R5/`。

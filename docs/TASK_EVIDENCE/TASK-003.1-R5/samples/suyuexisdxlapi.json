@@ -1,0 +1,126 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "intorealismUltra_v80.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Checkpoint加载器（简易）"
+    }
+  },
+  "4": {
+    "inputs": {
+      "text": "suyuexi, 1girl, solo, young adult woman, natural hair, sitting on a comfortable sofa, natural pose, wearing casual clothing, fair skin, smooth delicate skin, soft skin, even skin tone, soft even lighting, soft daylight, well-lit face, bright natural light, photorealistic, sharp focus, detailed face, masterpiece, best quality, high detail",
+      "clip": [
+        "10",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "5": {
+    "inputs": {
+      "text": "cartoon, anime, 3d render, cgi, lowres, bad anatomy, disfigured, extra limbs, mutated hands, poorly drawn face, blurry, watermark, signature, text, username, logo, oversaturated, grainy, out of frame, cropped, unnatural pose, dark skin, tan skin, underexposed, shadowed face, dark shadows, pores, rough skin, skin blemishes, oily skin, shiny skin, glossy skin, uneven skin tone",
+      "clip": [
+        "10",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "6": {
+    "inputs": {
+      "width": 704,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  },
+  "7": {
+    "inputs": {
+      "seed": 231661496131269,
+      "steps": 35,
+      "cfg": 5.5,
+      "sampler_name": "dpmpp_2m_sde",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "10",
+        0
+      ],
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "pony_sdxl",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "10": {
+    "inputs": {
+      "lora_name": "suyuexifull_c1-st6000.safetensors",
+      "strength_model": 0.7,
+      "strength_clip": 0.85,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {
+      "title": "加载LoRA"
+    }
+  }
+}
