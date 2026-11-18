@@ -228,3 +228,80 @@ def resolve_stored(
     """Resolve requested keys against stored rules via the engine."""
     records = load_records(connection)
     return rule_engine.resolve_context(records, level, scope_key, keys)
+
+
+def _checkpoint_architecture(records: list[dict[str, Any]], checkpoint: str) -> str | None:
+    """Find the base architecture label stored for one checkpoint filename.
+
+    Architecture rules are scoped by their parsed base label. The architecture
+    section facts were redirected to that scope on import, so the stored
+    architecture scope itself identifies the family; we reuse it directly
+    instead of re-parsing the prose ``Base Architecture`` value.
+    """
+    arch_scopes = {
+        row["scope_key"]
+        for row in records
+        if row["level"] == "architecture" and row["scope_key"]
+    }
+    if not arch_scopes:
+        return None
+    base_record = next(
+        (
+            row for row in records
+            if row["level"] == "checkpoint"
+            and row["scope_key"] == checkpoint
+            and row["rule_key"] == "ARCHITECTURE::Base Architecture"
+        ),
+        None,
+    )
+    # The Base Architecture fact itself was redirected to the architecture
+    # level on import, so match that record in the architecture bucket too.
+    if base_record is None:
+        base_record = next(
+            (
+                row for row in records
+                if row["level"] == "architecture"
+                and row["rule_key"] == "ARCHITECTURE::Base Architecture"
+                and row["scope_key"] in arch_scopes
+            ),
+            None,
+        )
+    if base_record is None:
+        return None
+    label = str(base_record["value"]).strip()
+    for scope in arch_scopes:
+        if label == scope or label.startswith(scope) or scope in label:
+            return scope
+    return None
+
+
+def context_for_checkpoint(
+    connection: sqlite3.Connection,
+    checkpoint: str,
+) -> dict[str, Any]:
+    """Assemble the relevant stored rules for one checkpoint workflow context.
+
+    Returns the checkpoint record set, the matched architecture scope (or None)
+    and all global rules. Only rules relevant to this context are returned;
+    unrelated stored rules are never surfaced. A checkpoint with no stored rule
+    at all is reported ``unregistered`` and carries an empty rule set, matching
+    the legacy exact-match / no-fabrication policy.
+    """
+    records = list_rules(connection)
+    checkpoint_rules = [row for row in records if row["level"] == "checkpoint" and row["scope_key"] == checkpoint]
+    registered = bool(checkpoint_rules)
+
+    architecture = _checkpoint_architecture(records, checkpoint)
+    architecture_rules = [
+        row for row in records if row["level"] == "architecture" and row["scope_key"] == architecture
+    ]
+    global_rules = [row for row in records if row["level"] == "global"]
+
+    return {
+        "status": "registered" if registered else "unregistered",
+        "checkpoint": checkpoint,
+        "architecture": architecture,
+        "checkpoint_rules": checkpoint_rules,
+        "architecture_rules": architecture_rules,
+        "global_rules": global_rules,
+    }

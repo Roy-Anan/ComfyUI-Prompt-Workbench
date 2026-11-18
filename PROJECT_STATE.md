@@ -653,3 +653,29 @@
 - 架构标签为档案散文标签，未做归一化/同义归并（如 SD1.5 与 sd1.5）；架构级规则的前端展示、跨模型继承在真机上下文装配时再验。
 - 逐候选勾选/驳回/差异预览、多模型/LoRA 组合、冲突人工裁决、动态检索、LLM 上下文装配、版本/差异回退仍未实现。
 - 证据：`docs/TASK_EVIDENCE/TASK-003.1-R16/`。
+
+## 27. TASK-003.1-R17 M3 第十二切片：工作流 checkpoint 规则上下文检索（2026-11-18）
+
+### 27.1 当前状态
+
+- 新增 `rule_store.context_for_checkpoint()`：按完整 checkpoint 文件名精确匹配 checkpoint 规则；经底座标签关联架构级规则；附全局规则；不相关 checkpoint 规则不进入上下文。
+- 新增 `GET /api/workflows/{id}/rules`：从工作流分析结果取首个 checkpoint 文件名（`ckpt_name`/`unet_name`），返回该上下文相关规则；未识别 checkpoint 或未登记模型返回 `unregistered`，空规则集，不臆造。
+- 架构关联兼容 Base Architecture 事实已被分流到架构级的情形；引擎三级继承/冲突/未知口径不变。
+- 后端测试 **122 passed**；前端构建 exit 0。
+
+### 27.2 验收结果
+
+| 验收项 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| checkpoint 精确匹配 | 通过 | 接口测试：sample_checkpoint 规则入上下文，other_checkpoint 规则被排除 |
+| 架构级关联 | 通过 | 上下文 architecture=SD1.5，带回 Model Type 等架构规则 |
+| 未登记不臆造 | 通过 | 未知 checkpoint 与无 checkpoint 工作流均返回 unregistered、空规则集 |
+| 真机闭环 | 通过 | `samples/smoke-context.json`：intorealismUltra_v80 上下文 14 checkpoint + 2 architecture(SDXL 1.0)；ghost 未注册；清理归零 |
+| Python pytest | 通过 | **122 passed, 1 warning in 5.52s** |
+| TypeScript / Vite 构建 | 通过 | `tsc -b && vite build` exit 0，33 模块 |
+
+### 27.3 边界与 backlog
+
+- 本轮仅按 checkpoint 匹配；启用 LoRA 的规则组合尚未纳入（旧档案无 LoRA 规则来源）。
+- 上下文只做规则归集，尚未装配成发给 LLM 的裁剪提示；冲突人工裁决界面、动态检索、版本/差异回退、前端规则/档案管理界面未实现。
+- 证据：`docs/TASK_EVIDENCE/TASK-003.1-R17/`。

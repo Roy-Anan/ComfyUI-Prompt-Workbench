@@ -1,0 +1,151 @@
+diff --git a/backend/rule_store.py b/backend/rule_store.py
+index f25008e..d2b4e1f 100644
+--- a/backend/rule_store.py
++++ b/backend/rule_store.py
+@@ -228,3 +228,80 @@ def resolve_stored(
+     """Resolve requested keys against stored rules via the engine."""
+     records = load_records(connection)
+     return rule_engine.resolve_context(records, level, scope_key, keys)
++
++
++def _checkpoint_architecture(records: list[dict[str, Any]], checkpoint: str) -> str | None:
++    """Find the base architecture label stored for one checkpoint filename.
++
++    Architecture rules are scoped by their parsed base label. The architecture
++    section facts were redirected to that scope on import, so the stored
++    architecture scope itself identifies the family; we reuse it directly
++    instead of re-parsing the prose ``Base Architecture`` value.
++    """
++    arch_scopes = {
++        row["scope_key"]
++        for row in records
++        if row["level"] == "architecture" and row["scope_key"]
++    }
++    if not arch_scopes:
++        return None
++    base_record = next(
++        (
++            row for row in records
++            if row["level"] == "checkpoint"
++            and row["scope_key"] == checkpoint
++            and row["rule_key"] == "ARCHITECTURE::Base Architecture"
++        ),
++        None,
++    )
++    # The Base Architecture fact itself was redirected to the architecture
++    # level on import, so match that record in the architecture bucket too.
++    if base_record is None:
++        base_record = next(
++            (
++                row for row in records
++                if row["level"] == "architecture"
++                and row["rule_key"] == "ARCHITECTURE::Base Architecture"
++                and row["scope_key"] in arch_scopes
++            ),
++            None,
++        )
++    if base_record is None:
++        return None
++    label = str(base_record["value"]).strip()
++    for scope in arch_scopes:
++        if label == scope or label.startswith(scope) or scope in label:
++            return scope
++    return None
++
++
++def context_for_checkpoint(
++    connection: sqlite3.Connection,
++    checkpoint: str,
++) -> dict[str, Any]:
++    """Assemble the relevant stored rules for one checkpoint workflow context.
++
++    Returns the checkpoint record set, the matched architecture scope (or None)
++    and all global rules. Only rules relevant to this context are returned;
++    unrelated stored rules are never surfaced. A checkpoint with no stored rule
++    at all is reported ``unregistered`` and carries an empty rule set, matching
++    the legacy exact-match / no-fabrication policy.
++    """
++    records = list_rules(connection)
++    checkpoint_rules = [row for row in records if row["level"] == "checkpoint" and row["scope_key"] == checkpoint]
++    registered = bool(checkpoint_rules)
++
++    architecture = _checkpoint_architecture(records, checkpoint)
++    architecture_rules = [
++        row for row in records if row["level"] == "architecture" and row["scope_key"] == architecture
++    ]
++    global_rules = [row for row in records if row["level"] == "global"]
++
++    return {
++        "status": "registered" if registered else "unregistered",
++        "checkpoint": checkpoint,
++        "architecture": architecture,
++        "checkpoint_rules": checkpoint_rules,
++        "architecture_rules": architecture_rules,
++        "global_rules": global_rules,
++    }
+diff --git a/backend/workflow_api.py b/backend/workflow_api.py
+index 23f2cc1..cc4a667 100644
+--- a/backend/workflow_api.py
++++ b/backend/workflow_api.py
+@@ -4,10 +4,23 @@ from typing import Any
+ from fastapi import APIRouter, HTTPException
+ from pydantic import BaseModel, Field
+ import datadir
++import model_identity
++import rule_store
+ from workflow_service import WorkflowError, WorkflowStore
+ router = APIRouter(prefix="/api/workflows", tags=["workflows"])
+ def store() -> WorkflowStore:
+     return WorkflowStore(datadir.default_data_root() / "workflows")
++def _database_path() -> Path:
++    return datadir.database_path(datadir.default_data_root())
++def _checkpoint_filename(report: dict[str, Any]) -> str | None:
++    """Extract the first checkpoint file name recognized in the workflow."""
++    for node in report.get("model_nodes", []):
++        inputs = node.get("inputs", {})
++        for key in ("ckpt_name", "unet_name"):
++            value = inputs.get(key)
++            if isinstance(value, str) and value.strip():
++                return value.strip()
++    return None
+ def _raise_api_error(exc: Exception) -> None:
+     if isinstance(exc, FileNotFoundError):
+         raise HTTPException(status_code=404, detail=str(exc)) from exc
+@@ -61,3 +74,37 @@ def write_prompts(workflow_id: str, payload: PromptWrite):
+         )
+     except (WorkflowError, FileNotFoundError, OSError) as exc:
+         _raise_api_error(exc)
++
++
++@router.get("/{workflow_id}/rules")
++def workflow_rule_context(workflow_id: str):
++    """Return only the rules relevant to this workflow's checkpoint context.
++
++    The recognized checkpoint filename is matched exactly against stored
++    checkpoint rules; architecture and global rules are attached for programmatic
++    inheritance. Unrelated stored rules are never returned. A workflow with no
++    recognized checkpoint, or a checkpoint with no stored rule, is reported
++    ``unregistered`` with an empty rule set; the engine never fabricates a rule.
++    """
++    try:
++        workflow = store().get_workflow(workflow_id)
++    except (WorkflowError, FileNotFoundError, OSError) as exc:
++        _raise_api_error(exc)
++
++    report = workflow.get("report", {})
++    checkpoint = _checkpoint_filename(report)
++    if not checkpoint:
++        return {
++            "status": "unregistered",
++            "reason": "no_checkpoint_recognized",
++            "checkpoint": None,
++            "architecture": None,
++            "checkpoint_rules": [],
++            "architecture_rules": [],
++            "global_rules": [],
++        }
++
++    with model_identity.connect(_database_path()) as connection:
++        rule_store.ensure_schema(connection)
++        context = rule_store.context_for_checkpoint(connection, checkpoint)
++    return context

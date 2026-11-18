@@ -1,0 +1,15 @@
+{
+  "import_profile": {"file": "IntoRealism_Ultra_V8.txt", "filename": "intorealismUltra_v80.safetensors", "imported": 16, "rejected": 0},
+  "matched_workflow": "suyuexisdxlapi.json",
+  "context": {
+    "status": "registered",
+    "checkpoint": "intorealismUltra_v80.safetensors",
+    "architecture": "SDXL 1.0",
+    "checkpoint_rules": 14,
+    "architecture_rules": 2,
+    "global_rules": 0,
+    "architecture_items": ["ARCHITECTURE::Base Architecture", "ARCHITECTURE::Model Type"]
+  },
+  "unregistered_context": {"checkpoint": "ghost_missing.safetensors", "status": "unregistered"},
+  "after_cleanup": {"rules": 0}
+}
