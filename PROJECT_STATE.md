@@ -2814,3 +2814,43 @@
   后端 `/tasks?refresh=true` 校准结果为准。
 - 进度帧不带 `prompt_id` 且错过 `executing` 归属窗口时，该帧保守丢弃，不臆测归属。
 - 未实现后端 WS 代理；跨主机/非回环 ComfyUI 连接不在本切片范围。
+
+## 120. TASK-003.1-R113 本地待发队列：暂停/恢复/调序/取消与闸门调度（2026-11-19）
+
+### 120.1 落地内容
+
+- 后端新增 `task_queue.py`：本地 pending 队列表 `workbench_queue`，字段含
+  `queue_id/workflow_id/workflow_name/note/sort_order/status/prompt_id/last_error/时间戳`。
+  状态 `pending/paused/submitting/submitted/cancelled/failed`；入队按 `sort_order` 追加，
+  列出按队首顺序；提供入队、取消、单项暂停/恢复、上下移序、置提交中/已入队/失败、取队首等
+  数据层函数。
+- 后端新增 `queue_dispatcher.py`：单条 daemon 调度线程（3s tick）。每轮先判全局暂停；
+  取队首 `pending`（不含 paused）；本地 `comfy_task` 存在在途（submitted/running）或 ComfyUI
+  原生队列在线且 busy 时跳过；ComfyUI 离线不判失败、留待下轮。通过后复用既有
+  `_submit_guarded` 闸门（可达、API 格式、白名单确认、LLM 已卸载）逐条提交；成功回填
+  `prompt_id` 桥接 `comfy_task`，闸门/远端拒绝记 `failed`，不自动重试。
+- `main.py`：新增队列端点 `GET /api/queue`（可按 `workflow_id` 过滤，回显全局暂停态）、
+  `POST /api/queue`（入队前复核 API 格式与白名单确认，不入队不可提交的工作流）、
+  `DELETE /api/queue/{id}`、`POST /api/queue/{id}/pause`、`POST /api/queue/{id}/move`、
+  `POST /api/queue/pause-all`；已 submitting/submitted 的项拒绝本地取消/暂停/调序，改走原生
+  任务取消/中断。`lifespan` 启动/停止调度线程。
+- 前端 `WorkflowWorkbench`：任务面板新增「加入本地队列」「暂停/恢复队列调度」按钮与本地
+  待发队列区，按队首顺序展示名称/备注/状态/错误；单项暂停恢复、上移/下移、移除；徽标状态
+  与既有任务面板一致。队列读取失败不影响既有任务面板。
+- 测试：入队列出、未确认/UI 格式/不存在拒绝、暂停恢复、取消后隐藏、上移交换、全局暂停
+  往返、已提交项拒绝本地操作共 7 例。
+
+### 120.2 回归
+
+- 后端 **269 passed, 1 warning**（原 262 + 新增 7；遗留 StarletteDeprecationWarning）。
+- 前端 `tsc -b && vite build` 绿，产物 `index-QTGNL4eB.js` 212.24 kB / gzip 67.04 kB，
+  `index-CGjI4LF3.css` 13.72 kB / gzip 3.26 kB。
+- 无新增第三方依赖；调度与数据层仅用标准库 + 既有项目模块。
+
+### 120.3 边界与 backlog
+
+- 排队项记录的是「提交意图」，提交时取该工作流**当前工作副本**，不冻结入队时刻的 Prompt
+  快照；同一工作流多次排队且中途改稿，以后一次提交时的工作副本为准。
+- 全局暂停为进程内存态，重启后恢复为未暂停；排队项本身落库，单项暂停态持久化。
+- 失败项不自动重试；原生队列的在途任务仍走既有取消/中断链路。显存空闲阈值数值、队列项
+  Prompt 快照冻结与跨工作流排队视图留后续切片。
