@@ -3415,3 +3415,41 @@
 
 - 真机浏览器闭环留用户自行验收；安全边界（白名单写入、unknown 不臆测、CSRF、回环绑定、
   fail-closed 闸门）保持不变。
+
+## 146. TASK-003.1-R139 剩余开放方向自主收口（2026-11-19）
+
+### 146.1 落地内容
+
+- **Prompt 分段统计与 token 粗估**：`format.ts` 新增纯函数 `splitPromptFragments`
+  （按 `,，;；\n` 拆分、trim、保序去重）、`countPromptFragments`、`estimatePromptTokens`
+  （CJK 字符各约 1 token，ASCII 词各约 1.3 token，`Math.ceil`；只读粗估，非分词器计数）；
+  编辑框计数标签改为「字符 · 条数 · 约 token」，200_000 上限超量提示保留。
+- **多候选列表与并排比较**：候选由单条字符串改为会话内列表模型 `CandidateItem`
+  （text/mode/scope）；逐条采用/复制/移除/清空，可勾选第二条与当前选中并排只读对比；
+  采用按 scope 分流到正向或负向编辑框，受保护术语与锁定片段回填按来源文本（负向取负向框）
+  补齐。后端 `CANDIDATE_MODES` 新增 `negative`（负向补全）模式，指令要求不改写正向、不臆造参数。
+- **版本比对片段级 diff**：`format.ts` 新增 `diffFragments`（快照/当前片段集合求交与差集，
+  不做同义词或相似度匹配）；版本比对面板 `VersionDiffBlock` 在整段并排之外标注「快照独有 /
+  当前独有」片段。
+- **小模型手动哈希触发**：后端新增 `POST /api/models/identity/hash`，category 白名单
+  `lora/clip/vae`（checkpoint 多 GB 排除，不提供主动入口），路径只取身份库记录、不接受前端
+  传路径；经 `model_identity.ensure_hash` 计算并缓存，未记录返回 404。前端 LoRA/CLIP/VAE
+  条目在 `identity.known && !identity.hashed` 时显示「计算哈希」按钮，成功后局部刷新该条摘要；
+  checkpoint 列不显示按钮。
+- **历史视图核对**：`HistoryPanel` 已有 列表/网格/时间轴 三视图且视图偏好与各筛选条件均已
+  本地记忆，本轮不新建视图；补齐候选卡片、对比栏、版本 diff、哈希按钮样式。
+
+### 146.2 回归
+
+- 后端全量 **313 passed, 1 warning**（基线 309 + 本轮新增 4：negative 模式 1、哈希端点 3；
+  遗留 StarletteDeprecationWarning）。前端 `tsc -b && vite build` 绿，产物
+  `index-0IroK6Iy.js` 228.95 kB / gzip 72.62 kB，`index-BfQdoIhQ.css` 19.15 kB / gzip
+  4.16 kB，`index.html` 0.98 kB / gzip 0.49 kB。
+- 按快速迭代口径未单独做真机浏览器逐条闭环，留阶段收口统一验收。
+
+### 146.3 边界与 backlog
+
+- token 为无依赖粗估，不等于真实分词器计数；片段 diff 只做精确集合匹配，不识别同义词/近义改写。
+- 哈希仅覆盖小体积类别；权重不复制、不改写，缓存随文件变更失效。候选列表为会话内状态，
+  刷新后不保留；安全边界（白名单写入、unknown 不臆测、CSRF、回环绑定、fail-closed 闸门）
+  与五项既定不做项维持不变。
