@@ -3238,3 +3238,102 @@
 - R95–R127 按快速口径未做浏览器真机逐条闭环，留阶段收口统一验收；当前 ComfyUI/Ollama/工作台
   三端口均未监听。
 - 安全边界（白名单写入、unknown 不臆测、CSRF、回环绑定、fail-closed 闸门）保持不变。
+
+## 136. TASK-003.1-R129 候选输出结构化清洗（2026-11-19）
+
+### 136.1 落地内容
+
+- `workflow_api` 新增 `_clean_candidate_content`：保守剥离整体包裹回复的 ```markdown 代码围栏
+  （语言标记行与首尾围栏）；内部行、标签与措辞不改写、不臆测。
+- 候选返回前统一清洗；清洗后为空 → 502 fail-closed，不生成候选。长度上限沿用
+  `llm_client.MAX_CANDIDATE_CHARS`，清洗不会放大正文。
+
+### 136.2 回归
+
+- 新增 `test_candidate_strips_outer_fence`、`test_candidate_rejects_empty_cleaned`；全量后端
+  **302 passed, 1 warning**。
+
+### 136.3 边界与 backlog
+
+- 不拆“正向:/Negative:”等可能属于正文的标签前缀；不做语义改写、翻译或补全。
+
+## 137. TASK-003.1-R130 队列项快照状态前端只读展示（2026-11-19）
+
+### 137.1 落地内容
+
+- 列表/入队端点经 `_queue_public` 投影：移除大体积快照体，只回 `has_snapshot` 布尔；调度器内部
+  仍读取 `prompt_snapshot` 冻结快照。
+- 前端 `QueueItem` 加 `has_snapshot`，队列行标注“已冻结快照 / 未冻结（提交时用当前副本）”。
+
+### 137.2 回归
+
+- `test_enqueue_freezes_working_snapshot` 改为断言 `has_snapshot is True` 且响应不含
+  `prompt_snapshot`；全量后端 **302 passed, 1 warning**。
+
+### 137.3 边界与 backlog
+
+- 快照体不进列表 payload，前端不展示快照全文。
+
+## 138. TASK-003.1-R131 设置 JSON 导入回填受保护术语（2026-11-19）
+
+### 138.1 落地内容
+
+- 设置导入白名单补 `prompt.protected_terms`：仅采信字符串数组，逐项 strip/去重/限长 60 字、
+  上限 50 条；非数组或非法项保守忽略。回填到设置表单，落库仍走既有白名单保存端点。
+
+### 138.2 回归
+
+- 前端 `tsc -b && vite build` 绿；全量后端 **302 passed, 1 warning**。
+
+### 138.3 边界与 backlog
+
+- 导入只回填表单、不直接落库，需用户点“保存设置”；不采信未知 prompt 键。
+
+## 139. TASK-003.1-R132 草稿收藏分组排序细化（2026-11-19）
+
+### 139.1 落地内容
+
+- 标签分组模式组内排序：置顶 → 收藏 → 更新时间倒序；分区模式维持后端 pinned 前置、收藏独立
+  成组的既有口径。
+
+### 139.2 回归
+
+- 前端 `tsc -b && vite build` 绿。
+
+### 139.3 边界与 backlog
+
+- 不改置顶/收藏标记口径；回收站视图不参与前置排序。
+
+## 140. TASK-003.1-R133 LoRA 同身份共享触发词只读提示（2026-11-19）
+
+### 140.1 落地内容
+
+- `_group_related_loras` 顺带计算与相关 LoRA 的触发词交集，挂 `related_triggers`；前端在身份
+  归并提示旁追加“共享触发词：…”只读标注。
+
+### 140.2 回归
+
+- 新增 `test_group_related_loras_reports_shared_triggers`；全量后端 **302 passed, 1 warning**。
+
+### 140.3 边界与 backlog
+
+- 仅只读交集提示；不自动合并身份，不写 ComfyUI 目录。
+
+## 141. TASK-003.1-R134 收口回归、文档回填与本地提交（2026-11-19）
+
+### 141.1 落地内容
+
+- 全量后端 pytest 复跑确认绿；前端构建复跑确认绿；PROJECT_STATE 节 136–141、ROADMAP 落地条目、
+  README 阶段表回填；feat/docs 两次本地 dev 提交，不 push、不做远端核对。
+
+### 141.2 回归
+
+- 后端 **302 passed, 1 warning**（299 + R129 两个 + R133 一个）；遗留 StarletteDeprecationWarning。
+- 前端产物 `index-CIy2zbJN.js` 233,285 字节 / gzip 71.22 kB，`index-9oTOiDhO.css` 17,135 字节 /
+  gzip 3.90 kB，`dist/index.html` 0.98 kB。
+
+### 141.3 边界与 backlog
+
+- 区块编辑、锁定片段、数据库自动迁移、损坏数据自动修复、身份自动合并、角色卡写入 ComfyUI 目录
+  维持既定不做；真机浏览器闭环留用户自行验收。
+- 安全边界（白名单写入、unknown 不臆测、CSRF、回环绑定、fail-closed 闸门）保持不变。
