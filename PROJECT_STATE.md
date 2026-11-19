@@ -2854,3 +2854,37 @@
 - 全局暂停为进程内存态，重启后恢复为未暂停；排队项本身落库，单项暂停态持久化。
 - 失败项不自动重试；原生队列的在途任务仍走既有取消/中断链路。显存空闲阈值数值、队列项
   Prompt 快照冻结与跨工作流排队视图留后续切片。
+
+## 121. TASK-003.1-R114 LoRA 手动资料优先与触发词组合只读建议（2026-11-19）
+
+### 121.1 落地内容
+
+- 后端 `lora_metadata.py` 扩展：新增受管手动资料读取 `load_manual(manual_dir, name)`，
+  目录为 `userdata/knowledge/lora/`，按权重去扩展名 `<stem>.json` 优先、`<full-name>.json`
+  兜底；拒绝绝对路径与 `..` 穿越。手动 JSON 仅识别 `trigger_words/description/base_model/
+  combos`，未知字段忽略；损坏或非 dict 记 `unreadable` 不抛异常。
+- 合并口径 `merge_lora_meta(sidecar, manual)`：手动字段非空覆盖 sidecar，手动缺失回退
+  sidecar；触发词手动在前、跨源去重；`combos` 仅来自手动；回传 `source`（manual/sidecar/
+  none）、`manual_present`、`manual_unreadable`，并按合并后填充度重算 complete/partial/
+  empty。`scan_lora_metadata` 增加可选 `manual_dir`，不传时走原 sidecar 路径，向后兼容。
+- `main.py` models/catalog 端点把 `knowledge/lora` 作为手动目录并入 LoRA `meta`；全程只读，
+  不向 ComfyUI LoRA 目录写任何角色卡或 JSON。
+- 前端 `App.tsx`：`LoraMeta` 增加 `source/manual_present/manual_unreadable/combos`；LoRA 卡片
+  标注来源（手动资料/自动扫描/无资料），触发词以标签全量展示，列出手动组合建议（名称 +
+  触发词），提供「复制触发词」按钮（`navigator.clipboard`，纯前端复制，不写入工作副本）。
+- 测试：手动覆盖 sidecar 且保留 combos、手动缺字段回退 sidecar、手动损坏回退 sidecar、
+  手动路径穿越拒绝共 4 例（纯模块 tmp_path，无 HTTP）。
+
+### 121.2 回归
+
+- 后端 **273 passed, 1 warning**（原 269 + 新增 4；遗留 StarletteDeprecationWarning）。
+- 前端 `tsc -b && vite build` 绿，产物 `index-olZBS1fd.js` 213.05 kB / gzip 67.33 kB，
+  `index-DDGU3z47.css` 14.32 kB / gzip 3.36 kB。
+- 无新增第三方依赖；手动资料目录为既有受管 `knowledge/` 子目录。
+
+### 121.3 边界与 backlog
+
+- 触发词与组合建议均为只读展示，采用与否由人工决定，不自动写入 Prompt 编辑框；复制按钮
+  只进剪贴板，不碰工作副本。
+- 手动资料不被自动扫描覆盖；自动 sidecar 缺失时手动资料仍独立生效。跨 LoRA 的多卡触发词
+  并列组合建议、手动资料前端编辑入口留后续切片。
