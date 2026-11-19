@@ -18,6 +18,29 @@ function readStoredPage(): PageKey {
   return "settings";
 }
 
+type Theme = "dark" | "light";
+type FontSize = "small" | "normal" | "large";
+
+function readStoredTheme(): Theme {
+  try {
+    const value = localStorage.getItem("workbench.theme");
+    if (value === "dark" || value === "light") return value;
+  } catch {
+    // 本地存储不可用时回落到深色。
+  }
+  return "dark";
+}
+
+function readStoredFont(): FontSize {
+  try {
+    const value = localStorage.getItem("workbench.font");
+    if (value === "small" || value === "normal" || value === "large") return value;
+  } catch {
+    // 本地存储不可用时回落到标准字号。
+  }
+  return "normal";
+}
+
 type Health = {
   ok: boolean;
   app: string;
@@ -277,6 +300,24 @@ export default function App() {
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("正在连接本地服务…");
   const [activePage, setActivePage] = useState<PageKey>(readStoredPage);
+  const [theme, setTheme] = useState<Theme>(readStoredTheme);
+  const [fontSize, setFontSize] = useState<FontSize>(readStoredFont);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.dataset.font = fontSize;
+    try {
+      localStorage.setItem("workbench.theme", theme);
+      localStorage.setItem("workbench.font", fontSize);
+    } catch {
+      // 忽略本地存储写入失败。
+    }
+  }, [theme, fontSize]);
+
+  function toggleTheme() {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  }
 
   function switchPage(page: PageKey) {
     setActivePage(page);
@@ -699,12 +740,30 @@ export default function App() {
           <p>本地提示词工作台 · M0 工程基础版</p>
         </div>
 
-        <button
-          onClick={refreshStatus}
-          disabled={busy}
-        >
-          刷新状态
-        </button>
+        <div className="topbar-controls">
+          <button
+            className="secondary"
+            onClick={toggleTheme}
+            title="切换深色/浅色主题"
+          >
+            {theme === "dark" ? "浅色" : "深色"}
+          </button>
+          <select
+            value={fontSize}
+            onChange={(event) => setFontSize(event.target.value as FontSize)}
+            title="界面字号"
+          >
+            <option value="small">小字号</option>
+            <option value="normal">标准字号</option>
+            <option value="large">大字号</option>
+          </select>
+          <button
+            onClick={refreshStatus}
+            disabled={busy}
+          >
+            刷新状态
+          </button>
+        </div>
       </header>
 
       <nav className="page-nav">
