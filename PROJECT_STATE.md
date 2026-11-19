@@ -3126,3 +3126,115 @@
 - **M7 跨记录大图并排对比**：待拍板；**M9 数据库自动迁移 / 崩溃自动修复**维持巡检只读，不自动
   改写数据。
 - 安全边界（白名单写入、unknown 不臆测、CSRF、回环绑定、fail-closed 闸门）保持不变。
+
+## 131. TASK-003.1-R124 队列项 Prompt 快照冻结（2026-11-19）
+
+### 131.1 落地内容
+
+- **入队冻结快照**：入队时把当时确认的 working dict 与 prompts 列表冻结存入队列表
+  `prompt_snapshot TEXT`；`ensure_schema` 内 `_ensure_column` 用 `PRAGMA table_info` 判列存在后
+  `ALTER TABLE ADD COLUMN`，幂等兼容旧库。
+- **解析与回退**：`_row` 把快照 JSON 解析为 dict，解析失败或非 dict → None；`enqueue(...,
+  snapshot=None)` 序列化入库。`main.py` enqueue 端点读 `read_working` 构造 `{working, prompts}` 传入。
+- **调度优先用快照**：`workflow_api._submit_guarded(workflow_id, snapshot=None)`；传了快照则校验
+  `snapshot["working"]` 为 dict，损坏 → 400 fail-closed 拒绝提交；working/prompts 取自快照；
+  未传快照（手动提交/重试）走既有 `read_working` + `working_prompts`。
+- **调度器传参**：`queue_dispatcher._dispatch_one` 传 `snapshot=item.get("prompt_snapshot")`。
+
+### 131.2 回归
+
+- `test_task_queue.py` / `test_workflow_tasks.py` 专项 **51 passed, 1 warning**；全量后端
+  **299 passed, 1 warning**。
+
+### 131.3 边界与 backlog
+
+- 快照缺失回退当前副本；快照损坏 fail-closed 拒绝；列表不回显快照全文。
+- 前端队列项是否展示快照状态（已冻结/回退副本）留后；本轮未做前端展示。
+
+## 132. TASK-003.1-R125 受保护术语保护（2026-11-19）
+
+### 132.1 落地内容
+
+- **术语表白名单存储**：settings JSON 字段 `prompt.protected_terms: list[str]`；白名单分组
+  prompt（`ALLOWED_PROMPT_KEYS={protected_terms}`），上限 50 条、每条 60 字；
+  `_normalize_protected_terms` 非 list 抛错，逐项 strip/去重/限长。
+- **写入与读取**：`update_settings` 遇未知 prompt key → 400；`load_settings` 合并已存
+  prompt.protected_terms，损坏 fail-open 到空列表，不阻断启动。
+- **候选生成注入**：`workflow_api._protected_terms()` 容错返回 []；`_user_message` 末尾追加
+  “术语必须保留原写法，不得翻译/改写/删除”指令行；候选端点注入当前术语表。
+- **回填保留**：前端 Settings 类型加可选 `prompt`；设置面板 textarea（逗号或换行分隔）；
+  `adoptCandidate` 对候选缺失、但当前 positive 已存在的受保护术语追加到候选末尾，不覆盖。
+
+### 132.2 回归
+
+- `test_main.py` / `test_workflow_tasks.py` 专项通过；全量后端 **299 passed, 1 warning**。
+
+### 132.3 边界与 backlog
+
+- 不做重型区块编辑器；本轮为轻量术语表 + 指令约束 + 回填补回。
+- 设置 JSON 导入回填本轮未把 protected_terms 纳入导入白名单（导入只回填 connections/storage），留后。
+
+## 133. TASK-003.1-R126 历史大图并排对比（2026-11-19）
+
+### 133.1 落地内容
+
+- **纯前端只读**：最多选两张记录图片左右并排；新增 `ComparePick` / `CompareImage` /
+  `CompareViewer`，复用既有 `objectUrlCache` 缓存 blob URL。
+- **选择与交互**：`toggleCompare` 按 `prompt_id/subfolder/filename` 去重，已存在则移除，否则
+  追加，超 2 张替换最旧；缩略图加“加入对比/移出对比”小按钮；面板 actions 加“并排对比（n/2）”，
+  仅 2 张可用；Escape 同时关灯箱与对比层；窄屏（≤900px）单列纵向滚动。
+
+### 133.2 回归
+
+- 前端 `tsc -b && vite build` 绿；纯前端改动，无后端测试。
+
+### 133.3 边界与 backlog
+
+- 仅两张并排；不做三图以上对比、不做像素级差异标注。
+
+## 134. TASK-003.1-R127 LoRA 手动资料编辑 + 身份归并只读展示（2026-11-19）
+
+### 134.1 落地内容
+
+- **写路径限定受管目录**：手动资料落 `<storage.knowledge>/lora/<stem>.json`，不写 ComfyUI LoRA
+  目录；`lora_metadata.save_manual` 白名单字段 trigger_words/description/base_model/combos，
+  逐项校验归一化（上限 30 词 / 60 字 / 说明 2000 字 / 底座 120 字 / 20 组合）；
+  `_manual_write_path` 拒绝绝对路径与 `..`；`.tmp` 原子 replace。
+- **后端端点与归并**：`main.py` 加 `LoraManualUpdate`；`_group_related_loras` 按 stem 小写、
+  触发词小写分组，共享组内互标 `related`；catalog 端点给每条 LoRA 附加 `related`；
+  `POST /api/models/loras/{name}/manual`，ValueError → 400。
+- **前端编辑入口**：`CatalogEntry.related`；编辑 state 与 `startLoraEdit` / `cancelLoraEdit` /
+  `saveLoraManual`；列表项“疑似同一身份：…”只读提示 + 内联编辑表单（触发词/底座/说明；
+  combos 保存时原样回传保留）。
+
+### 134.2 回归
+
+- `test_lora_metadata.py` **10 passed, 1 warning**；全量后端 **299 passed, 1 warning**；
+  前端 `tsc -b && vite build` 绿。
+
+### 134.3 边界与 backlog
+
+- 身份归并仅只读提示，不自动合并 LoRA；combos 在前端编辑表单中不可编辑。
+- LoRA 角色卡写入 ComfyUI 目录既定不做；手动资料优先、不被自动扫描覆盖。
+
+## 135. TASK-003.1-R128 收口回归、文档回填与本地提交（2026-11-19）
+
+### 135.1 落地内容
+
+- 全量后端 pytest 复跑确认绿；前端构建复跑确认绿；PROJECT_STATE 节 131–135、ROADMAP 落地条目、
+  README 阶段表回填；feat/docs 两次本地 dev 提交，不 push、不做远端核对。
+
+### 135.2 回归
+
+- 后端 **299 passed, 1 warning**（基线 291 + R124 三个 + R125 三个 + R127 两个）；遗留
+  StarletteDeprecationWarning（fastapi testclient/httpx 遗留）。
+- 前端产物 `index-gOWrhttw.js` 232,453 字节 / gzip 70.90 kB，`index-9oTOiDhO.css` 17,135 字节 /
+  gzip 3.90 kB，`dist/index.html` 0.98 kB。
+
+### 135.3 边界与 backlog
+
+- M9 自动迁移/崩溃自动修复维持只读巡检，不自动改写数据；Pillow 像素压缩既定不做；原生 ComfyUI
+  队列 pause 已由本地排队层替代。
+- R95–R127 按快速口径未做浏览器真机逐条闭环，留阶段收口统一验收；当前 ComfyUI/Ollama/工作台
+  三端口均未监听。
+- 安全边界（白名单写入、unknown 不臆测、CSRF、回环绑定、fail-closed 闸门）保持不变。
