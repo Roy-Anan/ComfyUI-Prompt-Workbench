@@ -461,6 +461,14 @@ button.secondary {
   display: grid;
   gap: 9px;
 }
+.workflow-queue {
+  margin-top: 16px;
+}
+.workflow-queue h4 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: var(--text-strong);
+}
 .workflow-list-item {
   display: flex;
   flex-direction: column;

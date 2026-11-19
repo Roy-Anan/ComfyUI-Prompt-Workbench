@@ -8,6 +8,7 @@ import secrets
 import shutil
 import sqlite3
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -28,8 +29,10 @@ import lora_metadata
 import model_catalog
 import model_identity
 import profile_source
+import queue_dispatcher
 import rule_engine
 import rule_store
+import task_queue
 from workflow_api import router as workflow_router
 from workflow_service import WorkflowStore, WorkflowError
 
@@ -276,11 +279,38 @@ class ProfileImport(BaseModel):
     candidate_keys: list[str] | None = None
 
 
+class QueueEnqueue(BaseModel):
+    workflow_id: str = Field(min_length=1, max_length=120)
+    note: str = Field(default="", max_length=1000)
+
+
+class QueueItemPause(BaseModel):
+    paused: bool
+
+
+class QueueItemMove(BaseModel):
+    direction: str
+
+
+class QueueGlobalPause(BaseModel):
+    paused: bool
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    queue_dispatcher.start()
+    try:
+        yield
+    finally:
+        queue_dispatcher.stop()
+
+
 app = FastAPI(
     title=APP_NAME,
     version=APP_VERSION,
     docs_url=None,
     redoc_url=None,
+    lifespan=lifespan,
 )
 
 app.include_router(workflow_router)
@@ -1159,6 +1189,103 @@ def import_profile(payload: ProfileImport):
         raise HTTPException(404, f"Profile not found: {payload.file_name}") from None
     except rule_engine.RuleError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+# ---- Local pending submission queue --------------------------------------
+
+def _queue_store() -> WorkflowStore:
+    return WorkflowStore(DATA_ROOT / "workflows")
+
+
+@app.get("/api/queue")
+def list_queue(workflow_id: str | None = None):
+    """List local pending/settled queue items, newest order by queue position."""
+    with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
+        task_queue.ensure_schema(connection)
+        items = task_queue.list_items(connection, workflow_id)
+    return {"items": items, "global_paused": queue_dispatcher.is_global_paused()}
+
+
+@app.post("/api/queue")
+def enqueue_queue(payload: QueueEnqueue):
+    """Add a confirmed API-format workflow to the local pending queue.
+
+    Enqueueing only records an intent locally; it does not contact ComfyUI or
+    the LLM. The same format/whitelist preconditions as submission are checked
+    here so an unconfirmable workflow cannot enter the pending list.
+    """
+    try:
+        workflow = _queue_store().get_workflow(payload.workflow_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    manifest = workflow.get("manifest", {})
+    if manifest.get("format") != "api":
+        raise HTTPException(
+            status_code=400,
+            detail="UI 格式工作流不能加入队列，请先在 ComfyUI 中导出 API 格式。",
+        )
+    if not manifest.get("confirmed"):
+        raise HTTPException(
+            status_code=400,
+            detail="请先确认 Prompt 节点白名单，再加入队列。",
+        )
+
+    name = str(manifest.get("filename") or payload.workflow_id)
+    with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
+        task_queue.ensure_schema(connection)
+        return task_queue.enqueue(connection, payload.workflow_id, name, payload.note)
+
+
+@app.delete("/api/queue/{queue_id}")
+def cancel_queue_item(queue_id: str):
+    with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
+        task_queue.ensure_schema(connection)
+        item = task_queue.get_item(connection, queue_id)
+        if item is None or item["status"] == "cancelled":
+            raise HTTPException(status_code=404, detail="排队项不存在")
+        try:
+            task_queue.cancel_item(connection, queue_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@app.post("/api/queue/{queue_id}/pause")
+def pause_queue_item(queue_id: str, payload: QueueItemPause):
+    with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
+        task_queue.ensure_schema(connection)
+        item = task_queue.get_item(connection, queue_id)
+        if item is None or item["status"] == "cancelled":
+            raise HTTPException(status_code=404, detail="排队项不存在")
+        try:
+            updated = task_queue.set_paused(connection, queue_id, payload.paused)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return updated
+
+
+@app.post("/api/queue/{queue_id}/move")
+def move_queue_item(queue_id: str, payload: QueueItemMove):
+    with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
+        task_queue.ensure_schema(connection)
+        item = task_queue.get_item(connection, queue_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="排队项不存在")
+        if item["status"] in ("submitting", "submitted"):
+            raise HTTPException(status_code=409, detail="已提交的任务不能调整顺序。")
+        try:
+            items = task_queue.move_item(connection, queue_id, payload.direction)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"items": items}
+
+
+@app.post("/api/queue/pause-all")
+def pause_all_queue(payload: QueueGlobalPause):
+    """Hold/resume the whole local dispatcher without cancelling pending items."""
+    queue_dispatcher.set_global_paused(payload.paused)
+    return {"global_paused": payload.paused}
 
 
 # ---- Static frontend hosting (local Web runtime) ---------------------------

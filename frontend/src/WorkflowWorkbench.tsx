@@ -133,6 +133,33 @@ type TasksResponse = {
   items: ComfyTask[];
   sync_error: string | null;
 };
+
+type QueueItem = {
+  queue_id: string;
+  workflow_id: string;
+  workflow_name: string;
+  note: string;
+  sort_order: number;
+  status: string;
+  prompt_id: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type QueueResponse = {
+  items: QueueItem[];
+  global_paused: boolean;
+};
+
+const QUEUE_STATUS_LABEL: Record<string, string> = {
+  pending: "等待中",
+  paused: "已暂停",
+  submitting: "提交中",
+  submitted: "已入队",
+  failed: "失败",
+  cancelled: "已取消",
+};
 type SnapshotFile = { node_id?: string; file: string };
 
 type EnvSnapshot = {
@@ -532,6 +559,9 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
   const [taskProgress, setTaskProgress] = useState<
     Record<string, TaskProgress>
   >({});
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [queuePaused, setQueuePaused] = useState(false);
+  const [queueBusy, setQueueBusy] = useState(false);
   const taskWsRef = useRef<WebSocket | null>(null);
   const activePromptRef = useRef<string | null>(null);
   const wsReconnectRef = useRef<number | null>(null);
@@ -635,6 +665,7 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
       setPasteOpen(false);
       setPasteText("");
       void loadTasks(false);
+      void loadQueue();
       void loadVersions(id);
       void loadDrafts(id, false);
       setMessage(`已打开：${result.manifest.filename}`);
@@ -944,6 +975,89 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
       setTaskSyncError(result.sync_error);
     } catch (error) {
       setTaskSyncError(String(error));
+    }
+  }
+
+  async function loadQueue() {
+    if (!workflowId) return;
+    try {
+      const result = await apiGet<QueueResponse>(
+        `/api/queue?workflow_id=${encodeURIComponent(workflowId)}`,
+      );
+      setQueueItems(result.items);
+      setQueuePaused(result.global_paused);
+    } catch {
+      // Queue is an enhancement; leave the existing task panel intact on error.
+    }
+  }
+
+  async function enqueueTask() {
+    if (!workflowId) return;
+    setQueueBusy(true);
+    try {
+      await apiPost<QueueItem>("/api/queue", { workflow_id: workflowId, note: "" });
+      setMessage("已加入本地待发队列，空闲时按顺序逐条提交。");
+      await loadQueue();
+    } catch (error) {
+      setMessage(`加入队列失败：${String(error)}`);
+    } finally {
+      setQueueBusy(false);
+    }
+  }
+
+  async function toggleQueueItem(queueId: string, paused: boolean) {
+    setQueueBusy(true);
+    try {
+      await apiPost(`/api/queue/${queueId}/pause`, { paused });
+      await loadQueue();
+    } catch (error) {
+      setMessage(`暂停/恢复失败：${String(error)}`);
+    } finally {
+      setQueueBusy(false);
+    }
+  }
+
+  async function moveQueueItem(queueId: string, direction: "up" | "down") {
+    setQueueBusy(true);
+    try {
+      const result = await apiPost<{ items: QueueItem[] }>(
+        `/api/queue/${queueId}/move`,
+        { direction },
+      );
+      setQueueItems(result.items);
+    } catch (error) {
+      setMessage(`调整顺序失败：${String(error)}`);
+    } finally {
+      setQueueBusy(false);
+    }
+  }
+
+  async function cancelQueueItem(queueId: string) {
+    setQueueBusy(true);
+    try {
+      await apiDelete(`/api/queue/${queueId}`, {});
+      setMessage("已从本地队列移除。");
+      await loadQueue();
+    } catch (error) {
+      setMessage(`移除队列项失败：${String(error)}`);
+    } finally {
+      setQueueBusy(false);
+    }
+  }
+
+  async function toggleGlobalPause() {
+    setQueueBusy(true);
+    try {
+      const next = !queuePaused;
+      const result = await apiPost<{ global_paused: boolean }>(
+        "/api/queue/pause-all",
+        { paused: next },
+      );
+      setQueuePaused(result.global_paused);
+    } catch (error) {
+      setMessage(`全局暂停切换失败：${String(error)}`);
+    } finally {
+      setQueueBusy(false);
     }
   }
 
@@ -2331,6 +2445,18 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
                     >
                       刷新状态
                     </button>
+                    <button
+                      disabled={queueBusy || busy || !detail.manifest.confirmed}
+                      onClick={() => void enqueueTask()}
+                    >
+                      加入本地队列
+                    </button>
+                    <button
+                      onClick={() => void toggleGlobalPause()}
+                      disabled={queueBusy || busy}
+                    >
+                      {queuePaused ? "恢复队列调度" : "暂停队列调度"}
+                    </button>
                     <span className="muted">
                       {detail.manifest.confirmed ? "白名单已确认" : "需先确认白名单"}
                     </span>
@@ -2386,6 +2512,97 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
                       ))}
                     </div>
                   )}
+                  <div className="workflow-queue">
+                    <h4>本地待发队列{queuePaused ? "（调度已暂停）" : ""}</h4>
+                    {queueItems.length === 0 ? (
+                      <p className="muted">当前工作流没有排队中的任务。</p>
+                    ) : (
+                      <div className="workflow-node-list">
+                        {queueItems.map((item, index) => {
+                          const settled =
+                            item.status === "submitting" ||
+                            item.status === "submitted";
+                          const cancellable =
+                            item.status === "pending" ||
+                            item.status === "paused" ||
+                            item.status === "failed";
+                          return (
+                            <div className="workflow-node-row" key={item.queue_id}>
+                              <div>
+                                <strong>
+                                  #{index + 1} {item.workflow_name}
+                                </strong>
+                                {item.note && <small>备注：{item.note}</small>}
+                                {item.last_error && (
+                                  <small className="workflow-warning">
+                                    {item.last_error}
+                                  </small>
+                                )}
+                              </div>
+                              <div className="actions">
+                                {!settled && (
+                                  <>
+                                    <button
+                                      onClick={() =>
+                                        void toggleQueueItem(
+                                          item.queue_id,
+                                          item.status !== "paused",
+                                        )
+                                      }
+                                      disabled={queueBusy || busy}
+                                    >
+                                      {item.status === "paused"
+                                        ? "恢复"
+                                        : "暂停"}
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        void moveQueueItem(item.queue_id, "up")
+                                      }
+                                      disabled={queueBusy || busy || index === 0}
+                                    >
+                                      上移
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        void moveQueueItem(
+                                          item.queue_id,
+                                          "down",
+                                        )
+                                      }
+                                      disabled={
+                                        queueBusy ||
+                                        busy ||
+                                        index === queueItems.length - 1
+                                      }
+                                    >
+                                      下移
+                                    </button>
+                                  </>
+                                )}
+                                {cancellable && (
+                                  <button
+                                    onClick={() =>
+                                      void cancelQueueItem(item.queue_id)
+                                    }
+                                    disabled={queueBusy || busy}
+                                  >
+                                    移除
+                                  </button>
+                                )}
+                                <span
+                                  className={`compare-badge ${item.status}`}
+                                >
+                                  {QUEUE_STATUS_LABEL[item.status] ??
+                                    item.status}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
