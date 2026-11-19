@@ -2747,3 +2747,38 @@
 
 - 巡检只覆盖本地 workflows 目录树；SQLite 内记录、历史图片索引、外部 ComfyUI 目录不在扫描范围。
 - 不提供一键清理/修复入口；孤儿与损坏项需人工核对后手动处理。
+
+## 118. TASK-003.1-R111 备份恢复写入与保守冲突合并（2026-11-19）
+
+### 118.1 落地内容
+
+- 后端新增 `backup_restore.py`：恢复前先做 fail-closed 校验——ZIP 可打开、`manifest.json`
+  存在且 `app` 匹配本应用；成员路径归一化后拒绝绝对路径、盘符、`..` 越界与冒号标识，仅放行
+  受管前缀（workflows/knowledge/prompts/drafts/history/settings/database）。归档数据库先落
+  临时副本跑 `PRAGMA integrity_check`，非 `ok` 即在写入任何现有数据前中止。
+- 恢复流程：先把当前数据根用既有 `build_backup_archive` 写到 `backups/restore-pre-<时间戳>.zip`，
+  预备份失败则拒绝恢复、现有数据保持原样；文件按白名单原子写入。冲突策略默认保留现状（同名
+  跳过并记入 `skipped_existing`），`overwrite=true` 才覆盖；数据库整体替换，不做表级合并。
+  settings 成员写回时由 `rewrite_settings_paths` 把受管路径重指向当前根，外部 ComfyUI 路径与
+  连接地址按归档保留；不触碰 ComfyUI 目录、权重与原图。
+- `main.py`：新增 `POST /api/backup/restore`（原始请求体 ZIP，`?overwrite=` 查询开关），
+  `RestoreError` 转 400，写盘 OSError 转 500；沿用既有会话/CSRF 中间件。
+- 前端：`api.ts` 新增 `apiPostBinary`（原始二进制 POST，带 CSRF 头）；设置区「恢复备份」文件
+  选择，两步态面板显示文件名、默认保留现状说明与「覆盖同名文件」勾选项，确认/取消；报告回显
+  写入/保留/覆盖项数与恢复前备份路径，提示刷新页面。
+- 测试：默认保留现有+补写缺失、覆盖替换、应用不匹配拒绝、越界路径拒绝、损坏数据库中止且不
+  部分写入、非 ZIP 拒绝共 6 例。
+
+### 118.2 回归
+
+- 后端 **262 passed, 1 warning**（原 256 + 新增 6；遗留 StarletteDeprecationWarning）。
+- 前端 `tsc -b && vite build` 绿，产物 `index-ejTzQHWH.js` 208.14 kB / gzip 65.66 kB，
+  `index--eVNY1pt.css` 13.61 kB / gzip 3.23 kB。
+- **提交状态**：feat 已在本地 dev（`6baf2a0`）；不再 push 远端、不做远端核对。无新增第三方
+  依赖，恢复链路仅用标准库。
+
+### 118.3 边界与 backlog
+
+- 数据库为整文件替换，不做表级/记录级合并；跨版本库结构不兼容时以预备份人工回滚。
+- 恢复后受管路径与外部路径已尽量保留，但运行中内存里的设置需刷新/重启后重读；归档不含权重
+  与原图，恢复不会还原 ComfyUI 目录里的模型与已生成图片。
