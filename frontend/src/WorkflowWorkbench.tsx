@@ -208,6 +208,14 @@ type EnvSnapshot = {
   samplers?: Record<string, unknown>[];
 };
 
+type ReleaseVramResult = {
+  ollama_online: boolean;
+  ollama_stopped: string[];
+  ollama_errors: string[];
+  comfyui_freed: boolean;
+  comfyui_error: string | null;
+};
+
 type DraftEntry = {
   id: string;
   name: string;
@@ -669,6 +677,7 @@ export default function WorkflowWorkbench({
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [queuePaused, setQueuePaused] = useState(false);
   const [queueBusy, setQueueBusy] = useState(false);
+  const [releaseBusy, setReleaseBusy] = useState(false);
   const [queueGlobal, setQueueGlobal] = useState(
     () => readStoredParam("workbench.queueGlobal") === "1",
   );
@@ -1168,6 +1177,31 @@ export default function WorkflowWorkbench({
       setMessage(`加入队列失败：${String(error)}`);
     } finally {
       setQueueBusy(false);
+    }
+  }
+
+  async function releaseVram() {
+    setReleaseBusy(true);
+    try {
+      const result = await apiPost<ReleaseVramResult>("/api/system/release-vram", {});
+      const parts: string[] = [];
+      parts.push(
+        result.ollama_stopped.length
+          ? `已卸载 LLM：${result.ollama_stopped.join("、")}`
+          : "无驻留 LLM",
+      );
+      parts.push(
+        result.comfyui_freed ? "已释放 ComfyUI 模型显存" : "ComfyUI 模型释放未成功",
+      );
+      if (result.ollama_errors.length) {
+        parts.push(`LLM：${result.ollama_errors.join("；")}`);
+      }
+      if (result.comfyui_error) parts.push(`ComfyUI：${result.comfyui_error}`);
+      setMessage(parts.join("；"));
+    } catch (error) {
+      setMessage(`卸载失败：${String(error)}`);
+    } finally {
+      setReleaseBusy(false);
     }
   }
 
@@ -2948,6 +2982,12 @@ export default function WorkflowWorkbench({
                       disabled={queueBusy || busy}
                     >
                       {queuePaused ? "恢复队列调度" : "暂停队列调度"}
+                    </button>
+                    <button
+                      onClick={() => void releaseVram()}
+                      disabled={releaseBusy || busy}
+                    >
+                      {releaseBusy ? "卸载中…" : "卸载 LLM 和底模"}
                     </button>
                     <span className="muted">
                       {detail.manifest.confirmed ? "白名单已确认" : "需先确认白名单"}

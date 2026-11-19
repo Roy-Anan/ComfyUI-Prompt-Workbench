@@ -60,6 +60,17 @@ def _patch_gates(monkeypatch, online=True, loaded=None, submit=None, vram=None):
     monkeypatch.setattr(
         workflow_api.comfy_client, "loaded_ollama_models", lambda url: loaded
     )
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "release_resources",
+        lambda ollama_url, comfyui_url, timeout=5.0: {
+            "ollama_online": True,
+            "ollama_stopped": [],
+            "ollama_errors": [],
+            "comfyui_freed": True,
+            "comfyui_error": None,
+        },
+    )
     if submit is not None:
         monkeypatch.setattr(
             workflow_api.comfy_client, "submit_prompt", submit
@@ -1150,3 +1161,22 @@ def test_draft_favorite_toggle_roundtrip(client):
         headers=AUTH,
     )
     assert missing.status_code == 400
+
+
+def test_release_vram_endpoint(client, monkeypatch):
+    test_client, _ = client
+    payload = {
+        "ollama_online": True,
+        "ollama_stopped": ["m:v1"],
+        "ollama_errors": [],
+        "comfyui_freed": True,
+        "comfyui_error": None,
+    }
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "release_resources",
+        lambda ollama_url, comfyui_url, timeout=5.0: payload,
+    )
+    response = test_client.post("/api/system/release-vram", headers=AUTH)
+    assert response.status_code == 200
+    assert response.json() == payload

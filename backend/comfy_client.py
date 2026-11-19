@@ -200,6 +200,69 @@ def loaded_ollama_models(
     return {"online": True, "models": names, "error": None}
 
 
+def stop_ollama_model(
+    ollama_url: str,
+    model: str,
+    timeout: float = 5.0,
+) -> dict[str, Any]:
+    """Unload one resident Ollama model via ``/api/stop``."""
+    _status, _data, error = _post_json(
+        ollama_url.rstrip("/") + "/api/stop",
+        {"model": model},
+        timeout,
+    )
+    return {"ok": error is None, "model": model, "error": error}
+
+
+def free_comfyui_models(
+    comfyui_url: str,
+    timeout: float = 5.0,
+) -> dict[str, Any]:
+    """Unload all loaded ComfyUI models and free VRAM via ``/free``.
+
+    This releases the checkpoint, LoRA, CLIP and VAE currently resident;
+    ComfyUI reloads them on the next prompt.
+    """
+    _status, _data, error = _post_json(
+        comfyui_url.rstrip("/") + "/free",
+        {"unload_models": True, "free_memory": True},
+        timeout,
+    )
+    return {"ok": error is None, "error": error}
+
+
+def release_resources(
+    ollama_url: str,
+    comfyui_url: str,
+    timeout: float = 5.0,
+) -> dict[str, Any]:
+    """Best-effort unload of resident Ollama and ComfyUI models.
+
+    Never raises: per-target failures are collected and returned so the
+    caller can fall back to the existing fail-closed VRAM / LLM-resident
+    gates instead of failing the whole release on one target.
+    """
+    loaded = loaded_ollama_models(ollama_url, timeout)
+    ollama_stopped: list[str] = []
+    ollama_errors: list[str] = []
+    if loaded["online"]:
+        for name in loaded["models"]:
+            result = stop_ollama_model(ollama_url, name, timeout)
+            if result["ok"]:
+                ollama_stopped.append(name)
+            else:
+                ollama_errors.append(f"{name}: {result['error']}")
+
+    comfy = free_comfyui_models(comfyui_url, timeout)
+    return {
+        "ollama_online": loaded["online"],
+        "ollama_stopped": ollama_stopped,
+        "ollama_errors": ollama_errors,
+        "comfyui_freed": comfy["ok"],
+        "comfyui_error": comfy["error"],
+    }
+
+
 def cancel_pending(
     comfyui_url: str,
     prompt_id: str,

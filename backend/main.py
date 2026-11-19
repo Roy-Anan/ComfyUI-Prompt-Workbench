@@ -37,6 +37,7 @@ import rule_store
 import task_queue
 from asset_api import router as asset_router
 from workflow_api import router as workflow_router
+from workflow_api import system_router
 from workflow_service import WorkflowStore, WorkflowError
 
 APP_NAME = "ComfyUI-Prompt-Workbench"
@@ -370,6 +371,7 @@ app = FastAPI(
 )
 
 app.include_router(workflow_router)
+app.include_router(system_router)
 app.include_router(asset_router)
 
 app.add_middleware(

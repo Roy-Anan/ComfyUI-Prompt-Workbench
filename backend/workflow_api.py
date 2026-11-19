@@ -16,6 +16,7 @@ import rule_prompt
 import rule_store
 from workflow_service import WorkflowError, WorkflowStore
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
+system_router = APIRouter(prefix="/api/system", tags=["system"])
 def store() -> WorkflowStore:
     return WorkflowStore(datadir.default_data_root() / "workflows")
 def _database_path() -> Path:
@@ -685,6 +686,12 @@ def _submit_guarded(
             detail={"online": False, "error": "ComfyUI 不可达，未提交任务。"},
         )
 
+    # Best-effort: unload resident LLM and ComfyUI models before the
+    # fail-closed gates re-probe. Per-target failures do not block here;
+    # the VRAM and LLM-resident checks below still reject if memory stays
+    # tight or an LLM remains resident.
+    comfy_client.release_resources(ollama_url, comfyui_url)
+
     vram = comfy_client.probe_vram_free(comfyui_url)
     if not vram["online"] or vram["vram_free"] is None:
         raise HTTPException(
@@ -761,6 +768,16 @@ def _submit_guarded(
             "submitted",
         )
     return record
+
+
+@system_router.post("/release-vram")
+def release_vram():
+    """Manually unload resident Ollama models and free ComfyUI model VRAM.
+
+    Best-effort: returns per-target results instead of raising on a single
+    unreachable target.
+    """
+    return comfy_client.release_resources(_ollama_url(), _comfyui_url())
 
 
 @router.post("/{workflow_id}/tasks")
