@@ -1,15 +1,15 @@
 # PROJECT_STATE — 项目当前状态
 
 - 任务编号：TASK-003.1-R2（状态回填）
-- 记录日期：2026-11-18
+- 记录日期：2026-11-19
 - 记录人：豆包
 - 状态口径：如实记录，计划中的功能一律不计为已完成；仅代码未验证的项明确标注“未验证”
 
 ## 1. 当前所处阶段
 
 - 阶段：**多模块主体落地，确定性辅助切片收尾**（M0 骨架与安全基线完成；工作流解析/白名单、规则库与参数比对、本地 LLM 候选审核、任务队列、生成历史、多命名草稿与收藏、只读诊断/设置/备份导出主体已落地；剩余大头为口径未决、缺依赖、高风险写入或空数据项，见各节 backlog）。
-- 当前任务：**TASK-003.1-R94 草稿导出 JSON** —— 草稿按当前筛选（收藏/标签/关键词/回收站）前端纯本地导出 JSON 下载；后端 245 passed 基线未变，前端构建绿；真机逐条闭环留阶段收口统一验收。
-- 开发分支：`dev`，本地领先 origin/dev 7 笔（R92 feat `519fb53`、R92 docs `a47bd41`、R92 状态备注 `0315d43`、R93 feat `ed9ab05`、R93 docs `0316db2`、R94 feat `6534e96439b016cfecd74f9a04f7da633356d54c`）；本地缓存的 origin/dev 仍停在 R91 docs `c579f09`。**推送受阻**：本机 hosts 将 `github.com` 等域名劫持到 `127.0.0.1`，而本地 443 无监听者、无代理进程兜底，`git push` 连接被积极拒绝；待 hosts/代理恢复后补推并远端核对链。main `3084866aa85595133c7a1179b15ddd71e659d8f3` 未改、未合并。
+- 当前任务：**R95–R98 批次落地收口** —— R95 历史图片只读代理与缩略图、R96 草稿置顶/收藏/普通分区小标题、R97 深浅主题切换与字号三档本地记忆、R98 LoRA 同名 json 元数据只读骨架与完整度标注；后端 249 passed，前端构建绿；真机逐条闭环留阶段收口统一验收。
+- 开发分支：`dev`，R95–R98 feat 均为**本地提交**（`cd96e02`、`b47f3ff`、`06480b6`、`7b0ff5c`）。**新口径（2026-11-19 起）**：全部本地开发，不再 `git push` 远端、不做远端核对；origin/dev 缓存停在 R91 docs `c579f09`，仅作历史参照。main `3084866aa85595133c7a1179b15ddd71e659d8f3` 未改、未合并。
 - 版本：`0.1.0-dev.5`。
 - 注：第 3.1 节 Rust/Tauri 编译与桌面壳条目为 ADR-0001 废弃路线的历史记录；ADR-0002 已改为免安装本机浏览器 Web 应用，该遗留不再阻塞当前 Web 路线。
 - **方向（ADR-0002，2026-11-18）**：免安装本机浏览器 Web 应用；默认 `http://127.0.0.1:17890`（原 8000 与本机酒馆冲突，已改），只绑定回环；不做 EXE/NSIS 安装包，不开发 Tauri/Rust 宿主。ADR-0001 旧路线已废弃，仅作历史记录。
@@ -2375,3 +2375,107 @@
 
 - 导出为 JSON 整包下载，不提供单条 TXT/MD 格式（工作副本 Prompt 单条导出已由 R71 覆盖）；
   导出文件不落服务端，仅浏览器本地生成。收藏分组仍留后续。
+
+## 103. TASK-003.1-R95 历史输出图片只读代理与缩略图（2026-11-19）
+
+### 103.1 落地内容
+
+- 后端 `generation_history.py` 新增 `IMAGE_EXTENSIONS` 白名单（png/jpg/jpeg/webp/gif）与
+  `resolve_image_path(output_dir, filename, subfolder)`：目录未配置、文件名非纯图片名、扩展名
+  不在白名单、resolve 后越出输出目录、文件不存在均返回 `None`；权重与原图永不拷贝或改写。
+- `main.py` 新增 `GET /api/history/image?filename=&subfolder=`，解析成功返回 `FileResponse`，
+  不可访问抛 404；GET 走既有会话鉴权，浏览器 `<img src>` 同源自动带 cookie，无需 CSRF。
+- 前端 `HistoryPanel.tsx`：`historyImageUrl` 编码查询参数；图片区改为缩略图网格，`exists===true`
+  渲染懒加载 `<img>`，否则保留文件名与存在性小字；`styles.css` 追加 150×150 cover 缩略图样式。
+
+### 103.2 回归
+
+- 后端 **246 passed, 1 warning**（新增 `test_resolve_image_path_allows_inside_rejects_traversal_and_non_image`，
+  覆盖目录内允许、缺失/未配置目录/非图片扩展名/`../a.png`/文件名含分隔符/subfolder 越界均
+  返回 None；遗留 StarletteDeprecationWarning）；前端 `tsc -b && vite build` 绿，产物
+  `index-gKIJysWy.js` 200.28 kB / gzip 63.10 kB，`index-CmgM5v5s.css` 10.14 kB / gzip 2.46 kB。
+- 按快速迭代口径未单独做真机浏览器逐条闭环，留阶段收口统一验收。
+- **提交状态**：feat 已在本地 dev（`cd96e02`）；按新口径全部本地开发，不再 push 远端、不做远端核对。
+
+### 103.3 边界与 backlog
+
+- 代理只读转发输出目录内既有图片，不生成缩略图副本、不缓存；图片缺失或输出目录未配置时回退
+  文字标注。图片大图无懒加载以外的压缩，原图仍以 ComfyUI 输出目录为准。
+
+## 104. TASK-003.1-R96 草稿列表分区小标题展示（2026-11-19）
+
+### 104.1 落地内容
+
+- 纯前端：`filteredDrafts` 在既有过滤（收藏/标签/关键词/回收站）与后端置顶排序不变的前提下，
+  按 置顶 → 收藏 → 普通 三组在组首插入小标题；`draftGroup` 归类与 `DRAFT_GROUP_LABEL` 文案
+  映射为模块级纯函数。回收站视图（`showTrashed`）保持平铺，不显示分组小标题（置顶/收藏标注在
+  回收站本就隐藏）。
+- 行内闭包状态（载入/收藏/置顶/复制/更新/删除/恢复/彻底删除）与交互口径零改动；用 `Fragment`
+  承接小标题与草稿行的并列渲染，key 挂在 Fragment 上。
+
+### 104.2 回归
+
+- 后端无改动，沿用 **246 passed, 1 warning** 基线；前端 `tsc -b && vite build` 绿，产物
+  `index-Dxpgc4nn.js` 200.55 kB / gzip 63.24 kB，`index-2NnEgSjS.css` 10.29 kB / gzip 2.50 kB。
+- 按快速迭代口径未单独做真机浏览器逐条闭环，留阶段收口统一验收。
+- **提交状态**：feat 已在本地 dev（`b47f3ff`）；不再 push 远端、不做远端核对。
+
+### 104.3 边界与 backlog
+
+- 分组为单层归类：置顶优先于收藏，收藏草稿不重复出现在普通组；不支持分组内手动拖拽调序，
+  分组内顺序仍沿用后端更新时间与置顶排序。
+
+## 105. TASK-003.1-R97 主题切换与字号三档本地记忆（2026-11-19）
+
+### 105.1 落地内容
+
+- `styles.css` 抽取一套语义化 CSS 变量（背景/面板/文字/次文字/边框/按钮/强调/在线/警告等），
+  深色为 `:root` 默认值；`[data-theme="light"]` 覆盖浅色板；`[data-font="small|normal|large"]`
+  切换根字号 13/15/17px。既有硬编码色值统一改为变量引用。
+- 前端 `App.tsx`：`theme` / `fontSize` 状态从 `localStorage`（`workbench.theme`、`workbench.font`）
+  读取，`useEffect` 写入 `document.documentElement.dataset.theme/font` 并持久化；顶栏右侧加
+  深色/浅色切换按钮与字号下拉；`index.html` 内联同步脚本在首帧前读取记忆设置属性，避免深色闪烁。
+
+### 105.2 回归
+
+- 后端无改动，沿用 **246 passed, 1 warning** 基线；前端 `tsc -b && vite build` 绿，产物
+  `index-D4aFdsP_.js` 201.48 kB / gzip 63.49 kB，`index-ChbR0G4U.css` 12.83 kB / gzip 3.07 kB。
+- 按快速迭代口径未单独做真机浏览器逐条闭环，留阶段收口统一验收。
+- **提交状态**：feat 已在本地 dev（`06480b6`）；不再 push 远端、不做远端核对。
+
+### 105.3 边界与 backlog
+
+- 字号档位作用于根字号与 `font: inherit` 的控件；标题/标签等既有固定 px 字号未全部 rem 化，
+  大档下缩放幅度有限。浅色板为首版可读性配色，未做高对比度/自定义主题；跟随系统 `prefers-color-scheme`
+  留后续。
+
+## 106. TASK-003.1-R98 LoRA 元数据只读骨架（2026-11-19）
+
+### 106.1 落地内容
+
+- 后端新增 `lora_metadata.py`：扫描 LoRA 目录下权重同名 `.json` 旁车，提取触发词
+  （`trigger_words/triggerWords/trained_words/trainedWords/tags/keywords`，兼容字符串/数组/对象）、
+  描述（`description/notes/summary/blurb`）、基础模型（`base_model/baseModel/model`）；完整度分级
+  `complete`（≥2 项有值）/ `partial`（1 项）/ `empty`（无可识别字段）/ `missing`（无旁车）/
+  `unreadable`（旁车解析失败）。
+- 路径口径复用越界防护：拒绝绝对路径与 `..` 分量，resolve 后必须落在配置的 LoRA 目录内；
+  目录未配置返回 `missing`。只读解析，不写角色卡、不改 ComfyUI 目录。
+- `/api/models/catalog` 响应把每个 LoRA 条目挂上 `meta` 摘要；前端 LoRA 清单展示完整度标签与
+  底座/触发词/说明摘要（触发词最多 4 个、说明截断 60 字），按完整度着色。
+- 顺带加固：`initialize_database` 的 `schema_version` 首次插入改为 `INSERT OR IGNORE`，消除并发
+  首次加载线程在 Windows 文件锁下撞主键的偶发竞态。
+
+### 106.2 回归
+
+- 后端 **249 passed, 1 warning**（新增 3 个 `test_lora_metadata.py` 用例：complete/partial/missing/
+  unreadable、越界与未配置目录/子目录相对名、批量按名归组；遗留 StarletteDeprecationWarning）；
+  前端 `tsc -b && vite build` 绿，产物 `index-BT3vY1d7.js` 202.04 kB / gzip 63.73 kB，
+  `index-BlmDaL5u.css` 13.36 kB / gzip 3.17 kB。
+- 按快速迭代口径未单独做真机浏览器逐条闭环，留阶段收口统一验收。
+- **提交状态**：feat 已在本地 dev（`7b0ff5c`）；不再 push 远端、不做远端核对。
+
+### 106.3 边界与 backlog
+
+- 旁车字段口径为保守兼容常见 CivitAI/秋叶/手动 JSON 形态，未覆盖所有第三方元数据结构；识别不到
+  的字段不臆造。本切片只读展示，不写角色卡、不整理触发词常用组合、不做 LoRA 身份/强度关联；
+  手动资料优先口径待拍板。备份恢复写入与冲突合并（M9）仍为高风险项，未纳入本批次。
