@@ -903,3 +903,44 @@ button.secondary {
 .draft-group-head:first-child {
   margin-top: 4px;
 }
+
+/* R98: LoRA sidecar metadata read-only badges */
+.lora-meta {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.lora-meta > span {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lora-meta-status {
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.lora-meta-detail {
+  color: var(--text-faint);
+  line-height: 1.5;
+}
+
+.lora-meta-complete .lora-meta-status {
+  color: var(--online);
+}
+
+.lora-meta-partial .lora-meta-status {
+  color: var(--warn-soft);
+}
+
+.lora-meta-missing .lora-meta-status,
+.lora-meta-empty .lora-meta-status {
+  color: var(--text-faint);
+}
+
+.lora-meta-unreadable .lora-meta-status {
+  color: var(--danger-border);
+}

@@ -124,10 +124,30 @@ type IdentitySummary = {
   copies?: IdentityCopy[];
 };
 
+type LoraMetaStatus = "complete" | "partial" | "empty" | "missing" | "unreadable";
+
+type LoraMeta = {
+  name: string;
+  status: LoraMetaStatus;
+  has_json: boolean;
+  trigger_words: string[];
+  description: string;
+  base_model: string;
+};
+
 type CatalogEntry = {
   name: string;
   on_disk: boolean | null;
   identity?: IdentitySummary;
+  meta?: LoraMeta | null;
+};
+
+const LORA_META_LABEL: Record<LoraMetaStatus, string> = {
+  complete: "资料完整",
+  partial: "部分资料",
+  empty: "资料为空",
+  missing: "缺资料",
+  unreadable: "资料不可读",
 };
 
 type ModelCatalog = {
@@ -952,12 +972,41 @@ export default function App() {
                   LoRA（{catalog.loras.length}）
                 </div>
                 <ul className="catalog-list">
-                  {catalog.loras.map((entry) => (
-                    <li key={entry.name}>
-                      <span>{entry.name}</span>
-                      <small>{identityLabel(entry)}</small>
-                    </li>
-                  ))}
+                  {catalog.loras.map((entry) => {
+                    const meta = entry.meta ?? null;
+                    const detail = [
+                      meta?.base_model ? `底座：${meta.base_model}` : "",
+                      meta && meta.trigger_words.length > 0
+                        ? `触发：${meta.trigger_words.slice(0, 4).join("、")}`
+                        : "",
+                      meta?.description
+                        ? `说明：${
+                            meta.description.length > 60
+                              ? `${meta.description.slice(0, 60)}…`
+                              : meta.description
+                          }`
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join("　");
+                    return (
+                      <li
+                        key={entry.name}
+                        className={meta ? `lora-meta lora-meta-${meta.status}` : "lora-meta"}
+                      >
+                        <span>
+                          {entry.name}
+                          {meta && (
+                            <small className="lora-meta-status">
+                              {LORA_META_LABEL[meta.status]}
+                            </small>
+                          )}
+                        </span>
+                        <small>{identityLabel(entry)}</small>
+                        {detail && <small className="lora-meta-detail">{detail}</small>}
+                      </li>
+                    );
+                  })}
                   {catalog.loras.length === 0 && (
                     <li className="catalog-empty">ComfyUI 未列出 LoRA</li>
                   )}

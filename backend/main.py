@@ -23,6 +23,7 @@ import backup_export
 import comfy_tasks
 import datadir
 import generation_history
+import lora_metadata
 import model_catalog
 import model_identity
 import profile_source
@@ -148,9 +149,11 @@ def initialize_database(settings: dict[str, Any]) -> str:
         ).fetchone()
 
         if row is None or row[0] is None:
+            # INSERT OR IGNORE keeps concurrent first-load threads from racing
+            # on the schema_version primary key (Windows file locking).
             connection.execute(
                 """
-                INSERT INTO schema_version(version, applied_at)
+                INSERT OR IGNORE INTO schema_version(version, applied_at)
                 VALUES (?, ?)
                 """,
                 (1, datetime.now(timezone.utc).isoformat()),
@@ -986,6 +989,14 @@ def models_catalog():
             entry["identity"] = summaries[group].get(
                 entry["name"], {"known": False}
             )
+
+    # R98: read-only LoRA sidecar metadata summary, attached to LoRA entries.
+    lora_names = [entry["name"] for entry in catalog.get("loras", [])]
+    lora_meta = lora_metadata.scan_lora_metadata(
+        storage.get("lora", ""), lora_names
+    )
+    for entry in catalog.get("loras", []):
+        entry["meta"] = lora_meta.get(entry["name"])
 
     return catalog
 
