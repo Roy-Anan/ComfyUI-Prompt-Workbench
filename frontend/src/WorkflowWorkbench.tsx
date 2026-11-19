@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost } from "./api";
 import { formatActual } from "./format";
 type PromptNode = {
@@ -159,6 +159,18 @@ type DraftEntry = {
   env_snapshot?: EnvSnapshot | null;
   created_at: string | null;
   updated_at: string | null;
+};
+
+function draftGroup(draft: DraftEntry): "pinned" | "favored" | "plain" {
+  if (draft.pinned) return "pinned";
+  if (draft.favored) return "favored";
+  return "plain";
+}
+
+const DRAFT_GROUP_LABEL: Record<"pinned" | "favored" | "plain", string> = {
+  pinned: "置顶",
+  favored: "收藏",
+  plain: "普通",
 };
 
 function snapshotFiles(files: SnapshotFile[] | undefined): string {
@@ -1778,10 +1790,21 @@ export default function WorkflowWorkbench() {
                 <p className="muted">没有匹配的草稿。</p>
               ) : (
                 <div className="workflow-node-list">
-                  {filteredDrafts.map((draft) => (
-                    <div className="workflow-node-row" key={draft.id}>
-                      <div>
-                        <strong>{draft.name}</strong>
+                  {filteredDrafts.map((draft, index) => {
+                    const previous = filteredDrafts[index - 1];
+                    const showGroupHead =
+                      !showTrashed &&
+                      (!previous || draftGroup(previous) !== draftGroup(draft));
+                    return (
+                      <Fragment key={draft.id}>
+                        {showGroupHead && (
+                          <div className="draft-group-head">
+                            {DRAFT_GROUP_LABEL[draftGroup(draft)]}
+                          </div>
+                        )}
+                        <div className="workflow-node-row">
+                          <div>
+                            <strong>{draft.name}</strong>
                         {showTrashed && (
                           <small className="workflow-meta">已删除</small>
                         )}
@@ -1962,9 +1985,11 @@ export default function WorkflowWorkbench() {
                           )}
                         </>
                         )}
-                      </div>
-                    </div>
-                  ))}
+                        </div>
+                        </div>
+                      </Fragment>
+                    );
+                  })}
                 </div>
               )}
             </div>

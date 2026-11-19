@@ -791,3 +791,16 @@ button.secondary {
   color: #8b98ab;
   overflow-wrap: anywhere;
 }
+
+/* R96: draft list section headers */
+.draft-group-head {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #8b98ab;
+}
+
+.draft-group-head:first-child {
+  margin-top: 4px;
+}
