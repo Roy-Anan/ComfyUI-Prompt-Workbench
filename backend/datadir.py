@@ -48,6 +48,7 @@ MANAGED_KEYS = (
     "workflows",
     "drafts",
     "history",
+    "assets",
     "cache",
     "logs",
     "backups",

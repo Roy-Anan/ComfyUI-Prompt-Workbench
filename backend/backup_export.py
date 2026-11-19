@@ -29,7 +29,7 @@ from typing import Any
 APP_NAME = "ComfyUI-Prompt-Workbench"
 
 # Persistent user domains archived under the data root.
-INCLUDE_DIRS = ("workflows", "knowledge", "prompts", "drafts", "history")
+INCLUDE_DIRS = ("workflows", "knowledge", "prompts", "drafts", "history", "assets")
 # Rebuildable, derived, or self-referential domains never archived.
 EXCLUDE_DIRS = ("cache", "logs", "backups", "exports")
 

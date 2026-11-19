@@ -7,12 +7,13 @@ import {
   apiPostBinary,
 } from "./api";
 import { formatStructured } from "./format";
+import AssetLibrary from "./AssetLibrary";
 import HistoryPanel from "./HistoryPanel";
 import WorkflowWorkbench from "./WorkflowWorkbench";
 
-type PageKey = "settings" | "workflows" | "history" | "loras";
+type PageKey = "settings" | "workflows" | "history" | "assets" | "loras";
 
-const PAGE_KEYS: PageKey[] = ["settings", "workflows", "history", "loras"];
+const PAGE_KEYS: PageKey[] = ["settings", "workflows", "history", "assets", "loras"];
 
 function readStoredPage(): PageKey {
   try {
@@ -1241,9 +1242,11 @@ export default function App() {
       ? "工作流工作区"
       : activePage === "history"
         ? "生成历史"
-        : activePage === "loras"
-          ? "LoRA 资料"
-          : "服务与设置";
+        : activePage === "assets"
+          ? "素材库"
+          : activePage === "loras"
+            ? "LoRA 资料"
+            : "服务与设置";
   const primaryDevice = comfyStatus?.devices?.[0] ?? null;
 
   return (
@@ -1282,6 +1285,13 @@ export default function App() {
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-4.5-4.5L6 21" stroke="currentColor" stroke-width="2" /></svg>
             生成历史
+          </div>
+          <div
+            className={`w-nav-item ${activePage === "assets" ? "active" : ""}`}
+            onClick={() => switchPage("assets")}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2" /><circle cx="8.5" cy="8.5" r="1.6" /><path d="m21 15-4.5-4.5L6 21" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /></svg>
+            素材库
           </div>
           <div
             className={`w-nav-item ${activePage === "loras" ? "active" : ""}`}
@@ -1360,6 +1370,8 @@ export default function App() {
         />
       ) : activePage === "history" ? (
         <HistoryPanel />
+      ) : activePage === "assets" ? (
+        <AssetLibrary />
       ) : activePage === "loras" ? (
         <section className="panel" id="page-loras">
           <div className="section-heading">

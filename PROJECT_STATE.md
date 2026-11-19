@@ -3575,3 +3575,55 @@
   `origin/dev`。随后应用户要求把主线 `main` 快进到 dev（`3084866..b9c2121`，main 原为 dev
   祖先、无独有提交，Fast-forward 无冲突）并推送 `origin/main`；远端 `main` 与 `dev` 同点
   `b9c2121`，仓库默认分支仍为 `main`，打开主线链接即当前工作台；`dev` 保留继续开发。
+
+## 150. 基础素材库：本地图片分组/标签/检索与两种导入方式（2026-11-19）
+
+### 150.1 落地内容
+
+- **后端领域层 `backend/asset_library.py`（新建）**：SQLite 三表 + 关联表——`asset_group`
+  （分组，唯一默认「未分组」`is_default=1`，不可重命名/删除）、`asset_tag`（标签，名称唯一）、
+  `asset_item`（素材，`kind` 为 `copy`/`reference`，存副本相对路径或外部绝对路径、分组、
+  大小、扩展名、备注、时间戳）、`asset_item_tag`（素材-标签联合主键，级联删除）。
+  - 两种导入：`import_copies` 前端读 base64 经 JSON 提交（不引入 multipart 依赖），副本写入
+    `userdata/assets/copies/`，`secrets.token_hex(16)+ext` 唯一文件名不覆盖；`import_references`
+    只记录绝对路径，逐个校验存在性与扩展名白名单（PNG/JPG/JPEG/WebP），不复制/移动/删除原图。
+  - 检索：`list_items` 支持分组、关键词（名称 LIKE 不区分大小写）、多标签 **AND**（每个标签
+    独立 JOIN 别名，避免列名歧义），按创建时间倒序；`update_item` 改名/改组/改标签/备注；
+    `delete_item` 副本可选择是否一并删除工作台内副本（路径限定 `copies/` 目录，越界不删），
+    引用素材无论开关都只删记录、不碰原图；`resolve_image_path` 供受保护代理解析磁盘路径并
+    复核扩展名与目录边界。
+- **后端路由 `backend/asset_api.py`（新建）**：`APIRouter(prefix="/api/assets")`，分组
+  增/改名/删、标签列表/删除、素材列表、复制导入、引用导入、更新、删除、`/image` 受保护
+  FileResponse 代理；`LookupError→404`，`ValueError/OSError→400`。图片只走代理端点，不开放
+  任意本地文件读取。
+- **接入与数据目录**：`main.py` 引入 `asset_library`/`asset_router`、`include_router`、
+  `initialize_database` 调 `asset_library.ensure_schema`，CORS `allow_methods` 补 `DELETE`；
+  `datadir.MANAGED_KEYS` 与 `backup_export.INCLUDE_DIRS` 加入 `assets`（纳入自动建目录、设置
+  路径登记、诊断统计与备份打包）。
+- **前端 `frontend/src/AssetLibrary.tsx`（新建）**：左侧分组列表（含数量、新建/重命名/删除，
+  删分组素材回落默认组）；顶部名称搜索框、标签 chips（点击切换 AND 筛选、× 删标签）、一键
+  清空筛选；响应式缩略图网格卡片（缩略图、名称、副本/引用徽章、分组、大小、标签、失效标注）；
+  导入弹窗（复制多选 / 粘贴路径逐行两模式，可带分组/标签/备注）；详情弹窗（大图、类型/大小/
+  导入时间/路径、名称/分组/标签/备注编辑、删除安全提示）；blob objectUrl 内存缓存、失效占位；
+  分组/关键词/标签筛选偏好写入 localStorage。`App.tsx` 注册 `assets` 页签（导航位于生成历史
+  之后、LoRA 资料之前）；`styles.css` 末尾追加 `.asset-*` 全套样式，复用既有令牌与面板/标签/
+  徽章/空态/灯箱类。
+
+### 150.2 回归
+
+- 后端全量 **332 passed, 1 warning**（基线 313 + 新增 19：`test_asset_library.py` 14 领域用例、
+  `test_asset_api.py` 5 HTTP 集成用例；遗留 StarletteDeprecationWarning）。前端
+  `tsc -b && vite build` 绿，37 模块。
+- 隔离临时实例真实 uvicorn 冒烟（`WORKBENCH_PORT=17891`、临时 `WORKBENCH_DATA_ROOT`、Bearer
+  bootstrap token）：健康检查 200；`GET /api/assets/groups` 返回默认组「未分组」；
+  `GET /api/assets/items` 返回空；`POST /api/assets/groups` 创建「冒烟分组」成功；冒烟实例已停、
+  临时数据目录已清理。
+
+### 150.3 边界与 backlog
+
+- 按任务书明确不做：LLM/AI 图片识别、自动生成标签、智能分类、Prompt 自动组合、ComfyUI 自动
+  生成或工作流联动、在线素材下载、图片编辑/裁剪/滤镜、复杂权限；未为这些预留复杂架构。
+- 引用素材只读，外部原文件移动/删除后前端显示「图片已失效」占位与提示，不自动补录或重链；
+  副本删除的「同时删副本」选项仅作用于 `copies/` 目录内对应文件。
+- 真机浏览器逐条闭环（导入真实图片、分组/标签/筛选/详情编辑/删除全流程）留待有素材数据后
+  联调复核；本轮后端由集成测试 + 隔离实例冒烟覆盖，前端由类型检查与生产构建覆盖。

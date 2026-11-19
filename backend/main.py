@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
+import asset_library
 import backup_export
 import backup_restore
 import comfy_tasks
@@ -33,6 +34,7 @@ import queue_dispatcher
 import rule_engine
 import rule_store
 import task_queue
+from asset_api import router as asset_router
 from workflow_api import router as workflow_router
 from workflow_service import WorkflowStore, WorkflowError
 
@@ -132,6 +134,7 @@ def initialize_database(settings: dict[str, Any]) -> str:
 
         model_identity.ensure_schema(connection)
         rule_store.ensure_schema(connection)
+        asset_library.ensure_schema(connection)
 
         connection.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
@@ -366,12 +369,13 @@ app = FastAPI(
 )
 
 app.include_router(workflow_router)
+app.include_router(asset_router)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=sorted(ALLOWED_ORIGINS),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", CSRF_HEADER],
 )
 
