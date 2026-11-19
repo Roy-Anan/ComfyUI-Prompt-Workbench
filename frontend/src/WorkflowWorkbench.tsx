@@ -943,6 +943,26 @@ export default function WorkflowWorkbench() {
     }
   }
 
+  function exportDrafts() {
+    const payload = {
+      exported_at: new Date().toISOString(),
+      count: filteredDrafts.length,
+      records: filteredDrafts,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `workbench-drafts-${stamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function updateDraft(draft: DraftEntry) {
     if (!workflowId) return;
     const name = draftName.trim();
@@ -1744,6 +1764,12 @@ export default function WorkflowWorkbench() {
                     />
                     回收站
                   </label>
+                  <button
+                    onClick={exportDrafts}
+                    disabled={draftBusy || busy || filteredDrafts.length === 0}
+                  >
+                    导出 JSON
+                  </button>
                 </div>
               )}
               {drafts.length === 0 ? (
