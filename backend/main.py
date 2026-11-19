@@ -272,6 +272,7 @@ class RuleDelete(BaseModel):
 
 class ProfileImport(BaseModel):
     file_name: str = Field(min_length=1, max_length=120)
+    candidate_keys: list[str] | None = None
 
 
 app = FastAPI(
@@ -1118,7 +1119,11 @@ def import_profile(payload: ProfileImport):
     try:
         with model_identity.connect(database_path) as connection:
             rule_store.ensure_schema(connection)
-            report = profile_source.import_profile(connection, payload.file_name)
+            report = profile_source.import_profile(
+            connection,
+            payload.file_name,
+            selected_keys=payload.candidate_keys,
+        )
         return report
     except FileNotFoundError:
         raise HTTPException(404, f"Profile not found: {payload.file_name}") from None

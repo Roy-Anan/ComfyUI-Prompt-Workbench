@@ -756,13 +756,20 @@ button.secondary {
   border-left: 2px solid var(--border-strong);
 }
 .profile-preview .rule-row {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.rule-row-check {
+  display: flex;
+  align-items: center;
 }
 .profile-preview .rule-row-meta {
   justify-content: flex-start;
+  grid-column: 1 / -1;
 }
 .profile-import-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-start;
   margin-top: 2px;
 }

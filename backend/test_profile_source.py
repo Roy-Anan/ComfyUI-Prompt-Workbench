@@ -176,6 +176,30 @@ def test_import_profile_without_filename_is_rejected(client, tmp_path, monkeypat
     assert response.status_code == 400
 
 
+def test_import_profile_selective_candidate_keys(client, tmp_path, monkeypatch):
+    test_client, _ = client
+    _seed_profiles(tmp_path, monkeypatch)
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    steps_key = "checkpoint\u001falpha.safetensors\u001fGENERATION SETTINGS::Steps"
+    missing_key = "checkpoint\u001falpha.safetensors\u001fNO SUCH KEY"
+    response = test_client.post(
+        "/api/profiles/import",
+        headers=headers,
+        json={"file_name": "Alpha.txt", "candidate_keys": [steps_key, missing_key]},
+    )
+    assert response.status_code == 200
+    report = response.json()
+    assert report["selected"] is True
+    assert report["imported"] == 1
+    assert report["rejected"] == []
+    assert report["unknown_keys"] == [missing_key]
+
+    stored = test_client.get("/api/rules", headers=headers)
+    keys = {item["rule_key"] for item in stored.json()["items"]}
+    assert keys == {"GENERATION SETTINGS::Steps"}
+
+
 def test_list_missing_directory_is_empty_not_error(client, monkeypatch):
     test_client, _ = client
     monkeypatch.setenv("WORKBENCH_PROFILES_DIR", "Z:/does/not/exist")

@@ -223,7 +223,15 @@ type ProfileImportReport = {
   imported: number;
   rejected: ProfileImportRejected[];
   unknown_fields: string[];
+  selected: boolean;
+  unknown_keys: string[];
 };
+
+function profileCandidateKey(candidate: ProfileCandidate): string {
+  return [candidate.level, candidate.scope_key || "", candidate.rule_key].join(
+    "\u001f",
+  );
+}
 
 const RULE_LEVEL_LABEL: Record<string, string> = {
   checkpoint: "模型档案",
@@ -325,6 +333,12 @@ export default function App() {
   const [deletingRule, setDeletingRule] = useState<string | null>(null);
   const [importReports, setImportReports] = useState<
     Record<string, ProfileImportReport>
+  >({});
+  const [selectedByProfile, setSelectedByProfile] = useState<
+    Record<string, string[]>
+  >({});
+  const [dismissedByProfile, setDismissedByProfile] = useState<
+    Record<string, string[]>
   >({});
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(true);
@@ -518,14 +532,19 @@ export default function App() {
     }
   }
 
-  async function importProfile(file: string) {
+  async function importProfile(file: string, selectedKeys?: string[]) {
     setImportingProfile(file);
     try {
+      const body: Record<string, unknown> = { file_name: file };
+      if (selectedKeys && selectedKeys.length > 0) {
+        body.candidate_keys = selectedKeys;
+      }
       const report = await apiPost<ProfileImportReport>(
         "/api/profiles/import",
-        { file_name: file },
+        body,
       );
       setImportReports((old) => ({ ...old, [file]: report }));
+      setSelectedByProfile((old) => ({ ...old, [file]: [] }));
       // Refresh rules and the profile summary after the write; the backend
       // validates each candidate and rejects invalid ones in the report.
       const [ruleResult, profileResult] = await Promise.all([
@@ -534,16 +553,40 @@ export default function App() {
       ]);
       setRules(ruleResult.items);
       setProfiles(profileResult.items);
+      const unknown = report.unknown_keys?.length
+        ? `，${report.unknown_keys.length} 条未匹配被跳过`
+        : "";
       setMessage(
         report.rejected.length > 0
-          ? `档案已导入：${report.imported} 条入库，${report.rejected.length} 条被拒绝。`
-          : `档案已导入：${report.imported} 条规则入库。`,
+          ? `档案已导入：${report.imported} 条入库，${report.rejected.length} 条被拒绝${unknown}。`
+          : `档案已导入：${report.imported} 条规则入库${unknown}。`,
       );
     } catch (error) {
       setMessage(`档案导入失败：${String(error)}`);
     } finally {
       setImportingProfile(null);
     }
+  }
+
+  function toggleCandidateSelected(file: string, key: string) {
+    setSelectedByProfile((old) => {
+      const current = old[file] || [];
+      const next = current.includes(key)
+        ? current.filter((item) => item !== key)
+        : [...current, key];
+      return { ...old, [file]: next };
+    });
+  }
+
+  function dismissSelectedCandidates(file: string) {
+    const picked = selectedByProfile[file] || [];
+    if (picked.length === 0) return;
+    setDismissedByProfile((old) => ({
+      ...old,
+      [file]: [...new Set([...(old[file] || []), ...picked])],
+    }));
+    setSelectedByProfile((old) => ({ ...old, [file]: [] }));
+    setMessage(`已驳回 ${picked.length} 条候选（仅本次预览忽略，未写入规则库）。`);
   }
 
   function ruleIdentity(rule: RuleRecord): string {
@@ -1177,61 +1220,120 @@ export default function App() {
                     )}
                     {expanded && preview && preview.file === profile.file && (
                       <div className="profile-preview">
-                        {preview.candidates.length === 0 ? (
-                          <p className="catalog-empty">无可导入候选。</p>
-                        ) : (
-                          preview.candidates.map((candidate, index) => (
-                            <div className="rule-row" key={index}>
-                              <div className="rule-row-main">
-                                <strong>{candidate.rule_key}</strong>
-                                <small>
-                                  {RULE_LEVEL_LABEL[candidate.level] ??
-                                    candidate.level}
-                                  {candidate.scope_key
-                                    ? ` · ${candidate.scope_key}`
-                                    : " · 作用域待定"}
-                                  {" · 值："}
-                                  {formatRuleValue(candidate.value)}
-                                  {candidate.structured
-                                    ? ` · 结构：${formatStructured(candidate.structured)}`
-                                    : ""}
-                                  {candidate.note
-                                    ? ` · 备注：${candidate.note}`
-                                    : ""}
-                                </small>
+                        {(() => {
+                          const dismissed = new Set(
+                            dismissedByProfile[profile.file] || [],
+                          );
+                          const visibleCandidates = preview.candidates.filter(
+                            (candidate) =>
+                              !dismissed.has(profileCandidateKey(candidate)),
+                          );
+                          const selected = selectedByProfile[profile.file] || [];
+                          const busy = importingProfile === profile.file;
+                          if (visibleCandidates.length === 0) {
+                            return (
+                              <p className="catalog-empty">
+                                无可导入候选（其余已在本次预览驳回）。
+                              </p>
+                            );
+                          }
+                          return (
+                            <>
+                              {visibleCandidates.map((candidate, index) => {
+                                const key = profileCandidateKey(candidate);
+                                const checked = selected.includes(key);
+                                return (
+                                  <div className="rule-row" key={key || index}>
+                                    <label className="rule-row-check">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        disabled={busy}
+                                        onChange={() =>
+                                          toggleCandidateSelected(
+                                            profile.file,
+                                            key,
+                                          )
+                                        }
+                                      />
+                                    </label>
+                                    <div className="rule-row-main">
+                                      <strong>{candidate.rule_key}</strong>
+                                      <small>
+                                        {RULE_LEVEL_LABEL[candidate.level] ??
+                                          candidate.level}
+                                        {candidate.scope_key
+                                          ? ` · ${candidate.scope_key}`
+                                          : " · 作用域待定"}
+                                        {" · 值："}
+                                        {formatRuleValue(candidate.value)}
+                                        {candidate.structured
+                                          ? ` · 结构：${formatStructured(candidate.structured)}`
+                                          : ""}
+                                        {candidate.note
+                                          ? ` · 备注：${candidate.note}`
+                                          : ""}
+                                      </small>
+                                    </div>
+                                    <div className="rule-row-meta">
+                                      <span className="rule-tag">
+                                        {RULE_PROVENANCE_LABEL[candidate.provenance] ??
+                                          candidate.provenance}
+                                      </span>
+                                      <span className="rule-tag">
+                                        {RULE_CONFIDENCE_LABEL[candidate.confidence] ??
+                                          candidate.confidence}
+                                      </span>
+                                      <span className="rule-tag">
+                                        v{candidate.version}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() =>
+                                          void importProfile(profile.file, [
+                                            key,
+                                          ])
+                                        }
+                                      >
+                                        导入此条
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              <div className="profile-import-actions">
+                                <button
+                                  type="button"
+                                  disabled={busy || selected.length === 0}
+                                  onClick={() =>
+                                    void importProfile(profile.file, selected)
+                                  }
+                                >
+                                  {busy
+                                    ? "正在导入…"
+                                    : `导入所选（${selected.length}）`}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy || selected.length === 0}
+                                  onClick={() =>
+                                    dismissSelectedCandidates(profile.file)
+                                  }
+                                >
+                                  驳回所选（{selected.length}）
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy || Boolean(profile.error)}
+                                  onClick={() => void importProfile(profile.file)}
+                                >
+                                  整档导入为规则
+                                </button>
                               </div>
-                              <div className="rule-row-meta">
-                                <span className="rule-tag">
-                                  {RULE_PROVENANCE_LABEL[candidate.provenance] ??
-                                    candidate.provenance}
-                                </span>
-                                <span className="rule-tag">
-                                  {RULE_CONFIDENCE_LABEL[candidate.confidence] ??
-                                    candidate.confidence}
-                                </span>
-                                <span className="rule-tag">
-                                  v{candidate.version}
-                                </span>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                        {preview.candidates.length > 0 && (
-                          <div className="profile-import-actions">
-                            <button
-                              type="button"
-                              onClick={() => void importProfile(profile.file)}
-                              disabled={
-                                importingProfile === profile.file ||
-                                Boolean(profile.error)
-                              }
-                            >
-                              {importingProfile === profile.file
-                                ? "正在导入…"
-                                : "整档导入为规则"}
-                            </button>
-                          </div>
-                        )}
+                            </>
+                          );
+                        })()}
                         {importReports[profile.file] && (
                           <div className="profile-import-report">
                             <p>

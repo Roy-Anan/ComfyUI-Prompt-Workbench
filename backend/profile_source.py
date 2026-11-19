@@ -93,10 +93,18 @@ def preview_profile(file_name: str, source_dir: Path | None = None) -> dict[str,
     }
 
 
+def candidate_key(record: dict[str, Any]) -> str:
+    """Stable identity for one parsed candidate, used for selective import."""
+    return "\u001f".join(
+        [record["level"], record.get("scope_key") or "", record["rule_key"]]
+    )
+
+
 def import_profile(
     connection: sqlite3.Connection,
     file_name: str,
     source_dir: Path | None = None,
+    selected_keys: list[str] | None = None,
 ) -> dict[str, Any]:
     """Persist one profile's reviewed candidates at their projected levels.
 
@@ -113,12 +121,21 @@ def import_profile(
     if not scope_key:
         raise rule_engine.RuleError("Profile has no exact checkpoint filename; cannot scope checkpoint rules")
 
+    selected: set[str] | None = None
+    unknown_keys: list[str] = []
+    if selected_keys:
+        selected = {key for key in selected_keys if key}
+        present = {candidate_key(record) for record in preview["candidates"]}
+        unknown_keys = sorted(selected - present)
+
     imported: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
 
     for record in preview["candidates"]:
         record_level = record["level"]
         record_scope = record["scope_key"]
+        if selected is not None and candidate_key(record) not in selected:
+            continue
         try:
             if record_level != "global" and not record_scope:
                 raise rule_engine.RuleError(
@@ -146,4 +163,6 @@ def import_profile(
         "imported": len(imported),
         "rejected": rejected,
         "unknown_fields": preview["unknown_fields"],
+        "selected": selected is not None,
+        "unknown_keys": unknown_keys,
     }
