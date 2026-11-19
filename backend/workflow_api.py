@@ -120,6 +120,10 @@ CANDIDATE_MODES: dict[str, dict[str, str]] = {
         "label": "中英对照",
         "instruction": "请在现有内容基础上给出中英对照版本，保留语义与已规定参数；未提供的参数不要臆造。",
     },
+    "negative": {
+        "label": "负向补全",
+        "instruction": "请基于现有负向提示词补全/优化负向 Prompt，描述需要排除的负面特征；不要改写正向内容，未提供的参数不要臆造。",
+    },
 }
 
 

@@ -367,6 +367,34 @@ function StatusDot({ online }: { online: boolean }) {
   );
 }
 
+type HashableCategory = "lora" | "clip" | "vae";
+
+function HashButton({
+  category,
+  entry,
+  busyKey,
+  onHash,
+}: {
+  category: HashableCategory;
+  entry: CatalogEntry;
+  busyKey: string | null;
+  onHash: (category: HashableCategory, entry: CatalogEntry) => void;
+}) {
+  const identity = entry.identity;
+  if (!identity || !identity.known || identity.hashed) return null;
+  const busy = busyKey === `${category}:${entry.name}`;
+  return (
+    <button
+      type="button"
+      className="hash-trigger"
+      disabled={busy}
+      onClick={() => onHash(category, entry)}
+    >
+      {busy ? "计算中…" : "计算哈希"}
+    </button>
+  );
+}
+
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -389,6 +417,7 @@ export default function App() {
   const [loraDescription, setLoraDescription] = useState("");
   const [loraBaseModel, setLoraBaseModel] = useState("");
   const [loraSaveBusy, setLoraSaveBusy] = useState(false);
+  const [hashingIdentity, setHashingIdentity] = useState<string | null>(null);
   const [openRuleHistory, setOpenRuleHistory] = useState<string | null>(null);
   const [ruleHistory, setRuleHistory] = useState<RuleHistoryItem[]>([]);
   const [restoringHistory, setRestoringHistory] = useState<number | null>(null);
@@ -699,6 +728,31 @@ export default function App() {
       setMessage(`保存手动资料失败：${String(error)}`);
     } finally {
       setLoraSaveBusy(false);
+    }
+  }
+
+  async function hashModelIdentity(category: HashableCategory, entry: CatalogEntry) {
+    const key = `${category}:${entry.name}`;
+    setHashingIdentity(key);
+    try {
+      const result = await apiPost<{ identity: IdentitySummary }>(
+        "/api/models/identity/hash",
+        { category, name: entry.name },
+      );
+      setCatalog((prev) => {
+        if (!prev) return prev;
+        const listKey =
+          category === "lora" ? "loras" : category === "clip" ? "clips" : "vaes";
+        const list = prev[listKey].map((item) =>
+          item.name === entry.name ? { ...item, identity: result.identity } : item,
+        );
+        return { ...prev, [listKey]: list };
+      });
+      setMessage(`已计算并缓存「${entry.name}」哈希。`);
+    } catch (error) {
+      setMessage(`计算哈希失败：${String(error)}`);
+    } finally {
+      setHashingIdentity(null);
     }
   }
 
@@ -1310,6 +1364,12 @@ export default function App() {
                           )}
                         </span>
                         <small>{identityLabel(entry)}</small>
+                        <HashButton
+                          category="lora"
+                          entry={entry}
+                          busyKey={hashingIdentity}
+                          onHash={(cat, item) => void hashModelIdentity(cat, item)}
+                        />
                         {detail && <small className="lora-meta-detail">{detail}</small>}
                         {meta && meta.trigger_words.length > 0 && (
                           <div className="lora-triggers">
@@ -1423,6 +1483,12 @@ export default function App() {
                     <li key={entry.name}>
                       <span>{entry.name}</span>
                       <small>{identityLabel(entry)}</small>
+                      <HashButton
+                        category="clip"
+                        entry={entry}
+                        busyKey={hashingIdentity}
+                        onHash={(cat, item) => void hashModelIdentity(cat, item)}
+                      />
                     </li>
                   ))}
                   {catalog.clips.length === 0 && (
@@ -1439,6 +1505,12 @@ export default function App() {
                     <li key={entry.name}>
                       <span>{entry.name}</span>
                       <small>{identityLabel(entry)}</small>
+                      <HashButton
+                        category="vae"
+                        entry={entry}
+                        busyKey={hashingIdentity}
+                        onHash={(cat, item) => void hashModelIdentity(cat, item)}
+                      />
                     </li>
                   ))}
                 

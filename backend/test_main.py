@@ -1041,3 +1041,60 @@ def test_loopback_host_rejects_public_and_lan():
 
     for host in ("0.0.0.0", "192.168.1.10", "10.0.0.5", "8.8.8.8"):
         assert main.is_loopback_host(host) is False
+
+
+# ---- Identity on-demand hash endpoint ------------------------------------
+
+def _seed_lora_identity(settings: dict, tmp_path: Path, name: str, content: bytes):
+    import model_identity
+
+    db_path = Path(settings["storage"]["database"]) / "workbench.sqlite3"
+    lora_dir = tmp_path / "lora"
+    lora_dir.mkdir(exist_ok=True)
+    (lora_dir / name).write_bytes(content)
+    with model_identity.connect(db_path) as conn:
+        model_identity.ensure_schema(conn)
+        model_identity.index_directory(conn, "lora", str(lora_dir))
+
+
+def test_identity_hash_computes_for_recorded_lora(client, tmp_path):
+    test_client, _ = client
+    settings = test_client.get("/api/settings", headers=auth()).json()
+    _seed_lora_identity(settings, tmp_path, "probe.safetensors", b"lora-bytes")
+
+    csrf = bootstrap(client)
+    response = test_client.post(
+        "/api/models/identity/hash",
+        headers=csrf,
+        json={"category": "lora", "name": "probe.safetensors"},
+    )
+    assert response.status_code == 200
+    identity = response.json()["identity"]
+    assert identity["known"] is True
+    assert identity["hashed"] is True
+    assert identity["sha256"] is not None
+
+
+def test_identity_hash_rejects_checkpoint_category(client):
+    test_client, _ = client
+    csrf = bootstrap(client)
+    response = test_client.post(
+        "/api/models/identity/hash",
+        headers=csrf,
+        json={"category": "checkpoint", "name": "pony.safetensors"},
+    )
+    assert response.status_code == 400
+
+
+def test_identity_hash_unknown_name_returns_404(client, tmp_path):
+    test_client, _ = client
+    settings = test_client.get("/api/settings", headers=auth()).json()
+    _seed_lora_identity(settings, tmp_path, "probe.safetensors", b"bytes")
+
+    csrf = bootstrap(client)
+    response = test_client.post(
+        "/api/models/identity/hash",
+        headers=csrf,
+        json={"category": "lora", "name": "missing.safetensors"},
+    )
+    assert response.status_code == 404

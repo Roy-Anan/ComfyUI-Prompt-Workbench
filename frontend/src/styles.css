@@ -1238,3 +1238,142 @@ button.secondary {
   width: 100%;
   box-sizing: border-box;
 }
+
+/* R139: multi-candidate list, side-by-side compare and version fragment diff */
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.candidate-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.833rem;
+  color: var(--text-faint);
+}
+
+.candidate-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--inset);
+}
+
+.candidate-card.active {
+  border-color: var(--accent);
+}
+
+.candidate-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.candidate-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.833rem;
+  color: var(--text-strong);
+}
+
+.candidate-mode {
+  font-weight: 600;
+}
+
+.candidate-scope {
+  font-size: 0.733rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--border-soft);
+  color: var(--text-faint);
+}
+
+.candidate-scope.negative {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.candidate-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.candidate-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.candidate-compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.767rem;
+  color: var(--text-faint);
+}
+
+.candidate-compare-col textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 720px) {
+  .candidate-compare {
+    grid-template-columns: 1fr;
+  }
+}
+
+.version-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.diff-only-a,
+.diff-only-b {
+  font-size: 0.767rem;
+  line-height: 1.5;
+}
+
+.diff-only-a {
+  color: var(--warn-soft);
+}
+
+.diff-only-b {
+  color: var(--accent-strong);
+}
+
+.hash-trigger {
+  font-size: 0.733rem;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.hash-trigger:hover:not(:disabled) {
+  background: var(--border-soft);
+}
+
+.hash-trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

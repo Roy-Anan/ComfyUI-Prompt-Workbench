@@ -766,6 +766,33 @@ def test_candidate_mode_polish_passes_instruction(client, monkeypatch):
     assert "润色" in user_message
 
 
+def test_candidate_mode_negative_passes_instruction(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": True, "active": False, "error": None},
+    )
+    captured: dict = {}
+
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
+        captured["messages"] = messages
+        return {"ok": True, "content": "negative", "model": model, "error": None}
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={"model": "qwen3:latest", "mode": "negative"},
+    )
+    assert response.status_code == 200
+    assert response.json()["mode"] == "negative"
+    user_message = captured["messages"][-1]["content"]
+    assert "负向" in user_message
+
+
 def test_candidate_rejects_unknown_mode(client, monkeypatch):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())

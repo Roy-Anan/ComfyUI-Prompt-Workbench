@@ -45,6 +45,70 @@ export function formatStructured(value: unknown): string {
 }
 
 /**
+ * Split a prompt text into comma/semicolon/newline separated fragments,
+ * trimmed, de-duplicated and order-preserving. Pure display only.
+ */
+export function splitPromptFragments(text: string): string[] {
+  const parts = text
+    .split(/[,，;；\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of parts) {
+    if (!seen.has(part)) {
+      seen.add(part);
+      out.push(part);
+    }
+  }
+  return out;
+}
+
+/** Count comma/semicolon/newline separated fragments in a prompt. */
+export function countPromptFragments(text: string): number {
+  return splitPromptFragments(text).length;
+}
+
+const CJK_CHAR =
+  /[　-〿぀-ヿ㐀-䶿一-鿿가-힯]/g;
+const ASCII_WORD = /[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*/g;
+
+/**
+ * Conservative dependency-free token estimate for a prompt. CJK characters
+ * count as roughly one token each; ASCII words count as roughly 1.3 tokens
+ * each. This is a rough read-only hint, not a tokenizer count.
+ */
+export function estimatePromptTokens(text: string): number {
+  if (!text.trim()) return 0;
+  const cjkChars = (text.match(CJK_CHAR) ?? []).length;
+  const words = (text.match(ASCII_WORD) ?? []).length;
+  return cjkChars + Math.ceil(words * 1.3);
+}
+
+export type FragmentDiff = {
+  common: string[];
+  onlySnapshot: string[];
+  onlyCurrent: string[];
+};
+
+/**
+ * Fragment-level read-only diff between a snapshot and the current text.
+ * Matching fragments are shared; leftovers are listed on each side. No
+ * synonym or similarity matching is attempted.
+ */
+export function diffFragments(snapshot: string, current: string): FragmentDiff {
+  const a = splitPromptFragments(snapshot);
+  const b = splitPromptFragments(current);
+  const bSet = new Set(b);
+  const aSet = new Set(a);
+  return {
+    common: a.filter((fragment) => bSet.has(fragment)),
+    onlySnapshot: a.filter((fragment) => !bSet.has(fragment)),
+    onlyCurrent: b.filter((fragment) => !aSet.has(fragment)),
+  };
+}
+
+/**
  * Format a comparison verdict's extracted rule value. The verdict may hold
  * a plain number/string, a ``{low, high}`` range, a ``{floor}`` lower bound,
  * a resolution pair/array, or a plain list array. Anything unexpected keeps

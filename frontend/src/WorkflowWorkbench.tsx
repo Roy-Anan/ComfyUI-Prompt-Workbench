@@ -1,12 +1,26 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { apiDelete, apiGet, apiPost } from "./api";
-import { formatActual } from "./format";
+import {
+  countPromptFragments,
+  diffFragments,
+  estimatePromptTokens,
+  formatActual,
+  splitPromptFragments,
+} from "./format";
 type PromptNode = {
   node_id: string;
   class_type: string;
   roles: string[];
   text: string;
   editable: boolean;
+};
+
+type CandidateScope = "positive" | "negative";
+
+type CandidateItem = {
+  text: string;
+  mode: string;
+  scope: CandidateScope;
 };
 type Analysis = {
   format: "api" | "ui";
@@ -235,20 +249,29 @@ function draftRecency(draft: DraftEntry): string {
   return draft.updated_at ?? draft.created_at ?? "";
 }
 
-function splitPromptFragments(text: string): string[] {
-  const parts = text
-    .split(/[,，;；\n]/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const part of parts) {
-    if (!seen.has(part)) {
-      seen.add(part);
-      out.push(part);
-    }
-  }
-  return out;
+function VersionDiffBlock({
+  snapshot,
+  current,
+  same,
+}: {
+  snapshot: string;
+  current: string;
+  same: boolean;
+}) {
+  if (same) return <div className="workflow-meta">与当前副本一致</div>;
+  const diff = diffFragments(snapshot, current);
+  return (
+    <div className="version-diff">
+      <div className="workflow-meta">快照：{snapshot || "（空）"}</div>
+      <div className="workflow-meta">当前：{current || "（空）"}</div>
+      {diff.onlySnapshot.length > 0 && (
+        <div className="diff-only-a">快照独有：{diff.onlySnapshot.join("、")}</div>
+      )}
+      {diff.onlyCurrent.length > 0 && (
+        <div className="diff-only-b">当前独有：{diff.onlyCurrent.join("、")}</div>
+      )}
+    </div>
+  );
 }
 
 type ExpandedDraft = { draft: DraftEntry; groupKey: string };
@@ -304,6 +327,7 @@ const CANDIDATE_MODE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "polish", label: "润色" },
   { value: "trim", label: "精简" },
   { value: "bilingual", label: "中英对照" },
+  { value: "negative", label: "负向补全" },
 ];
 
 const TASK_STATUS_LABEL: Record<string, string> = {
@@ -417,9 +441,10 @@ const PROMPT_MAX_CHARS = 200_000;
 
 function promptCountLabel(text: string): string {
   const len = text.length;
-  return len > PROMPT_MAX_CHARS
-    ? `${len} / ${PROMPT_MAX_CHARS}（已超上限）`
-    : `${len} / ${PROMPT_MAX_CHARS}`;
+  const fragments = countPromptFragments(text);
+  const tokens = estimatePromptTokens(text);
+  const base = `${len} 字符 · ${fragments} 条 · 约 ${tokens} token`;
+  return len > PROMPT_MAX_CHARS ? `${base}（已超上限）` : base;
 }
 
 function outputFilenames(outputs: unknown): string[] {
@@ -615,7 +640,9 @@ export default function WorkflowWorkbench({
       ? stored
       : "draft";
   });
-  const [candidate, setCandidate] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<CandidateItem[]>([]);
+  const [activeCandidate, setActiveCandidate] = useState<number | null>(null);
+  const [compareOther, setCompareOther] = useState<number | null>(null);
   const [candidateBusy, setCandidateBusy] = useState(false);
   const [lockedFragments, setLockedFragments] = useState<string[]>([]);
 
@@ -625,6 +652,10 @@ export default function WorkflowWorkbench({
         ? prev.filter((item) => item !== fragment)
         : [...prev, fragment],
     );
+  }
+
+  function candidateScopeOf(mode: string): CandidateScope {
+    return mode === "negative" ? "negative" : "positive";
   }
   const [importedPrompt, setImportedPrompt] = useState<PromptImport | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -901,7 +932,6 @@ export default function WorkflowWorkbench({
   async function generateCandidate() {
     if (!workflowId || !selectedModel) return;
     setCandidateBusy(true);
-    setCandidate(null);
     try {
       const body: Record<string, unknown> = {
         model: selectedModel,
@@ -919,7 +949,18 @@ export default function WorkflowWorkbench({
         `/api/workflows/${workflowId}/prompt/candidates`,
         body,
       );
-      setCandidate(result.candidates[0] ?? null);
+      const text = result.candidates[0] ?? "";
+      if (text) {
+        const item: CandidateItem = {
+          text,
+          mode: candidateMode,
+          scope: candidateScopeOf(candidateMode),
+        };
+        const nextIndex = candidates.length;
+        setCandidates((prev) => [...prev, item]);
+        setActiveCandidate(nextIndex);
+        setCompareOther(null);
+      }
       setMessage(`已生成候选（规则状态：${result.rule_status}），采用前请核对。`);
     } catch (error) {
       setMessage(`候选生成失败：${String(error)}`);
@@ -927,39 +968,52 @@ export default function WorkflowWorkbench({
       setCandidateBusy(false);
     }
   }
-  function adoptCandidate() {
-    if (!candidate) return;
-    // Keep protected terms that already exist in the current positive text but
+  function adoptCandidate(item: CandidateItem) {
+    const sourceText = item.scope === "negative" ? negativeText : positiveText;
+    // Keep protected terms that already exist in the current source text but
     // were dropped from the candidate; append them rather than overwriting.
     const missingProtected = protectedTerms.filter(
-      (term) =>
-        term && !candidate.includes(term) && positiveText.includes(term),
+      (term) => term && !item.text.includes(term) && sourceText.includes(term),
     );
     // Request-level locked fragments are kept even when the current text does
     // not yet contain them; they are appended rather than overwritten.
     const missingLocked = lockedFragments.filter(
-      (fragment) => fragment && !candidate.includes(fragment),
+      (fragment) => fragment && !item.text.includes(fragment),
     );
     const missing = [...missingProtected, ...missingLocked];
     const merged = missing.length
-      ? `${candidate.trimEnd()}${candidate.trim() ? ", " : ""}${missing.join(", ")}`
-      : candidate;
-    setPositiveText(merged);
+      ? `${item.text.trimEnd()}${item.text.trim() ? ", " : ""}${missing.join(", ")}`
+      : item.text;
+    if (item.scope === "negative") setNegativeText(merged);
+    else setPositiveText(merged);
   }
 
-  async function copyCandidate() {
-    if (!candidate) return;
+  async function copyCandidate(item: CandidateItem) {
     try {
-      await navigator.clipboard.writeText(candidate);
+      await navigator.clipboard.writeText(item.text);
       setMessage("候选已复制到剪贴板（未写入工作副本）。");
     } catch (error) {
       setMessage(`复制候选失败：${String(error)}`);
     }
   }
 
-  function dismissCandidate() {
-    setCandidate(null);
-    setMessage("候选已放弃（未写入工作副本）。");
+  function removeCandidate(index: number) {
+    setCandidates((prev) => prev.filter((_, i) => i !== index));
+    setActiveCandidate((prev) =>
+      prev === null ? null : prev > index ? prev - 1 : prev,
+    );
+    setCompareOther(null);
+  }
+
+  function clearCandidates() {
+    setCandidates([]);
+    setActiveCandidate(null);
+    setCompareOther(null);
+    setMessage("候选已清空（未写入工作副本）。");
+  }
+
+  function toggleCompareOther(index: number) {
+    setCompareOther((prev) => (prev === index ? null : index));
   }
 
   async function copyPromptText(text: string, label: string) {
@@ -1815,23 +1869,21 @@ export default function WorkflowWorkbench({
                           {comparing && (
                             <div className="workflow-meta">
                               <div>
-                                正向：{positiveSame ? "与当前副本一致" : "与当前副本不一致"}
+                                正向：
+                                <VersionDiffBlock
+                                  snapshot={positive}
+                                  current={positiveText}
+                                  same={positiveSame}
+                                />
                               </div>
-                              {!positiveSame && (
-                                <div>
-                                  <div>快照：{positive || "（空）"}</div>
-                                  <div>当前：{positiveText || "（空）"}</div>
-                                </div>
-                              )}
                               <div>
-                                负向：{negativeSame ? "与当前副本一致" : "与当前副本不一致"}
+                                负向：
+                                <VersionDiffBlock
+                                  snapshot={negative}
+                                  current={negativeText}
+                                  same={negativeSame}
+                                />
                               </div>
-                              {!negativeSame && (
-                                <div>
-                                  <div>快照：{negative || "（空）"}</div>
-                                  <div>当前：{negativeText || "（空）"}</div>
-                                </div>
-                              )}
                             </div>
                           )}
                         </li>
@@ -2176,18 +2228,78 @@ export default function WorkflowWorkbench({
                       {candidateBusy ? "生成中…" : "生成候选"}
                     </button>
                   </div>
-                  {candidate && (
-                    <div className="workflow-text-field">
-                      <span>候选文本（只读，采用后进入下方编辑框）</span>
-                      <textarea readOnly rows={7} value={candidate} />
-                      <div className="actions">
-                        <button onClick={adoptCandidate}>采用到正向 Prompt</button>
-                        <button onClick={() => void copyCandidate()}>复制候选</button>
-                        <button onClick={dismissCandidate}>放弃候选</button>
-                        <span className="muted">
-                          候选不会自动写入工作副本，需在下方确认写入。
-                        </span>
+                  {candidates.length > 0 && (
+                    <div className="candidate-list">
+                      <div className="candidate-list-head">
+                        <span>候选 {candidates.length} 条（只读，采用后进入下方编辑框）</span>
+                        <button onClick={clearCandidates}>清空全部</button>
                       </div>
+                      {candidates.map((item, index) => {
+                        const modeLabel =
+                          CANDIDATE_MODE_OPTIONS.find((o) => o.value === item.mode)?.label ??
+                          item.mode;
+                        const active = activeCandidate === index;
+                        const comparing = compareOther === index;
+                        return (
+                          <div
+                            key={index}
+                            className={`candidate-card${active ? " active" : ""}`}
+                          >
+                            <div className="candidate-card-head">
+                              <button
+                                className="candidate-title"
+                                onClick={() => {
+                                  setActiveCandidate(index);
+                                  setCompareOther(null);
+                                }}
+                              >
+                                <span className="candidate-mode">{modeLabel}</span>
+                                <span
+                                  className={`candidate-scope ${item.scope}`}
+                                >
+                                  {item.scope === "negative" ? "写入负向" : "写入正向"}
+                                </span>
+                              </button>
+                              <div className="actions">
+                                <button
+                                  className={comparing ? "active" : ""}
+                                  onClick={() => toggleCompareOther(index)}
+                                >
+                                  {comparing ? "取消对比" : "加入对比"}
+                                </button>
+                                <button onClick={() => void copyCandidate(item)}>复制</button>
+                                <button onClick={() => adoptCandidate(item)}>
+                                  {item.scope === "negative" ? "采用到负向" : "采用到正向"}
+                                </button>
+                                <button onClick={() => removeCandidate(index)}>移除</button>
+                              </div>
+                            </div>
+                            <textarea readOnly rows={6} value={item.text} />
+                          </div>
+                        );
+                      })}
+                      {compareOther !== null &&
+                        activeCandidate !== null &&
+                        compareOther !== activeCandidate && (
+                          <div className="candidate-compare">
+                            <div className="candidate-compare-col">
+                              <span>当前选中</span>
+                              <textarea
+                                readOnly
+                                rows={8}
+                                value={candidates[activeCandidate].text}
+                              />
+                            </div>
+                            <div className="candidate-compare-col">
+                              <span>对比项</span>
+                              <textarea
+                                readOnly
+                                rows={8}
+                                value={candidates[compareOther].text}
+                              />
+                            </div>
+                          </div>
+                        )}
                     </div>
                   )}
                 </>

@@ -304,6 +304,11 @@ class LoraManualUpdate(BaseModel):
     combos: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class IdentityHashRequest(BaseModel):
+    category: str = Field(min_length=1, max_length=20)
+    name: str = Field(min_length=1, max_length=120)
+
+
 class RuleUpsert(BaseModel):
     level: str
     scope_key: str | None = None
@@ -1234,6 +1239,32 @@ def save_lora_manual(name: str, payload: LoraManualUpdate):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"name": name, "manual": record}
+
+
+# 小体积类别允许主动计算并缓存哈希；checkpoint 多 GB，不提供主动触发入口。
+HASHABLE_IDENTITY_CATEGORIES = ("lora", "clip", "vae")
+
+
+@app.post("/api/models/identity/hash")
+def hash_model_identity(payload: IdentityHashRequest):
+    """Compute and cache the on-demand SHA256 for one recorded small model.
+
+    The digest path comes only from the identity store (never a client-supplied
+    path); weights are not copied or modified.
+    """
+    category = payload.category.strip().lower()
+    name = payload.name.strip()
+    if category not in HASHABLE_IDENTITY_CATEGORIES:
+        raise HTTPException(status_code=400, detail="该类别不支持主动计算哈希")
+    settings = load_settings()
+    database_path = Path(settings["storage"]["database"]).expanduser() / "workbench.sqlite3"
+    with model_identity.connect(database_path) as connection:
+        model_identity.ensure_schema(connection)
+        record = model_identity.ensure_hash(connection, category, name)
+        if record is None:
+            raise HTTPException(status_code=404, detail="身份库未记录该模型")
+        summary = model_identity.identity_summary(connection, category, name)
+    return {"category": category, "name": name, "identity": summary}
 
 
 @app.get("/api/rules")
