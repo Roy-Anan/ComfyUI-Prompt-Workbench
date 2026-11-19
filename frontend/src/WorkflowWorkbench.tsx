@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { apiDelete, apiGet, apiPost } from "./api";
 import { formatActual } from "./format";
 type PromptNode = {
@@ -494,7 +494,11 @@ function parseOptionalInt(
   return value;
 }
 
-export default function WorkflowWorkbench() {
+type WorkbenchProps = { comfyuiUrl: string };
+
+type TaskProgress = { value: number; max: number; node?: string };
+
+export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
   const [items, setItems] = useState<WorkflowListItem[]>([]);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
   const [compare, setCompare] = useState<ComparePayload | null>(null);
@@ -525,6 +529,12 @@ export default function WorkflowWorkbench() {
   const [comfyTasks, setComfyTasks] = useState<ComfyTask[]>([]);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskSyncError, setTaskSyncError] = useState<string | null>(null);
+  const [taskProgress, setTaskProgress] = useState<
+    Record<string, TaskProgress>
+  >({});
+  const taskWsRef = useRef<WebSocket | null>(null);
+  const activePromptRef = useRef<string | null>(null);
+  const wsReconnectRef = useRef<number | null>(null);
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [drafts, setDrafts] = useState<DraftEntry[]>([]);
   const [draftName, setDraftName] = useState("");
@@ -936,6 +946,117 @@ export default function WorkflowWorkbench() {
       setTaskSyncError(String(error));
     }
   }
+
+  function taskProgressLabel(task: ComfyTask): string | null {
+    if (task.status !== "running") return null;
+    const progress = taskProgress[task.prompt_id];
+    if (!progress || progress.max <= 0) return null;
+    const pct = Math.round((progress.value / progress.max) * 100);
+    return `进度 ${progress.value}/${progress.max}（${pct}%）`;
+  }
+
+  function handleWsMessage(message: { type?: string; data?: Record<string, unknown> }) {
+    const data = message.data ?? {};
+    if (message.type === "executing") {
+      const pid = data.prompt_id;
+      if (typeof pid === "string") {
+        activePromptRef.current = pid;
+      } else if (pid == null) {
+        activePromptRef.current = null;
+      }
+      return;
+    }
+    if (message.type === "progress") {
+      const pid =
+        typeof data.prompt_id === "string" ? data.prompt_id : activePromptRef.current;
+      const value = Number(data.value);
+      const max = Number(data.max);
+      if (pid && Number.isFinite(value) && Number.isFinite(max) && max > 0) {
+        setTaskProgress((prev) => ({
+          ...prev,
+          [pid]: { value, max, node: typeof data.node === "string" ? data.node : undefined },
+        }));
+      }
+      return;
+    }
+    if (message.type === "executed" || message.type === "execution_error") {
+      const pid = data.prompt_id;
+      if (typeof pid === "string") {
+        setTaskProgress((prev) => {
+          const next = { ...prev };
+          delete next[pid];
+          return next;
+        });
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!comfyuiUrl.trim()) return;
+    let disposed = false;
+    let socket: WebSocket | null = null;
+
+    const wsBase = comfyuiUrl
+      .trim()
+      .replace(/^http:/i, "ws:")
+      .replace(/^https:/i, "wss:")
+      .replace(/\/+$/, "");
+    const wsUrl = `${wsBase}/ws?clientId=workbench`;
+
+    function scheduleReconnect() {
+      if (disposed) return;
+      wsReconnectRef.current = window.setTimeout(connect, 3000);
+    }
+
+    function connect() {
+      if (disposed) return;
+      try {
+        socket = new WebSocket(wsUrl);
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+      taskWsRef.current = socket;
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(String(event.data)) as {
+            type?: string;
+            data?: Record<string, unknown>;
+          };
+          handleWsMessage(parsed);
+        } catch {
+          // Ignore non-JSON or malformed frames; polling remains the fallback.
+        }
+      };
+      socket.onclose = () => {
+        taskWsRef.current = null;
+        if (!disposed) scheduleReconnect();
+      };
+      socket.onerror = () => {
+        socket?.close();
+      };
+    }
+
+    connect();
+    return () => {
+      disposed = true;
+      if (wsReconnectRef.current) window.clearTimeout(wsReconnectRef.current);
+      socket?.close();
+      taskWsRef.current = null;
+    };
+  }, [comfyuiUrl]);
+
+  // While a task is active, keep a slow polling calibration as the fallback
+  // behind the live WebSocket progress; WS gaps never flip a task to failed.
+  useEffect(() => {
+    const hasActive = comfyTasks.some(
+      (task) => task.status === "running" || task.status === "submitted",
+    );
+    if (!hasActive || !workflowId) return;
+    const timer = window.setInterval(() => void loadTasks(true), 5000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comfyTasks, workflowId]);
 
   async function loadVersions(id: string) {
     try {
@@ -2228,6 +2349,9 @@ export default function WorkflowWorkbench() {
                             <small>提交于 {formatTaskTime(task.submitted_at)}</small>
                             {task.last_error && (
                               <small className="workflow-warning">{task.last_error}</small>
+                            )}
+                            {taskProgressLabel(task) && (
+                              <small>{taskProgressLabel(task)}</small>
                             )}
                             {outputFilenames(task.outputs).length > 0 && (
                               <small>

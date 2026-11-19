@@ -907,7 +907,9 @@ export default function App() {
       </nav>
 
       {activePage === "workflows" ? (
-        <WorkflowWorkbench />
+        <WorkflowWorkbench
+          comfyuiUrl={settings?.connections.comfyui_url ?? ""}
+        />
       ) : activePage === "history" ? (
         <HistoryPanel />
       ) : (
