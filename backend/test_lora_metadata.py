@@ -65,6 +65,26 @@ def test_describe_rejects_traversal_and_unconfigured_dir(tmp_path):
     assert nested["trigger_words"] == ["one", "two"]
 
 
+def test_describe_empty_dict_and_non_dict_json(tmp_path):
+    (tmp_path / "nodata.safetensors").write_bytes(b"x")
+    (tmp_path / "nodata.json").write_text("{}", encoding="utf-8")
+    nodata = lora_metadata.describe_lora(str(tmp_path), "nodata.safetensors")
+    assert nodata["status"] == "empty"
+    assert nodata["trigger_words"] == []
+    assert nodata["description"] == ""
+    assert nodata["base_model"] == ""
+
+    (tmp_path / "array.safetensors").write_bytes(b"x")
+    (tmp_path / "array.json").write_text("[1, 2, 3]", encoding="utf-8")
+    array = lora_metadata.describe_lora(str(tmp_path), "array.safetensors")
+    assert array["status"] == "empty"
+
+    (tmp_path / "scalar.safetensors").write_bytes(b"x")
+    (tmp_path / "scalar.json").write_text('"just a string"', encoding="utf-8")
+    scalar = lora_metadata.describe_lora(str(tmp_path), "scalar.safetensors")
+    assert scalar["status"] == "empty"
+
+
 def test_scan_groups_by_name(tmp_path):
     (tmp_path / "a.safetensors").write_bytes(b"x")
     (tmp_path / "a.json").write_text(
