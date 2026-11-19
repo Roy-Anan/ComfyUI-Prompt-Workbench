@@ -827,3 +827,61 @@ button:disabled { background: var(--w-bg-2); color: var(--w-text-3); border-colo
   .workflow-columns,
   .candidate-compare { grid-template-columns: 1fr; }
 }
+
+/* —— 提示词候选：聊天式输入框（大输入在上，参数行在下） —— */
+.candidate-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--w-bg-2);
+  border: 1px solid var(--w-border);
+  border-radius: var(--r-card);
+}
+.candidate-input {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  border: 1px solid var(--w-border);
+  border-radius: var(--r-ctl);
+  background: var(--w-panel);
+  color: var(--w-text);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  padding: 10px 12px;
+}
+.candidate-input::placeholder { color: var(--w-text-3); }
+.candidate-input:focus { border-color: var(--w-brand); outline: none; }
+.candidate-input:disabled { opacity: 0.6; }
+
+.candidate-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.candidate-controls select,
+.candidate-controls input {
+  height: 36px;
+  border: 1px solid var(--w-border);
+  border-radius: var(--r-ctl);
+  background: var(--w-panel);
+  color: var(--w-text);
+  font-family: var(--font);
+  font-size: var(--fs-secondary);
+  padding: 0 10px;
+  min-width: 0;
+}
+.candidate-controls select:focus,
+.candidate-controls input:focus { border-color: var(--w-brand); outline: none; }
+.candidate-controls select { max-width: 220px; }
+.candidate-controls input { width: 132px; }
+.candidate-controls button { margin-left: auto; }
+
+@media (max-width: 760px) {
+  .candidate-controls { flex-direction: column; align-items: stretch; }
+  .candidate-controls select,
+  .candidate-controls input { width: 100%; max-width: none; }
+  .candidate-controls button { margin-left: 0; }
+}

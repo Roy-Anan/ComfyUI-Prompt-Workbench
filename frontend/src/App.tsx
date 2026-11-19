@@ -1353,7 +1353,7 @@ export default function App() {
               <div className="w-step done"><span className="num">02</span>识别结果</div>
               <div className="w-step done"><span className="num">03</span>规则比对</div>
               <div className="w-step done"><span className="num">04</span>Prompt 确认</div>
-              <div className="w-step active"><span className="num">05</span>本地模型候选</div>
+              <div className="w-step active"><span className="num">05</span>提示词候选</div>
               <div className="w-step"><span className="num">06</span>编辑工作副本</div>
               <div className="w-step"><span className="num">07</span>草稿与版本</div>
               <div className="w-step"><span className="num">08</span>显存检查与提交</div>

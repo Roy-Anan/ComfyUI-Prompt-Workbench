@@ -323,11 +323,11 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const CANDIDATE_MODE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "draft", label: "起草补全" },
+  { value: "draft", label: "起草" },
   { value: "polish", label: "润色" },
   { value: "trim", label: "精简" },
   { value: "bilingual", label: "中英对照" },
-  { value: "negative", label: "负向补全" },
+  { value: "negative", label: "负向词" },
 ];
 
 const TASK_STATUS_LABEL: Record<string, string> = {
@@ -2217,45 +2217,18 @@ export default function WorkflowWorkbench({
           </div>
           {detail && (
             <div className="panel">
-              <h3>本地模型候选</h3>
+              <h3>提示词候选</h3>
               {!modelsOnline ? (
                 <p className="muted">本地 Ollama 不可用，无法生成候选。</p>
               ) : ollamaModels.length === 0 ? (
                 <p className="muted">未发现本地模型。</p>
               ) : (
                 <>
-                  <div className="actions">
-                    <select
-                      value={selectedModel}
-                      disabled={busy || candidateBusy}
-                      onChange={(event) => setSelectedModel(event.target.value)}
-                    >
-                      {ollamaModels.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={candidateMode}
-                      disabled={busy || candidateBusy}
-                      onChange={(event) => {
-                        setCandidateMode(event.target.value);
-                        persistParam(
-                          "workbench.candidateMode",
-                          event.target.value,
-                        );
-                      }}
-                    >
-                      {CANDIDATE_MODE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="补充任务要求（可选）"
+                  <div className="candidate-box">
+                    <textarea
+                      className="candidate-input"
+                      rows={3}
+                      placeholder="输入提示词要求或描写（可选）"
                       value={taskText}
                       disabled={busy || candidateBusy}
                       onChange={(event) => {
@@ -2266,42 +2239,72 @@ export default function WorkflowWorkbench({
                         );
                       }}
                     />
-                    <input
-                      type="text"
-                      placeholder="温度 0–2（可选）"
-                      value={candidateTemp}
-                      disabled={busy || candidateBusy}
-                      onChange={(event) => {
-                        setCandidateTemp(event.target.value);
-                        persistParam("workbench.candidateTemp", event.target.value);
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Top P 0–1（可选）"
-                      value={candidateTopP}
-                      disabled={busy || candidateBusy}
-                      onChange={(event) => {
-                        setCandidateTopP(event.target.value);
-                        persistParam("workbench.candidateTopP", event.target.value);
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="上下文长度（可选）"
-                      value={candidateCtx}
-                      disabled={busy || candidateBusy}
-                      onChange={(event) => {
-                        setCandidateCtx(event.target.value);
-                        persistParam("workbench.candidateCtx", event.target.value);
-                      }}
-                    />
-                    <button
-                      disabled={busy || candidateBusy || !selectedModel}
-                      onClick={() => void generateCandidate()}
-                    >
-                      {candidateBusy ? "生成中…" : "生成候选"}
-                    </button>
+                    <div className="candidate-controls">
+                      <select
+                        value={selectedModel}
+                        disabled={busy || candidateBusy}
+                        onChange={(event) => setSelectedModel(event.target.value)}
+                      >
+                        {ollamaModels.map((model) => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={candidateMode}
+                        disabled={busy || candidateBusy}
+                        onChange={(event) => {
+                          setCandidateMode(event.target.value);
+                          persistParam(
+                            "workbench.candidateMode",
+                            event.target.value,
+                          );
+                        }}
+                      >
+                        {CANDIDATE_MODE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        placeholder="温度（0–2）"
+                        value={candidateTemp}
+                        disabled={busy || candidateBusy}
+                        onChange={(event) => {
+                          setCandidateTemp(event.target.value);
+                          persistParam("workbench.candidateTemp", event.target.value);
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Top P（0–1）"
+                        value={candidateTopP}
+                        disabled={busy || candidateBusy}
+                        onChange={(event) => {
+                          setCandidateTopP(event.target.value);
+                          persistParam("workbench.candidateTopP", event.target.value);
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="上下文长度"
+                        value={candidateCtx}
+                        disabled={busy || candidateBusy}
+                        onChange={(event) => {
+                          setCandidateCtx(event.target.value);
+                          persistParam("workbench.candidateCtx", event.target.value);
+                        }}
+                      />
+                      <button
+                        disabled={busy || candidateBusy || !selectedModel}
+                        onClick={() => void generateCandidate()}
+                      >
+                        {candidateBusy ? "生成中…" : "生成提示词候选"}
+                      </button>
+                    </div>
                   </div>
                   {candidates.length > 0 && (
                     <div className="candidate-list">

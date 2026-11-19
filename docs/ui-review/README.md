@@ -35,7 +35,7 @@
 | 文件 | 对应页面 / 视图 | 备注 |
 | --- | --- | --- |
 | `03b-prompt-confirm.png` | 工作区中部：规则与参数比对（只读）+ Prompt 节点确认 | 正向 / 负向 Prompt 节点用途确认与白名单按钮。 |
-| `03c-prompt-editor.png` | 工作区下部：本地模型候选参数行 + 编辑工作副本 Prompt | 正 / 负向 Prompt 编辑框、字符与 token 统计、复制按钮。 |
+| `03c-prompt-editor.png` | 工作区下部：提示词候选输入区（大输入框 + 参数行）+ 编辑工作副本 Prompt | 正 / 负向 Prompt 编辑框、字符与 token 统计、复制按钮。 |
 | `06b-rules-library.png` | 设置页 · 规则库分区 | 规则卡片列表与状态标签（未核实 / 已核实镜像 / 部分 / vlegacy-1）、历史版本与删除入口。 |
 | `06c-archive-candidates.png` | 设置页 · 旧档案候选分区 | legacy 档案解析出的模型候选列表，架构 / 候选数 / 未识别数标注，右上角档案目录路径与“打开档案目录”按钮。 |
 
