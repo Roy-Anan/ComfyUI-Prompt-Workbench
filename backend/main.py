@@ -1151,6 +1151,40 @@ def delete_rule(payload: RuleDelete):
     return {"removed": removed}
 
 
+@app.get("/api/rules/history")
+def rule_history(
+    level: str | None = None,
+    scope_key: str | None = None,
+    rule_key: str | None = None,
+):
+    """List rule history snapshots, newest first (read-only)."""
+    settings = load_settings()
+    database_path = Path(settings["storage"]["database"]).expanduser() / "workbench.sqlite3"
+    with model_identity.connect(database_path) as connection:
+        rule_store.ensure_schema(connection)
+        return {
+            "items": rule_store.list_history(
+                connection, level=level, scope_key=scope_key, rule_key=rule_key
+            )
+        }
+
+
+@app.post("/api/rules/history/{history_id}/restore")
+def restore_rule_history(history_id: int):
+    """Roll one rule back to a history snapshot through the shared validator."""
+    settings = load_settings()
+    database_path = Path(settings["storage"]["database"]).expanduser() / "workbench.sqlite3"
+    try:
+        with model_identity.connect(database_path) as connection:
+            rule_store.ensure_schema(connection)
+            record = rule_store.restore_history(connection, history_id)
+    except rule_engine.RuleError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if record is None:
+        raise HTTPException(404, "历史版本不存在或已失效")
+    return record
+
+
 @app.get("/api/profiles")
 def list_profiles():
     """List legacy profile notes with parsed identity and candidate counts.

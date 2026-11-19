@@ -116,6 +116,41 @@ def test_context_groups_same_family_architecture_variants(connection):
     assert arch_scopes == {"SDXL 1.0", "SDXL"}
 
 
+def test_upsert_archives_previous_version(connection):
+    rule_store.upsert_rule(connection, "global", None, "cfg", 7, version="1", note="首版")
+    rule_store.upsert_rule(connection, "global", None, "cfg", 6, version="2", note="修订")
+
+    history = rule_store.list_history(connection, level="global", rule_key="cfg")
+    assert len(history) == 1
+    assert history[0]["value"] == 7
+    assert history[0]["version"] == "1"
+    assert history[0]["note"] == "首版"
+    assert history[0]["reason"] == "upsert"
+
+
+def test_restore_history_rolls_back_and_archives_current(connection):
+    rule_store.upsert_rule(connection, "global", None, "cfg", 7, version="1")
+    rule_store.upsert_rule(connection, "global", None, "cfg", 6, version="2")
+    history = rule_store.list_history(connection, level="global", rule_key="cfg")
+    old_id = history[0]["history_id"]
+
+    restored = rule_store.restore_history(connection, old_id)
+    assert restored["value"] == 7
+    assert restored["version"] == "1"
+
+    current = rule_store.lookup_rule(connection, "global", "", "cfg")
+    assert current["value"] == 7
+
+    trail = rule_store.list_history(connection, level="global", rule_key="cfg")
+    # The pre-restore value (6) is archived under reason restore.
+    assert any(item["value"] == 6 and item["reason"] == "restore" for item in trail)
+
+
+def test_restore_missing_history_returns_none(connection):
+    rule_store.upsert_rule(connection, "global", None, "cfg", 7)
+    assert rule_store.restore_history(connection, 99999) is None
+
+
 def test_context_keeps_mixed_label_separate_from_plain_family(connection):
     rule_store.upsert_rule(
         connection, "checkpoint", "pony-xl.safetensors",

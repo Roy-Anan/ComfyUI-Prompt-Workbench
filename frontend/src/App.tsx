@@ -200,6 +200,21 @@ type RuleRecord = {
   note: string;
 };
 
+type RuleHistoryItem = {
+  history_id: number;
+  level: string;
+  scope_key: string | null;
+  rule_key: string;
+  value: unknown;
+  structured: unknown;
+  provenance: string;
+  confidence: string;
+  version: string;
+  note: string;
+  snapshot_at: string;
+  reason: string;
+};
+
 type ProfileCandidate = {
   level: string;
   scope_key: string | null;
@@ -352,6 +367,9 @@ export default function App() {
   const [restoreOverwrite, setRestoreOverwrite] = useState(false);
   const [importingProfile, setImportingProfile] = useState<string | null>(null);
   const [deletingRule, setDeletingRule] = useState<string | null>(null);
+  const [openRuleHistory, setOpenRuleHistory] = useState<string | null>(null);
+  const [ruleHistory, setRuleHistory] = useState<RuleHistoryItem[]>([]);
+  const [restoringHistory, setRestoringHistory] = useState<number | null>(null);
   const [importReports, setImportReports] = useState<
     Record<string, ProfileImportReport>
   >({});
@@ -644,6 +662,57 @@ export default function App() {
       setMessage(`规则删除失败：${String(error)}`);
     } finally {
       setDeletingRule(null);
+    }
+  }
+
+  async function loadRuleHistory(rule: RuleRecord) {
+    const query = new URLSearchParams({
+      level: rule.level,
+      scope_key: rule.scope_key ?? "",
+      rule_key: rule.rule_key,
+    });
+    const result = await apiGet<{ items: RuleHistoryItem[] }>(
+      `/api/rules/history?${query.toString()}`,
+    );
+    setRuleHistory(result.items);
+  }
+
+  async function toggleRuleHistory(rule: RuleRecord) {
+    const identity = ruleIdentity(rule);
+    if (openRuleHistory === identity) {
+      setOpenRuleHistory(null);
+      setRuleHistory([]);
+      return;
+    }
+    setOpenRuleHistory(identity);
+    setRestoringHistory(null);
+    try {
+      await loadRuleHistory(rule);
+    } catch (error) {
+      setRuleHistory([]);
+      setMessage(`读取规则历史失败：${String(error)}`);
+    }
+  }
+
+  async function restoreRuleHistory(rule: RuleRecord, item: RuleHistoryItem) {
+    if (restoringHistory !== item.history_id) {
+      // 两步确认第一步：进入确认态，不直接回退；不用原生弹窗。
+      setRestoringHistory(item.history_id);
+      return;
+    }
+    try {
+      await apiPost<RuleRecord>(
+        `/api/rules/history/${item.history_id}/restore`,
+        {},
+      );
+      const ruleResult = await apiGet<{ items: RuleRecord[] }>("/api/rules");
+      setRules(ruleResult.items);
+      await loadRuleHistory(rule);
+      setMessage(`已回退到 v${item.version}。`);
+    } catch (error) {
+      setMessage(`规则回退失败：${String(error)}`);
+    } finally {
+      setRestoringHistory(null);
     }
   }
 
@@ -1238,42 +1307,92 @@ export default function App() {
                   {RULE_LEVEL_LABEL[level] ?? level}（{group.length}）
                 </div>
                 <div className="rule-list">
-                  {group.map((rule) => (
-                    <div className="rule-row" key={rule.id}>
-                      <div className="rule-row-main">
-                        <strong>{rule.rule_key}</strong>
-                        <small>
-                          {rule.scope_key || "全局"} · 值：
-                          {formatRuleValue(rule.value)}
-                          {rule.structured
-                            ? ` · 结构：${formatStructured(rule.structured)}`
-                            : ""}
-                          {rule.note ? ` · 备注：${rule.note}` : ""}
-                        </small>
+                  {group.map((rule) => {
+                    const identity = ruleIdentity(rule);
+                    const historyOpen = openRuleHistory === identity;
+                    return (
+                      <div className="rule-row-wrap" key={rule.id}>
+                        <div className="rule-row">
+                          <div className="rule-row-main">
+                            <strong>{rule.rule_key}</strong>
+                            <small>
+                              {rule.scope_key || "全局"} · 值：
+                              {formatRuleValue(rule.value)}
+                              {rule.structured
+                                ? ` · 结构：${formatStructured(rule.structured)}`
+                                : ""}
+                              {rule.note ? ` · 备注：${rule.note}` : ""}
+                            </small>
+                          </div>
+                          <div className="rule-row-meta">
+                            <span className="rule-tag">
+                              {RULE_PROVENANCE_LABEL[rule.provenance] ??
+                                rule.provenance}
+                            </span>
+                            <span className="rule-tag">
+                              {RULE_CONFIDENCE_LABEL[rule.confidence] ??
+                                rule.confidence}
+                            </span>
+                            <span className="rule-tag">v{rule.version}</span>
+                            <button
+                              onClick={() => void toggleRuleHistory(rule)}
+                            >
+                              {historyOpen ? "收起历史" : "历史版本"}
+                            </button>
+                            <button
+                              onClick={() => void removeRule(rule)}
+                              className={
+                                deletingRule === identity ? "danger" : ""
+                              }
+                            >
+                              {deletingRule === identity
+                                ? "确认删除？"
+                                : "删除"}
+                            </button>
+                          </div>
+                        </div>
+                        {historyOpen && (
+                          <div className="rule-history">
+                            {ruleHistory.length === 0 ? (
+                              <p className="catalog-empty">暂无历史版本。</p>
+                            ) : (
+                              ruleHistory.map((item) => (
+                                <div className="rule-history-item" key={item.history_id}>
+                                  <div className="rule-row-main">
+                                    <small>
+                                      <span className="rule-tag">v{item.version}</span>{" "}
+                                      {formatRuleValue(item.value)}
+                                      {item.note ? ` · 备注：${item.note}` : ""}
+                                      {item.reason === "restore"
+                                        ? " · 由回退归档"
+                                        : ""}
+                                    </small>
+                                    <small className="rule-history-time">
+                                      {item.snapshot_at.replace("T", " ").slice(0, 19)}
+                                    </small>
+                                  </div>
+                                  <div className="rule-row-meta">
+                                    <button
+                                      onClick={() => void restoreRuleHistory(rule, item)}
+                                      className={
+                                        restoringHistory === item.history_id
+                                          ? "danger"
+                                          : ""
+                                      }
+                                    >
+                                      {restoringHistory === item.history_id
+                                        ? "确认回退？"
+                                        : "回退到此版本"}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="rule-row-meta">
-                        <span className="rule-tag">
-                          {RULE_PROVENANCE_LABEL[rule.provenance] ??
-                            rule.provenance}
-                        </span>
-                        <span className="rule-tag">
-                          {RULE_CONFIDENCE_LABEL[rule.confidence] ??
-                            rule.confidence}
-                        </span>
-                        <span className="rule-tag">v{rule.version}</span>
-                        <button
-                          onClick={() => void removeRule(rule)}
-                          className={
-                            deletingRule === ruleIdentity(rule) ? "danger" : ""
-                          }
-                        >
-                          {deletingRule === ruleIdentity(rule)
-                            ? "确认删除？"
-                            : "删除"}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );

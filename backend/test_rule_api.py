@@ -101,6 +101,43 @@ def test_upsert_and_delete_rule_via_api(client):
     assert listing.json()["items"] == []
 
 
+def test_rule_history_list_and_restore_via_api(client):
+    test_client, _ = client
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    test_client.post(
+        "/api/rules",
+        headers=headers,
+        json={"level": "global", "rule_key": "cfg", "value": 7, "version": "1"},
+    )
+    test_client.post(
+        "/api/rules",
+        headers=headers,
+        json={"level": "global", "rule_key": "cfg", "value": 6, "version": "2"},
+    )
+
+    history = test_client.get("/api/rules/history?rule_key=cfg", headers=headers)
+    assert history.status_code == 200
+    items = history.json()["items"]
+    assert len(items) == 1
+    assert items[0]["value"] == 7
+    old_id = items[0]["history_id"]
+
+    restored = test_client.post(
+        f"/api/rules/history/{old_id}/restore", headers=headers
+    )
+    assert restored.status_code == 200
+    assert restored.json()["value"] == 7
+
+    listing = test_client.get("/api/rules", headers=headers)
+    assert listing.json()["items"][0]["value"] == 7
+
+    missing = test_client.post(
+        "/api/rules/history/99999/restore", headers=headers
+    )
+    assert missing.status_code == 404
+
+
 def test_upsert_rejects_invalid_rule(client):
     test_client, _ = client
     headers = {"Authorization": "Bearer test-session-token"}

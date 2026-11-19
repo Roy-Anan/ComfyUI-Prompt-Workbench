@@ -41,6 +41,22 @@ CREATE TABLE IF NOT EXISTS workbench_rule (
 );
 CREATE INDEX IF NOT EXISTS idx_workbench_rule_scope
     ON workbench_rule(level, scope_key);
+CREATE TABLE IF NOT EXISTS workbench_rule_history (
+    history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    level TEXT NOT NULL,
+    scope_key TEXT NOT NULL,
+    rule_key TEXT NOT NULL,
+    value_json TEXT NOT NULL,
+    structured_json TEXT,
+    provenance TEXT NOT NULL,
+    confidence TEXT NOT NULL,
+    version TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    snapshot_at TEXT NOT NULL,
+    reason TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rule_history_scope
+    ON workbench_rule_history(level, scope_key, rule_key);
 """
 
 
@@ -87,6 +103,51 @@ def _row_to_record(row: sqlite3.Row | tuple[Any, ...]) -> dict[str, Any]:
     return record
 
 
+def _archive_current(
+    connection: sqlite3.Connection,
+    level: str,
+    scope_key: str | None,
+    rule_key: str,
+    reason: str,
+) -> None:
+    """Copy the current main-table row into history before it is overwritten.
+
+    A missing current row archives nothing; history is a snapshot trail, never a
+    reconstruction of rules that never existed.
+    """
+    effective_scope = scope_key or ""
+    row = connection.execute(
+        """
+        SELECT level, scope_key, rule_key, value_json, structured_json,
+               provenance, confidence, version, note
+        FROM workbench_rule
+        WHERE level = ? AND scope_key = ? AND rule_key = ?
+        """,
+        (level, effective_scope, rule_key),
+    ).fetchone()
+    if row is None:
+        return
+    current = dict(zip(
+        ("level", "scope_key", "rule_key", "value_json", "structured_json",
+         "provenance", "confidence", "version", "note"),
+        row,
+    ))
+    connection.execute(
+        """
+        INSERT INTO workbench_rule_history
+            (level, scope_key, rule_key, value_json, structured_json,
+             provenance, confidence, version, note, snapshot_at, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            current["level"], current["scope_key"], current["rule_key"],
+            current["value_json"], current["structured_json"],
+            current["provenance"], current["confidence"], current["version"],
+            current["note"], _now(), reason,
+        ),
+    )
+
+
 def upsert_rule(
     connection: sqlite3.Connection,
     level: str,
@@ -98,8 +159,13 @@ def upsert_rule(
     version: str = "1",
     note: str = "",
     structured: Any = None,
+    archive: bool = True,
 ) -> dict[str, Any]:
-    """Insert or replace one rule identified by level/scope_key/key."""
+    """Insert or replace one rule identified by level/scope_key/key.
+
+    When ``archive`` is true (default) the previous row, if any, is snapshotted
+    into the history trail before replacement.
+    """
     probe = rule_engine.RuleRecord(
         level=level,
         scope_key=scope_key,
@@ -114,6 +180,8 @@ def upsert_rule(
 
     effective_scope = scope_key or ""
     now = _now()
+    if archive:
+        _archive_current(connection, level, effective_scope, rule_key, "upsert")
     structured_json = _encode_value(structured) if structured is not None else None
     connection.execute(
         """
@@ -197,6 +265,85 @@ def delete_rule(
     )
     connection.commit()
     return cursor.rowcount > 0
+
+
+_HISTORY_COLUMNS = (
+    "history_id", "level", "scope_key", "rule_key", "value_json", "structured_json",
+    "provenance", "confidence", "version", "note", "snapshot_at", "reason",
+)
+
+
+def _history_row_to_record(row: sqlite3.Row) -> dict[str, Any]:
+    record = dict(zip(_HISTORY_COLUMNS, row))
+    record["value"] = _decode_value(record.pop("value_json"))
+    structured_raw = record.pop("structured_json")
+    record["structured"] = _decode_value(structured_raw) if structured_raw else None
+    return record
+
+
+def list_history(
+    connection: sqlite3.Connection,
+    level: str | None = None,
+    scope_key: str | None = None,
+    rule_key: str | None = None,
+) -> list[dict[str, Any]]:
+    """List history snapshots, newest first. Filters mirror the main list."""
+    sql = "SELECT " + ", ".join(_HISTORY_COLUMNS) + " FROM workbench_rule_history"
+    clauses: list[str] = []
+    params: list[Any] = []
+    if level is not None:
+        clauses.append("level = ?")
+        params.append(level)
+    if scope_key is not None:
+        clauses.append("scope_key = ?")
+        params.append(scope_key)
+    if rule_key is not None:
+        clauses.append("rule_key = ?")
+        params.append(rule_key)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY history_id DESC"
+    rows = connection.execute(sql, params).fetchall()
+    return [_history_row_to_record(row) for row in rows]
+
+
+def get_history(connection: sqlite3.Connection, history_id: int) -> dict[str, Any] | None:
+    row = connection.execute(
+        "SELECT " + ", ".join(_HISTORY_COLUMNS) + " FROM workbench_rule_history WHERE history_id = ?",
+        (history_id,),
+    ).fetchone()
+    return _history_row_to_record(row) if row else None
+
+
+def restore_history(connection: sqlite3.Connection, history_id: int) -> dict[str, Any] | None:
+    """Roll a rule back to one history snapshot.
+
+    The current main-table row is archived first (reason ``restore``), then the
+    snapshot is written back through the same engine validator as a normal
+    upsert. A missing history id returns ``None``; an invalid snapshot raises
+    :class:`rule_engine.RuleError`.
+    """
+    snapshot = get_history(connection, history_id)
+    if snapshot is None:
+        return None
+    level = snapshot["level"]
+    scope_key = snapshot["scope_key"] or None
+    rule_key = snapshot["rule_key"]
+    _archive_current(connection, level, scope_key, rule_key, "restore")
+    record = upsert_rule(
+        connection,
+        level=level,
+        scope_key=scope_key,
+        rule_key=rule_key,
+        value=snapshot["value"],
+        provenance=snapshot["provenance"],
+        confidence=snapshot["confidence"],
+        version=snapshot["version"],
+        note=snapshot["note"],
+        structured=snapshot.get("structured"),
+        archive=False,
+    )
+    return record
 
 
 def load_records(
