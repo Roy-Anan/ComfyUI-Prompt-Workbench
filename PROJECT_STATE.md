@@ -2919,3 +2919,37 @@
   后续若档案自带「示例/指南」标签可改为按标签识别。
 - 通用套是放宽参考，其命中不覆盖专用套规则的人工复核要求；跨套冲突仍不替选。多模型/启用
   LoRA 组合的冲突人工裁决界面、global 级规则来源装载留后续切片。
+
+## 123. TASK-003.1-R116 规则版本历史查看与回退（2026-11-19）
+
+### 123.1 落地内容
+
+- 后端 `rule_store.py`：新增历史表 `workbench_rule_history`（history_id 自增主键 +
+  level/scope_key/rule_key/value_json/structured_json/provenance/confidence/version/
+  note/snapshot_at/reason，按 level+scope_key+rule_key 建索引）。`upsert_rule` 写主表前
+  经 `_archive_current` 归档既有行（reason `upsert`）；新增 `list_history`（history_id DESC
+  最新在前，可按 level/scope_key/rule_key 过滤）、`get_history`、`restore_history`。回退先把
+  主表当前值归档（reason `restore`），再用快照字段经既有 `RuleRecord.validate` 引擎校验写回
+  （复用 upsert，`archive=False` 避免重复归档）；历史不存在返回 `None`，非法快照抛 `RuleError`。
+- 后端 `main.py`：`GET /api/rules/history?level=&scope_key=&rule_key=` 只读列出；
+  `POST /api/rules/history/{history_id}/restore` 回退，404 历史不存在，400 校验拒绝。
+- 前端规则库：每条规则加「历史版本」展开，列出版本号/快照时间/值摘要/备注/归档原因；
+  「回退到此版本」走应用内两步态确认（先进入「确认回退？」再提交），不用原生弹窗。回退成功后
+  刷新规则列表与当前展开的历史轨迹。
+- 测试：纯模块 3 例（upsert 归档前版、回退归档当前值并还原、缺失历史返回 None）+ HTTP 1 例
+  （列表/回退/404）。
+
+### 123.2 回归
+
+- 后端 **282 passed, 1 warning**（原 278 + 新增 4；遗留 StarletteDeprecationWarning）。
+- 前端 `tsc -b && vite build` 绿，产物 `index-8grQOCS0.js` 214.66 kB / gzip 67.92 kB，
+  `index-CoabOk-O.css` 14.75 kB / gzip 3.41 kB。
+- 无新增第三方依赖；历史存 SQLite 既有库，随备份导出清单一并纳入。
+
+### 123.3 边界与 backlog
+
+- 历史只增不删；历史查看为只读，不提供历史条目删除/清理入口。回退是把旧快照作为一条新版本
+  写回主表，不抹除中间版本轨迹。
+- 历史列表按规则三元组过滤；跨规则的全局版本时间线、历史条目检索/分页、备注编辑留后续切片。
+- 手动 HTTP upsert 路径不带 structured，回退仍按快照原值还原；结构化与原始值的一致性以
+  引擎校验为准。
