@@ -740,9 +740,9 @@ button.secondary {
 .rule-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
   gap: 14px;
-  padding: 11px 12px;
+  padding: 12px 13px;
   border: 1px solid var(--border-strong);
   border-radius: 9px;
   background: var(--panel-2);
@@ -750,7 +750,7 @@ button.secondary {
 .rule-row-main {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
 }
 .rule-row-main strong {
@@ -761,7 +761,41 @@ button.secondary {
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
+.rule-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 10px;
+}
+.rule-row-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+.rule-row-eyebrow {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.rule-row-value {
+  font-size: 0.867rem;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
+.rule-row-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
 .rule-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+.rule-row-badges,
+.rule-row-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -775,6 +809,20 @@ button.secondary {
   color: var(--text-strong);
   background: var(--inset);
 }
+.rule-version {
+  color: var(--text-faint);
+  background: var(--panel-2);
+}
+/* 可信度徽章：绿=权威 / 黄=部分 / 灰=未核实 */
+.conf-authoritative { border-color: var(--online-border); color: var(--online); }
+.conf-partial { border-color: var(--warn); color: var(--warn-text); }
+.conf-unverified { border-color: var(--border-input); color: var(--text-faint); }
+/* 来源徽章：蓝=作者 / 绿=镜像核实 / 青=本机测试 / 灰=社区或未核实 */
+.prov-author { border-color: var(--accent); color: var(--accent-strong); }
+.prov-mirror { border-color: var(--online-border); color: var(--online); }
+.prov-local { border-color: var(--accent-eyebrow); color: var(--accent-eyebrow); }
+.prov-community { border-color: var(--border-input); color: var(--text-muted); }
+.prov-unverified { border-color: var(--border-input); color: var(--text-faint); }
 .rule-row-meta button {
   padding: 4px 9px;
   font-size: 0.8rem;

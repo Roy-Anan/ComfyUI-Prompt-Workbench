@@ -303,6 +303,63 @@ const RULE_CONFIDENCE_LABEL: Record<string, string> = {
 };
 const RULE_LEVEL_ORDER = ["checkpoint", "architecture", "global"];
 
+// 档案条目大类（rule_key 中 "::" 前缀）的中文归类；映射不到时保留原文。
+const RULE_SECTION_LABEL: Record<string, string> = {
+  IDENTITY: "模型身份",
+  ARCHITECTURE: "架构",
+  "PROMPT STYLE": "提示词风格",
+  "GENERATION SETTINGS": "生成参数",
+  "MODEL BEHAVIOR": "模型表现",
+  "LOCAL WORKFLOW": "本地工作流",
+  "LOCAL TEST FEEDBACK": "本机测试反馈",
+  CONFIDENCE: "可信度",
+};
+
+// 常见条目的中文译名；自由文本条目保留原文。
+const RULE_FIELD_LABEL: Record<string, string> = {
+  Steps: "步数",
+  CFG: "提示词相关性",
+  Sampler: "采样器",
+  Scheduler: "调度器",
+  Resolution: "分辨率",
+  "Clip Skip": "CLIP 跳层",
+  Strengths: "优点",
+  Style: "风格倾向",
+  Weaknesses: "短板",
+  "Known Weaknesses": "已知短板",
+  "Base Architecture": "基座架构",
+  "Model Type": "模型类型",
+  "Last Updated": "更新时间",
+  "Uncertain fields": "待核实项",
+  "Verified by author documentation": "作者文档核实",
+  "Parameter Source": "参数来源",
+  "Source Note": "来源说明",
+  "NSFW / Mature Content Statement": "成人内容声明",
+  "Preferred Prompt Format": "推荐提示词格式",
+};
+
+function splitRuleKey(ruleKey: string): { section: string; title: string } {
+  const idx = ruleKey.indexOf("::");
+  if (idx === -1) return { section: "", title: ruleKey };
+  const section = ruleKey.slice(0, idx).trim();
+  const rawTitle = ruleKey.slice(idx + 2).trim();
+  return { section, title: RULE_FIELD_LABEL[rawTitle] ?? rawTitle };
+}
+
+function confidenceTagClass(confidence: string): string {
+  if (confidence === "authoritative") return "rule-tag conf-authoritative";
+  if (confidence === "partial") return "rule-tag conf-partial";
+  return "rule-tag conf-unverified";
+}
+
+function provenanceTagClass(provenance: string): string {
+  if (provenance === "author") return "rule-tag prov-author";
+  if (provenance === "verified_mirror") return "rule-tag prov-mirror";
+  if (provenance === "local_test") return "rule-tag prov-local";
+  if (provenance === "community") return "rule-tag prov-community";
+  return "rule-tag prov-unverified";
+}
+
 const storageLabels: Record<string, string> = {
   root: "工作台数据根目录（固定）",
   database: "数据库目录",
@@ -1714,45 +1771,69 @@ export default function App() {
                   {group.map((rule) => {
                     const identity = ruleIdentity(rule);
                     const historyOpen = openRuleHistory === identity;
+                    const { section, title } = splitRuleKey(rule.rule_key);
+                    const sectionLabel =
+                      RULE_SECTION_LABEL[section] ?? section;
+                    const scopeLabel = rule.scope_key || "全局";
+                    const hasSub = Boolean(rule.structured || rule.note);
                     return (
                       <div className="rule-row-wrap" key={rule.id}>
                         <div className="rule-row">
                           <div className="rule-row-main">
-                            <strong>{rule.rule_key}</strong>
-                            <small>
-                              {rule.scope_key || "全局"} · 值：
+                            <div className="rule-row-head">
+                              <strong className="rule-row-title">{title}</strong>
+                              {(sectionLabel || scopeLabel) && (
+                                <span className="rule-row-eyebrow">
+                                  {sectionLabel}
+                                  {sectionLabel && scopeLabel ? " · " : ""}
+                                  {scopeLabel}
+                                </span>
+                              )}
+                            </div>
+                            <div className="rule-row-value">
                               {formatRuleValue(rule.value)}
-                              {rule.structured
-                                ? ` · 结构：${formatStructured(rule.structured)}`
-                                : ""}
-                              {rule.note ? ` · 备注：${rule.note}` : ""}
-                            </small>
+                            </div>
+                            {hasSub && (
+                              <small className="rule-row-sub">
+                                {rule.structured
+                                  ? `结构：${formatStructured(rule.structured)}`
+                                  : ""}
+                                {rule.structured && rule.note ? " · " : ""}
+                                {rule.note ? `备注：${rule.note}` : ""}
+                              </small>
+                            )}
                           </div>
                           <div className="rule-row-meta">
-                            <span className="rule-tag">
-                              {RULE_PROVENANCE_LABEL[rule.provenance] ??
-                                rule.provenance}
-                            </span>
-                            <span className="rule-tag">
-                              {RULE_CONFIDENCE_LABEL[rule.confidence] ??
-                                rule.confidence}
-                            </span>
-                            <span className="rule-tag">v{rule.version}</span>
-                            <button
-                              onClick={() => void toggleRuleHistory(rule)}
-                            >
-                              {historyOpen ? "收起历史" : "历史版本"}
-                            </button>
-                            <button
-                              onClick={() => void removeRule(rule)}
-                              className={
-                                deletingRule === identity ? "danger" : ""
-                              }
-                            >
-                              {deletingRule === identity
-                                ? "确认删除？"
-                                : "删除"}
-                            </button>
+                            <div className="rule-row-badges">
+                              <span className={provenanceTagClass(rule.provenance)}>
+                                {RULE_PROVENANCE_LABEL[rule.provenance] ??
+                                  rule.provenance}
+                              </span>
+                              <span className={confidenceTagClass(rule.confidence)}>
+                                {RULE_CONFIDENCE_LABEL[rule.confidence] ??
+                                  rule.confidence}
+                              </span>
+                              <span className="rule-tag rule-version">
+                                v{rule.version}
+                              </span>
+                            </div>
+                            <div className="rule-row-actions">
+                              <button
+                                onClick={() => void toggleRuleHistory(rule)}
+                              >
+                                {historyOpen ? "收起历史" : "历史版本"}
+                              </button>
+                              <button
+                                onClick={() => void removeRule(rule)}
+                                className={
+                                  deletingRule === identity ? "danger" : ""
+                                }
+                              >
+                                {deletingRule === identity
+                                  ? "确认删除？"
+                                  : "删除"}
+                              </button>
+                            </div>
                           </div>
                         </div>
                         {historyOpen && (
@@ -1869,6 +1950,11 @@ export default function App() {
                               {visibleCandidates.map((candidate, index) => {
                                 const key = profileCandidateKey(candidate);
                                 const checked = selected.includes(key);
+                                const { section, title } = splitRuleKey(
+                                  candidate.rule_key,
+                                );
+                                const sectionLabel =
+                                  RULE_SECTION_LABEL[section] ?? section;
                                 return (
                                   <div className="rule-row" key={key || index}>
                                     <label className="rule-row-check">
@@ -1885,10 +1971,11 @@ export default function App() {
                                       />
                                     </label>
                                     <div className="rule-row-main">
-                                      <strong>{candidate.rule_key}</strong>
+                                      <strong>{title}</strong>
                                       <small>
-                                        {RULE_LEVEL_LABEL[candidate.level] ??
-                                          candidate.level}
+                                        {sectionLabel ||
+                                          (RULE_LEVEL_LABEL[candidate.level] ??
+                                            candidate.level)}
                                         {candidate.scope_key
                                           ? ` · ${candidate.scope_key}`
                                           : " · 作用域待定"}
@@ -1903,11 +1990,11 @@ export default function App() {
                                       </small>
                                     </div>
                                     <div className="rule-row-meta">
-                                      <span className="rule-tag">
+                                      <span className={provenanceTagClass(candidate.provenance)}>
                                         {RULE_PROVENANCE_LABEL[candidate.provenance] ??
                                           candidate.provenance}
                                       </span>
-                                      <span className="rule-tag">
+                                      <span className={confidenceTagClass(candidate.confidence)}>
                                         {RULE_CONFIDENCE_LABEL[candidate.confidence] ??
                                           candidate.confidence}
                                       </span>
