@@ -776,6 +776,7 @@ def diagnostics():
     }
     db_error: str | None = None
     db_integrity: str | None = None
+    storage_health: dict[str, Any] | None = None
 
     database_dir = Path(storage.get("database", "")).expanduser()
     database_path = database_dir / "workbench.sqlite3"
@@ -814,6 +815,9 @@ def diagnostics():
             len(workflow_store.list_drafts(item["id"], include_trashed=True))
             for item in workflows
         )
+        # Read-only conservative scan: corrupt drafts/versions and orphan
+        # files are reported, never auto-repaired or deleted here.
+        storage_health = workflow_store.inspect_storage()
     except (OSError, WorkflowError, FileNotFoundError) as exc:
         counts["workflows"] = None
         counts["drafts"] = None
@@ -838,6 +842,7 @@ def diagnostics():
         "data_root": str(DATA_ROOT),
         "database_path": str(database_path),
         "database": {"integrity": db_integrity},
+        "storage_health": storage_health,
         "counts": counts,
         "directories": managed_dirs,
         "external_directories": external_dirs,

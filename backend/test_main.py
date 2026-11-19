@@ -432,6 +432,45 @@ def test_diagnostics_counts_drafts_including_trashed(client):
     assert body2["counts"]["drafts"] == 1
 
 
+def test_diagnostics_inspects_corrupt_drafts_and_orphan_files(client):
+    test_client, main = client
+    workflow = {
+        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "x.safetensors"}},
+    }
+    imported = test_client.post(
+        "/api/workflows/import",
+        headers=auth(),
+        json={"filename": "w.json", "workflow": workflow},
+    )
+    assert imported.status_code == 200
+    workflow_id = imported.json()["id"]
+    folder = main.DATA_ROOT / "workflows" / workflow_id
+
+    drafts = folder / "drafts"
+    drafts.mkdir(parents=True, exist_ok=True)
+    (drafts / "broken.json").write_text("{not json", encoding="utf-8")
+    (drafts / "stray.tmp").write_text("x", encoding="utf-8")
+
+    versions = folder / "versions"
+    versions.mkdir(parents=True, exist_ok=True)
+    (versions / "broken.json").write_text("[", encoding="utf-8")
+
+    (folder / "notes.txt").write_text("x", encoding="utf-8")
+
+    body = test_client.get("/api/diagnostics", headers=auth()).json()
+    health = body["storage_health"]
+
+    assert health["corrupt_manifest_count"] == 0
+    assert health["corrupt_draft_count"] == 1
+    assert any("drafts/broken.json" in p for p in health["corrupt_drafts"])
+    assert health["corrupt_version_count"] == 1
+    assert any("versions/broken.json" in p for p in health["corrupt_versions"])
+    assert health["orphan_file_count"] == 2
+    rels = health["orphan_files"]
+    assert any("drafts/stray.tmp" in p for p in rels)
+    assert any("notes.txt" in p for p in rels)
+
+
 def test_ollama_models_passes_through_discovered_names(client, monkeypatch):
     test_client, main = client
 

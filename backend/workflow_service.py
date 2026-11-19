@@ -791,6 +791,105 @@ class WorkflowStore:
             key=lambda item: item.get("imported_at") or "",
             reverse=True,
         )
+    def inspect_storage(self) -> dict[str, Any]:
+        """Read-only conservative inspection of the workflow storage tree.
+
+        Counts corrupt draft/version JSON, corrupt manifests and orphan files
+        that do not match the managed layout. This never repairs, deletes or
+        rewrites anything; entries are reported by relative path so diagnostics
+        can surface them conservatively.
+        """
+        known_root_files = {
+            "manifest.json",
+            "original.json",
+            "working.json",
+            "analysis.json",
+        }
+        known_root_dirs = {"drafts", "versions"}
+        corrupt_manifests: list[str] = []
+        corrupt_drafts: list[str] = []
+        corrupt_versions: list[str] = []
+        orphan_files: list[str] = []
+        workflow_folders = 0
+
+        if not self.root.is_dir():
+            return {
+                "workflow_folders": 0,
+                "corrupt_manifest_count": 0,
+                "corrupt_manifests": [],
+                "corrupt_draft_count": 0,
+                "corrupt_drafts": [],
+                "corrupt_version_count": 0,
+                "corrupt_versions": [],
+                "orphan_file_count": 0,
+                "orphan_files": [],
+            }
+
+        for folder in sorted(self.root.iterdir(), key=lambda item: item.name):
+            if not folder.is_dir():
+                orphan_files.append(folder.name)
+                continue
+            workflow_folders += 1
+            manifest_file = folder / "manifest.json"
+            if not manifest_file.is_file():
+                corrupt_manifests.append(f"{folder.name}/manifest.json")
+            else:
+                try:
+                    manifest = _read_json(manifest_file)
+                    if not isinstance(manifest, dict):
+                        corrupt_manifests.append(f"{folder.name}/manifest.json")
+                except WorkflowError:
+                    corrupt_manifests.append(f"{folder.name}/manifest.json")
+
+            for entry in sorted(folder.iterdir(), key=lambda item: item.name):
+                rel = f"{folder.name}/{entry.name}"
+                if entry.is_dir():
+                    if entry.name not in known_root_dirs:
+                        orphan_files.append(rel)
+                    continue
+                if entry.name not in known_root_files:
+                    orphan_files.append(rel)
+
+            drafts_dir = folder / "drafts"
+            if drafts_dir.is_dir():
+                for file in sorted(drafts_dir.iterdir(), key=lambda item: item.name):
+                    rel = f"{folder.name}/drafts/{file.name}"
+                    if file.suffix.lower() != ".json":
+                        orphan_files.append(rel)
+                        continue
+                    try:
+                        record = _read_json(file)
+                        if not isinstance(record, dict):
+                            corrupt_drafts.append(rel)
+                    except WorkflowError:
+                        corrupt_drafts.append(rel)
+
+            versions_dir = folder / "versions"
+            if versions_dir.is_dir():
+                for file in sorted(versions_dir.iterdir(), key=lambda item: item.name):
+                    rel = f"{folder.name}/versions/{file.name}"
+                    if file.suffix.lower() != ".json":
+                        orphan_files.append(rel)
+                        continue
+                    try:
+                        record = _read_json(file)
+                        if not isinstance(record, dict):
+                            corrupt_versions.append(rel)
+                    except WorkflowError:
+                        corrupt_versions.append(rel)
+
+        return {
+            "workflow_folders": workflow_folders,
+            "corrupt_manifest_count": len(corrupt_manifests),
+            "corrupt_manifests": corrupt_manifests,
+            "corrupt_draft_count": len(corrupt_drafts),
+            "corrupt_drafts": corrupt_drafts,
+            "corrupt_version_count": len(corrupt_versions),
+            "corrupt_versions": corrupt_versions,
+            "orphan_file_count": len(orphan_files),
+            "orphan_files": orphan_files,
+        }
+
     def get_workflow(self, workflow_id: str) -> dict[str, Any]:
         folder = self._folder(workflow_id)
         if not folder.is_dir():
