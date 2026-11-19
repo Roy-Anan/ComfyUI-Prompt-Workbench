@@ -2668,3 +2668,31 @@
 
 - 标签分组仅按首标签，多标签交叉归属、标签重命名/合并未做；分组方式为本地偏好，不随工作流独立。
 - 跳转入口仅在复制成功后当次会话显示；历史 `keyword`、日期范围仍保持会话态未接记忆。
+
+## 115. TASK-003.1-R108 档案候选勾选单条/批量导入与本次预览驳回（2026-11-19）
+
+### 115.1 落地内容
+
+- 后端 `profile_source.py`：新增 `candidate_key(record)`（`level\u001fscope_key\u001frule_key`
+  稳定标识）；`import_profile` 增加可选 `selected_keys`，传入时仅落库匹配候选，未匹配 key 记入
+  报告 `unknown_keys` 保守回报；省略/空列表保持整档导入原行为。报告补 `selected` 与
+  `unknown_keys`。
+- `main.py`：`ProfileImport` 增加可选 `candidate_keys: list[str] | None`，透传选择性导入；
+  既有会话/CSRF 与引擎校验链路不变。
+- 前端 `App.tsx`：候选行补勾选框与「导入此条」；底部「导入所选（N）」「驳回所选（N）」与既有
+  「整档导入」并存；驳回仅在本次预览会话内从列表隐藏（`dismissedByProfile`），不写规则库、不改
+  档案源文件；选择态按档案文件隔离，导入成功后清空。报告类型补 `selected/unknown_keys`，消息
+  提示未匹配跳过条数。
+- `styles.css`：预览候选行加勾选列（`auto minmax(0,1fr)`），meta 区跨两列，操作按钮换行间距。
+
+### 115.2 回归
+
+- 后端 **253 passed, 1 warning**（原 252 + 新增选择性导入用例 1；遗留 StarletteDeprecationWarning）。
+- 前端 `tsc -b && vite build` 绿，产物 `index-4UaTXo-0.js` 205.53 kB / gzip 64.85 kB，
+  `index--eVNY1pt.css` 13.61 kB / gzip 3.23 kB。
+- **提交状态**：feat 已在本地 dev（`eb115e1`）；不再 push 远端、不做远端核对。
+
+### 115.3 边界与 backlog
+
+- 驳回为会话态，刷新后重新出现在预览；未做持久化忽略名单。候选差异预览（逐条与库内现有规则
+  比对）、多模型/LoRA 组合冲突人工裁决界面仍留后续切片。
