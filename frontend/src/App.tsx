@@ -175,6 +175,7 @@ type CatalogEntry = {
   meta?: LoraMeta | null;
   related?: string[];
   related_triggers?: string[];
+  compatible?: string[];
 };
 
 const LORA_META_LABEL: Record<LoraMetaStatus, string> = {
@@ -1343,6 +1344,11 @@ export default function App() {
                         {(entry.related_triggers ?? []).length > 0 && (
                           <small className="lora-related">
                             共享触发词：{(entry.related_triggers ?? []).join("、")}
+                          </small>
+                        )}
+                        {(entry.compatible ?? []).length > 0 && (
+                          <small className="lora-related">
+                            同底座可搭配：{(entry.compatible ?? []).join("、")}
                           </small>
                         )}
                         {editingLora === entry.name ? (

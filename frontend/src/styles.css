@@ -570,6 +570,22 @@ button.secondary {
   font-size: 0.8rem;
   overflow-wrap: anywhere;
 }
+.locked-fragments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.locked-fragment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text);
+  max-width: 100%;
+}
+.locked-fragment span {
+  overflow-wrap: anywhere;
+}
 .workflow-warning {
   padding: 10px 12px;
   border-left: 3px solid var(--warn);

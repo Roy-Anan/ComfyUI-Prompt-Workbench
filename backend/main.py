@@ -1138,9 +1138,11 @@ def models_catalog():
     related, related_triggers = _group_related_loras(
         catalog.get("loras", []), lora_meta
     )
+    compatible = _group_compatible_loras(catalog.get("loras", []), lora_meta)
     for entry in catalog.get("loras", []):
         entry["related"] = related.get(entry["name"], [])
         entry["related_triggers"] = related_triggers.get(entry["name"], [])
+        entry["compatible"] = compatible.get(entry["name"], [])
 
     return catalog
 
@@ -1186,6 +1188,34 @@ def _group_related_loras(
         {name: sorted(values) for name, values in related.items()},
         {name: sorted(values) for name, values in related_triggers.items()},
     )
+
+
+def _group_compatible_loras(
+    loras: list[dict[str, Any]], meta: dict[str, dict[str, Any]]
+) -> dict[str, list[str]]:
+    """Read-only hint: LoRAs sharing the same non-empty base model.
+
+    A shared base model only means the pair may be reviewed for stacking; it is
+    not an automatic compatibility verdict, and identities are never merged.
+    """
+    by_base: dict[str, list[str]] = {}
+    names: list[str] = []
+    for entry in loras:
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        names.append(name)
+        record = meta.get(name) or {}
+        base = str(record.get("base_model") or "").strip().lower()
+        if base:
+            by_base.setdefault(base, []).append(name)
+
+    compatible: dict[str, set[str]] = {name: set() for name in names}
+    for group in by_base.values():
+        if len(group) > 1:
+            for name in group:
+                compatible[name].update(other for other in group if other != name)
+    return {name: sorted(values) for name, values in compatible.items()}
 
 
 @app.post("/api/models/loras/{name}/manual")

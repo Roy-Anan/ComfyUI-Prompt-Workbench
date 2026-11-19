@@ -325,3 +325,25 @@ def test_group_related_loras_reports_shared_triggers():
     assert triggers["hero-v2.safetensors"] == ["hero name"]
     assert related["other.safetensors"] == []
     assert triggers["other.safetensors"] == []
+
+
+def test_group_compatible_loras_matches_shared_base():
+    import main
+
+    loras = [
+        {"name": "hero.safetensors"},
+        {"name": "hero-v2.safetensors"},
+        {"name": "other.safetensors"},
+        {"name": "nobase.safetensors"},
+    ]
+    meta = {
+        "hero.safetensors": {"base_model": "Pony"},
+        "hero-v2.safetensors": {"base_model": "pony"},
+        "other.safetensors": {"base_model": "sd1.5"},
+        "nobase.safetensors": {"base_model": ""},
+    }
+    compatible = main._group_compatible_loras(loras, meta)
+    assert compatible["hero.safetensors"] == ["hero-v2.safetensors"]
+    assert compatible["hero-v2.safetensors"] == ["hero.safetensors"]
+    assert compatible["other.safetensors"] == []
+    assert compatible["nobase.safetensors"] == []

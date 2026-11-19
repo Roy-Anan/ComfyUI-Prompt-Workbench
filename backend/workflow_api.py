@@ -130,6 +130,12 @@ class PromptCandidateRequest(BaseModel):
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
     num_ctx: int | None = Field(default=None, ge=1024, le=131_072)
+    locked_fragments: list[str] | None = Field(default=None)
+
+    @field_validator("locked_fragments")
+    @classmethod
+    def _locked_fragments_known(cls, value: Any) -> list[str]:
+        return _clean_locked_fragments(value)
 
     @field_validator("model")
     @classmethod
@@ -214,6 +220,37 @@ def _protected_terms() -> list[str]:
     return []
 
 
+MAX_LOCKED_FRAGMENTS = 30
+MAX_LOCKED_FRAGMENT_CHARS = 60
+
+
+def _clean_locked_fragments(raw: Any) -> list[str]:
+    """Whitelist-normalize request-level locked fragments.
+
+    Only plain strings are accepted; blank/duplicate entries are dropped and the
+    list is capped. Anything else raises ``ValueError`` rather than being
+    silently ignored. Locked fragments are a per-request hint; they are not
+    persisted to the working copy or drafts.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("locked_fragments 必须是列表")
+    fragments: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            raise ValueError("locked_fragments 条目必须是字符串")
+        fragment = item.strip()
+        if not fragment or fragment in seen:
+            continue
+        seen.add(fragment)
+        fragments.append(fragment[:MAX_LOCKED_FRAGMENT_CHARS])
+        if len(fragments) >= MAX_LOCKED_FRAGMENTS:
+            break
+    return fragments
+
+
 _FENCE_RE = re.compile(r"^\s*```[^\n`]*\n?(.*?)\n?```\s*$", re.DOTALL)
 
 
@@ -264,6 +301,7 @@ def _user_message(
     task: str | None,
     mode: str = "draft",
     protected_terms: list[str] | None = None,
+    locked_fragments: list[str] | None = None,
 ) -> str:
     by_role: dict[str, list[str]] = {"positive": [], "negative": []}
     for item in working_prompts:
@@ -283,6 +321,11 @@ def _user_message(
         lines.append(
             "以下术语必须保留原写法，不得翻译、改写、删除或替换："
             + "、".join(protected_terms)
+        )
+    if locked_fragments:
+        lines.append(
+            "以下片段必须原样保留，不得改写、删除、翻译或替换："
+            + "、".join(locked_fragments)
         )
     instruction = CANDIDATE_MODES.get(mode, CANDIDATE_MODES["draft"])["instruction"]
     lines.append(instruction)
@@ -552,6 +595,7 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
                 payload.task,
                 payload.mode,
                 _protected_terms(),
+                payload.locked_fragments,
             ),
         },
     ]

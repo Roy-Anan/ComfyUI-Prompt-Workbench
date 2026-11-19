@@ -75,6 +75,36 @@ def test_user_message_keeps_protected_terms():
     assert "保留原写法" in message
 
 
+def test_user_message_keeps_locked_fragments():
+    message = workflow_api._user_message(
+        [], None, "draft", None, ["红色瞳孔", "校服"]
+    )
+    assert "红色瞳孔" in message
+    assert "校服" in message
+    assert "原样保留" in message
+
+
+def test_clean_locked_fragments_normalizes():
+    cleaned = workflow_api._clean_locked_fragments(
+        ["  红色瞳孔  ", "", "红色瞳孔", "校服"]
+    )
+    assert cleaned == ["红色瞳孔", "校服"]
+
+
+def test_clean_locked_fragments_rejects_non_string():
+    import pytest
+
+    with pytest.raises(ValueError):
+        workflow_api._clean_locked_fragments(["校服", 5])
+
+
+def test_clean_locked_fragments_rejects_non_list():
+    import pytest
+
+    with pytest.raises(ValueError):
+        workflow_api._clean_locked_fragments("not-a-list")
+
+
 def test_submit_rejects_unconfirmed_workflow(client, monkeypatch):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())
@@ -750,6 +780,55 @@ def test_candidate_rejects_unknown_mode(client, monkeypatch):
         f"/api/workflows/{workflow_id}/prompt/candidates",
         headers=AUTH,
         json={"model": "qwen3:latest", "mode": "rocket"},
+    )
+    assert response.status_code == 422
+
+
+def test_candidate_passes_locked_fragments(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": True, "active": False, "error": None},
+    )
+    captured: dict = {}
+
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
+        captured["messages"] = messages
+        return {"ok": True, "content": "kept", "model": model, "error": None}
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={
+            "model": "qwen3:latest",
+            "locked_fragments": ["红色瞳孔", "校服"],
+        },
+    )
+    assert response.status_code == 200
+    user_message = captured["messages"][-1]["content"]
+    assert "红色瞳孔" in user_message
+    assert "校服" in user_message
+    assert "原样保留" in user_message
+
+
+def test_candidate_rejects_non_string_locked(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": True, "active": False, "error": None},
+    )
+    monkeypatch.setattr(llm_client, "chat", _fake_chat_record({}))
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={"model": "qwen3:latest", "locked_fragments": ["校服", 5]},
     )
     assert response.status_code == 422
 

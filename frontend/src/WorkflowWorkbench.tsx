@@ -235,6 +235,22 @@ function draftRecency(draft: DraftEntry): string {
   return draft.updated_at ?? draft.created_at ?? "";
 }
 
+function splitPromptFragments(text: string): string[] {
+  const parts = text
+    .split(/[,，;；\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of parts) {
+    if (!seen.has(part)) {
+      seen.add(part);
+      out.push(part);
+    }
+  }
+  return out;
+}
+
 type ExpandedDraft = { draft: DraftEntry; groupKey: string };
 
 function snapshotFiles(files: SnapshotFile[] | undefined): string {
@@ -581,7 +597,9 @@ export default function WorkflowWorkbench({
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [modelsOnline, setModelsOnline] = useState(true);
   const [selectedModel, setSelectedModel] = useState("");
-  const [taskText, setTaskText] = useState("");
+  const [taskText, setTaskText] = useState(() =>
+    readStoredParam("workbench.candidateTask"),
+  );
   const [candidateTemp, setCandidateTemp] = useState(() =>
     readStoredParam("workbench.candidateTemp"),
   );
@@ -599,6 +617,15 @@ export default function WorkflowWorkbench({
   });
   const [candidate, setCandidate] = useState<string | null>(null);
   const [candidateBusy, setCandidateBusy] = useState(false);
+  const [lockedFragments, setLockedFragments] = useState<string[]>([]);
+
+  function toggleLockedFragment(fragment: string) {
+    setLockedFragments((prev) =>
+      prev.includes(fragment)
+        ? prev.filter((item) => item !== fragment)
+        : [...prev, fragment],
+    );
+  }
   const [importedPrompt, setImportedPrompt] = useState<PromptImport | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
@@ -887,6 +914,7 @@ export default function WorkflowWorkbench({
       if (temperature !== null) body.temperature = temperature;
       if (topP !== null) body.top_p = topP;
       if (numCtx !== null) body.num_ctx = numCtx;
+      if (lockedFragments.length) body.locked_fragments = lockedFragments;
       const result = await apiPost<CandidateResponse>(
         `/api/workflows/${workflowId}/prompt/candidates`,
         body,
@@ -903,10 +931,16 @@ export default function WorkflowWorkbench({
     if (!candidate) return;
     // Keep protected terms that already exist in the current positive text but
     // were dropped from the candidate; append them rather than overwriting.
-    const missing = protectedTerms.filter(
+    const missingProtected = protectedTerms.filter(
       (term) =>
         term && !candidate.includes(term) && positiveText.includes(term),
     );
+    // Request-level locked fragments are kept even when the current text does
+    // not yet contain them; they are appended rather than overwritten.
+    const missingLocked = lockedFragments.filter(
+      (fragment) => fragment && !candidate.includes(fragment),
+    );
+    const missing = [...missingProtected, ...missingLocked];
     const merged = missing.length
       ? `${candidate.trimEnd()}${candidate.trim() ? ", " : ""}${missing.join(", ")}`
       : candidate;
@@ -2097,7 +2131,13 @@ export default function WorkflowWorkbench({
                       placeholder="补充任务要求（可选）"
                       value={taskText}
                       disabled={busy || candidateBusy}
-                      onChange={(event) => setTaskText(event.target.value)}
+                      onChange={(event) => {
+                        setTaskText(event.target.value);
+                        persistParam(
+                          "workbench.candidateTask",
+                          event.target.value,
+                        );
+                      }}
                     />
                     <input
                       type="text"
@@ -2194,6 +2234,36 @@ export default function WorkflowWorkbench({
                     disabled={busy}
                   />
                 </label>
+              )}
+              {Array.from(
+                new Set([
+                  ...splitPromptFragments(positiveText),
+                  ...splitPromptFragments(negativeText),
+                ]),
+              ).length > 0 && (
+                <div className="workflow-text-field">
+                  <span>
+                    片段锁定（勾选后生成候选时原样保留，不被改写或删除）
+                  </span>
+                  <div className="locked-fragments">
+                    {Array.from(
+                      new Set([
+                        ...splitPromptFragments(positiveText),
+                        ...splitPromptFragments(negativeText),
+                      ]),
+                    ).map((fragment) => (
+                      <label key={fragment} className="locked-fragment">
+                        <input
+                          type="checkbox"
+                          checked={lockedFragments.includes(fragment)}
+                          disabled={busy}
+                          onChange={() => toggleLockedFragment(fragment)}
+                        />
+                        <span>{fragment}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               )}
               <div className="actions">
                 <button disabled={busy} onClick={() => void writePrompts()}>
