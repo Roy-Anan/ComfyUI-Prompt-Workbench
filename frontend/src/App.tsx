@@ -21,14 +21,24 @@ function readStoredPage(): PageKey {
 type Theme = "dark" | "light";
 type FontSize = "small" | "normal" | "large";
 
+function systemTheme(): Theme {
+  try {
+    return window.matchMedia("(prefers-color-scheme: light)").matches
+      ? "light"
+      : "dark";
+  } catch {
+    return "dark";
+  }
+}
+
 function readStoredTheme(): Theme {
   try {
     const value = localStorage.getItem("workbench.theme");
     if (value === "dark" || value === "light") return value;
   } catch {
-    // 本地存储不可用时回落到深色。
+    // 本地存储不可用时跟随系统。
   }
-  return "dark";
+  return systemTheme();
 }
 
 function readStoredFont(): FontSize {

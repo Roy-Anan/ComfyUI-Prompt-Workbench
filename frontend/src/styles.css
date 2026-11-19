@@ -135,19 +135,19 @@ input {
 
 .eyebrow {
   color: var(--accent-eyebrow);
-  font-size: 11px;
+  font-size: 0.733rem;
   letter-spacing: 0.18em;
   font-weight: 700;
 }
 
 h1 {
   margin: 8px 0;
-  font-size: 28px;
+  font-size: 1.867rem;
 }
 
 h2 {
   margin: 0 0 7px;
-  font-size: 18px;
+  font-size: 1.2rem;
 }
 
 p,
@@ -159,7 +159,7 @@ small,
 .topbar p,
 .section-heading p {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.867rem;
 }
 
 button {
@@ -197,7 +197,7 @@ button:disabled {
 
 .card-title {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 0.8rem;
   margin-bottom: 13px;
 }
 
@@ -224,7 +224,7 @@ button:disabled {
 .status-card small {
   display: block;
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 0.733rem;
   overflow-wrap: anywhere;
 }
 
@@ -239,7 +239,7 @@ button:disabled {
   grid-template-columns: 245px 1fr;
   align-items: center;
   gap: 18px;
-  font-size: 13px;
+  font-size: 0.867rem;
   color: var(--text-strong);
 }
 
@@ -261,7 +261,7 @@ button:disabled {
 .footer {
   padding: 6px 2px 20px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 0.8rem;
 }
 
 @media (max-width: 900px) {
@@ -387,7 +387,7 @@ button.secondary {
 }
 
 .catalog-title {
-  font-size: 13px;
+  font-size: 0.867rem;
   font-weight: 600;
   color: var(--text-strong);
   margin-bottom: 8px;
@@ -409,7 +409,7 @@ button.secondary {
   justify-content: space-between;
   align-items: baseline;
   gap: 10px;
-  font-size: 12.5px;
+  font-size: 0.833rem;
   color: var(--text);
   border: 1px solid var(--border-soft);
   border-radius: 8px;
@@ -430,7 +430,7 @@ button.secondary {
 .catalog-empty,
 .catalog-offline {
   color: var(--text-faint);
-  font-size: 12.5px;
+  font-size: 0.833rem;
 }
 
 .page-nav {
@@ -444,11 +444,11 @@ button.secondary {
 }
 .workflow-page h3 {
   margin: 0 0 12px;
-  font-size: 15px;
+  font-size: 1rem;
 }
 .workflow-page h4 {
   margin: 18px 0 8px;
-  font-size: 13px;
+  font-size: 0.867rem;
 }
 .workflow-columns {
   display: grid;
@@ -535,7 +535,7 @@ button.secondary {
 }
 .workflow-field-head button {
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 0.8rem;
   border-radius: 7px;
 }
 .workflow-text-field textarea {
@@ -545,7 +545,7 @@ button.secondary {
 .workflow-meta {
   display: block;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 0.8rem;
   overflow-wrap: anywhere;
 }
 .workflow-warning {
@@ -574,7 +574,7 @@ button.secondary {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
-  font-size: 13px;
+  font-size: 0.867rem;
   color: var(--text-strong);
   margin-bottom: 12px;
 }
@@ -590,7 +590,7 @@ button.secondary {
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: 0.8rem;
   background: var(--panel-2);
   color: var(--text-strong);
 }
@@ -634,7 +634,7 @@ button.secondary {
   min-width: 0;
 }
 .compare-row-main strong {
-  font-size: 13px;
+  font-size: 0.867rem;
   overflow-wrap: anywhere;
 }
 .compare-row-main small {
@@ -692,7 +692,7 @@ button.secondary {
   min-width: 0;
 }
 .rule-row-main strong {
-  font-size: 13px;
+  font-size: 0.867rem;
   overflow-wrap: anywhere;
 }
 .rule-row-main small {
@@ -709,13 +709,13 @@ button.secondary {
   border: 1px solid var(--border-strong);
   border-radius: 7px;
   padding: 4px 9px;
-  font-size: 12px;
+  font-size: 0.8rem;
   color: var(--text-strong);
   background: var(--inset);
 }
 .rule-row-meta button {
   padding: 4px 9px;
-  font-size: 12px;
+  font-size: 0.8rem;
   border-radius: 7px;
 }
 .rule-row-meta button.danger {
@@ -760,7 +760,7 @@ button.secondary {
 }
 .profile-import-actions button {
   padding: 7px 13px;
-  font-size: 13px;
+  font-size: 0.867rem;
 }
 .profile-import-report {
   display: grid;
@@ -772,7 +772,7 @@ button.secondary {
 }
 .profile-import-report p {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.867rem;
 }
 .history-grid {
   display: grid;
@@ -807,7 +807,7 @@ button.secondary {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 12px;
+  font-size: 0.8rem;
   color: var(--text-muted);
   min-width: 0;
 }
@@ -847,7 +847,7 @@ button.secondary {
 }
 
 .timeline-date {
-  font-size: 13px;
+  font-size: 0.867rem;
   font-weight: 600;
   color: var(--text-strong);
   border-left: 2px solid var(--border-input);
@@ -886,7 +886,7 @@ button.secondary {
 }
 
 .history-images figcaption {
-  font-size: 11px;
+  font-size: 0.733rem;
   color: var(--text-faint);
   overflow-wrap: anywhere;
 }
@@ -894,7 +894,7 @@ button.secondary {
 /* R96: draft list section headers */
 .draft-group-head {
   margin: 14px 0 6px;
-  font-size: 12px;
+  font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--text-faint);
@@ -920,7 +920,7 @@ button.secondary {
 
 .lora-meta-status {
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 0.733rem;
 }
 
 .lora-meta-detail {

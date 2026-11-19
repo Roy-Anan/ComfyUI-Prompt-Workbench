@@ -7,9 +7,12 @@
     <script>
       try {
         var theme = localStorage.getItem("workbench.theme");
-        if (theme === "dark" || theme === "light") {
-          document.documentElement.dataset.theme = theme;
+        if (theme !== "dark" && theme !== "light") {
+          theme = window.matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark";
         }
+        document.documentElement.dataset.theme = theme;
         var font = localStorage.getItem("workbench.font");
         if (font === "small" || font === "normal" || font === "large") {
           document.documentElement.dataset.font = font;
