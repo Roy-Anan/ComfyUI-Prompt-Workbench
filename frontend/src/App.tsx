@@ -1090,62 +1090,114 @@ export default function App() {
     });
   }
 
+  const pageTitle =
+    activePage === "workflows"
+      ? "工作流工作区"
+      : activePage === "history"
+        ? "生成历史"
+        : "服务与设置";
+  const primaryDevice = comfyStatus?.devices?.[0] ?? null;
+
   return (
-    <main className="shell">
-      <header className="topbar">
+    <div className="w-app">
+      <aside className="w-sidebar">
         <div>
-          <div className="eyebrow">LOCAL AI WORKSPACE</div>
-          <h1>ComfyUI Prompt Workbench</h1>
-          <p>本地提示词工作台 · M0 工程基础版</p>
+          <div className="w-brand-title">ComfyUI Prompt Workbench</div>
+          <div className="w-brand-sub">本地 AI 绘图提示词工作台</div>
         </div>
 
-        <div className="topbar-controls">
-          <button
-            className="secondary"
-            onClick={toggleTheme}
-            title="切换深色/浅色主题"
+        <nav className="w-nav-group">
+          <div className="w-nav-label">主导航</div>
+          <div
+            className={`w-nav-item ${activePage === "workflows" ? "active" : ""}`}
+            onClick={() => switchPage("workflows")}
           >
-            {theme === "dark" ? "浅色" : "深色"}
-          </button>
-          <select
-            value={fontSize}
-            onChange={(event) => setFontSize(event.target.value as FontSize)}
-            title="界面字号"
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+            工作流工作区
+          </div>
+          {activePage === "workflows" && (
+            <div className="w-steps">
+              <div className="w-step done"><span className="num">01</span>选择工作流</div>
+              <div className="w-step done"><span className="num">02</span>识别结果</div>
+              <div className="w-step done"><span className="num">03</span>规则比对</div>
+              <div className="w-step done"><span className="num">04</span>Prompt 确认</div>
+              <div className="w-step active"><span className="num">05</span>本地模型候选</div>
+              <div className="w-step"><span className="num">06</span>编辑工作副本</div>
+              <div className="w-step"><span className="num">07</span>草稿与版本</div>
+              <div className="w-step"><span className="num">08</span>显存检查与提交</div>
+              <div className="w-step"><span className="num">09</span>生成历史</div>
+            </div>
+          )}
+          <div
+            className={`w-nav-item ${activePage === "history" ? "active" : ""}`}
+            onClick={() => switchPage("history")}
           >
-            <option value="small">小字号</option>
-            <option value="normal">标准字号</option>
-            <option value="large">大字号</option>
-          </select>
-          <button
-            onClick={refreshStatus}
-            disabled={busy}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-4.5-4.5L6 21" stroke="currentColor" stroke-width="2" /></svg>
+            生成历史
+          </div>
+          <div
+            className={`w-nav-item ${activePage === "settings" ? "active" : ""}`}
+            onClick={() => switchPage("settings")}
           >
-            刷新状态
-          </button>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" /><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z" stroke="currentColor" stroke-width="2" /></svg>
+            服务与设置
+          </div>
+        </nav>
+
+        <div className="w-side-foot">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3 4 7v6c0 4 3.4 6.5 8 8 4.6-1.5 8-4 8-8V7l-8-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /></svg>
+          数据全部保存在本机
         </div>
-      </header>
+      </aside>
 
-      <nav className="page-nav">
-        <button
-          className={activePage === "settings" ? "" : "secondary"}
-          onClick={() => switchPage("settings")}
-        >
-          服务与设置
-        </button>
-        <button
-          className={activePage === "workflows" ? "" : "secondary"}
-          onClick={() => switchPage("workflows")}
-        >
-          工作流工作区
-        </button>
-        <button
-          className={activePage === "history" ? "" : "secondary"}
-          onClick={() => switchPage("history")}
-        >
-          生成历史
-        </button>
-      </nav>
+      <div className="w-main">
+        <header className="w-topbar">
+          <div className="w-brand-title" style={{ fontSize: "15px" }}>{pageTitle}</div>
+          <div className="w-statuses">
+            <span className={`w-status ${services?.ollama.online ? "online" : "offline"}`}>
+              <span className="w-dot" />Ollama {services?.ollama.online ? "在线" : "离线"}
+            </span>
+            <span className={`w-status ${services?.comfyui.online ? "online" : "offline"}`}>
+              <span className="w-dot" />ComfyUI {services?.comfyui.online ? "在线" : "离线"}{comfyStatus?.version ? ` · ${comfyStatus.version}` : ""}
+            </span>
+          </div>
+          <div className="w-vram">
+            显存
+            <span className="w-vram-bar">
+              <i style={{ width: primaryDevice && primaryDevice.vram_total ? `${Math.round(100 * (1 - (primaryDevice.vram_free ?? 0) / primaryDevice.vram_total))}%` : "0%" }} />
+            </span>
+            <span>{primaryDevice ? `${formatGiB(primaryDevice.vram_free)} 空闲` : "显存未知"}</span>
+          </div>
+          <div className="w-queue-chip">队列 {(comfyQueue?.running.length ?? 0) + (comfyQueue?.pending.length ?? 0)}</div>
+          <div className="w-head-actions">
+            <select
+              className="w-select"
+              style={{ width: "auto" }}
+              value={theme}
+              onChange={(event) => setTheme(event.target.value as Theme)}
+              title="深浅主题"
+            >
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+            </select>
+            <select
+              className="w-select"
+              style={{ width: "auto" }}
+              value={fontSize}
+              onChange={(event) => setFontSize(event.target.value as FontSize)}
+              title="界面字号"
+            >
+              <option value="small">小字号</option>
+              <option value="normal">标准字号</option>
+              <option value="large">大字号</option>
+            </select>
+            <button className="w-btn w-btn-ghost" onClick={refreshStatus} disabled={busy} title="刷新状态">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+          </div>
+        </header>
 
+        <div className="w-content">
       {activePage === "workflows" ? (
         <WorkflowWorkbench
           comfyuiUrl={settings?.connections.comfyui_url ?? ""}
@@ -1154,8 +1206,71 @@ export default function App() {
       ) : activePage === "history" ? (
         <HistoryPanel />
       ) : (
-        <>
-      <section className="status-grid">
+        <div className="w-settings">
+          <nav className="w-settings-nav" aria-label="设置分类">
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("settings-svc")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              服务状态
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("settings-storage")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              存储位置
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("settings-catalog")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              模型清单与 LoRA 资料
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("settings-rules")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              规则库
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("settings-profiles")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              旧档案候选
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("settings-connection")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              连接、术语与备份
+            </button>
+          </nav>
+          <div className="w-settings-body">
+      <section className="status-grid" id="settings-svc">
         <article className="panel status-card">
           <div className="card-title">工作台本地服务</div>
           <div className="status-line">
@@ -1231,7 +1346,7 @@ export default function App() {
         </article>
       </section>
 
-      <section className="panel">
+      <section className="panel" id="settings-storage">
         <div className="section-heading">
           <div>
             <h2>存储位置</h2>
@@ -1289,7 +1404,7 @@ export default function App() {
         )}
       </section>
 
-      <section className="panel">
+      <section className="panel" id="settings-catalog">
         <div className="section-heading">
           <div>
             <h2>模型清单（只读）</h2>
@@ -1530,7 +1645,7 @@ export default function App() {
         )}
       </section>
 
-      <section className="panel">
+      <section className="panel" id="settings-rules">
         <div className="section-heading">
           <div>
             <h2>规则库</h2>
@@ -1648,7 +1763,7 @@ export default function App() {
         )}
       </section>
 
-      <section className="panel">
+      <section className="panel" id="settings-profiles">
         <div className="section-heading">
           <div>
             <h2>旧档案候选</h2>
@@ -1852,7 +1967,7 @@ export default function App() {
         )}
       </section>
 
-      <section className="panel">
+      <section className="panel" id="settings-connection">
         <div className="section-heading">
           <div>
             <h2>服务连接</h2>
@@ -1912,6 +2027,7 @@ export default function App() {
           </button>
 
           <button
+            className="secondary"
             onClick={() => void exportDiagnostics()}
             disabled={busy}
           >
@@ -1919,6 +2035,7 @@ export default function App() {
           </button>
 
           <button
+            className="secondary"
             onClick={exportSettings}
             disabled={busy || !settings}
           >
@@ -1926,6 +2043,7 @@ export default function App() {
           </button>
 
           <button
+            className="secondary"
             onClick={() => void exportBackup()}
             disabled={busy}
           >
@@ -1933,6 +2051,7 @@ export default function App() {
           </button>
 
           <button
+            className="secondary"
             onClick={() => backupFileRef.current?.click()}
             disabled={busy}
           >
@@ -1947,6 +2066,7 @@ export default function App() {
           />
 
           <button
+            className="secondary"
             onClick={() => settingsFileRef.current?.click()}
             disabled={busy || !settings}
           >
@@ -1996,13 +2116,11 @@ export default function App() {
           </span>
         </div>
       </section>
-
-  </>
-)}
-      <footer>
-        <span>版本 {health?.version ?? "读取中"}</span>
-        <span>M0 · 本地服务基础版</span>
-      </footer>
-    </main>
+          </div>
+        </div>
+      )}
+        </div>
+      </div>
+    </div>
   );
 }

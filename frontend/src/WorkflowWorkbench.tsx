@@ -1712,12 +1712,87 @@ export default function WorkflowWorkbench({
   const canWrite =
     detail?.report.safe_prompt_write_supported === true &&
     detail.manifest.confirmed === true;
+
+  // 5.2 工作流信息摘要（只读聚合，不参与写入）
+  const firstModelInput = detail?.report.model_nodes[0]
+    ? Object.values(detail.report.model_nodes[0].inputs)
+        .map(String)
+        .find((v) => v && v !== "undefined")
+    : undefined;
+  const checkpointName = compare?.checkpoint ?? firstModelInput ?? "—";
+  const loraCount = detail?.report.lora_nodes.length ?? 0;
+  const actuals = compare?.actuals ?? {};
+  const resolution = `${formatActual(actuals.width)}×${formatActual(actuals.height)}`;
+  const compareSummaryText = compare
+    ? Object.entries(compare.counts)
+        .map(([status, count]) => `${STATUS_LABEL[status] ?? status} ${count}`)
+        .join(" · ") || "—"
+    : "—";
+
   return (
     <section className="workflow-page">
+      {detail && (
+        <div className="w-summary">
+          <div className="w-sum-block panel">
+            <div className="k">当前工作流</div>
+            <div className="v" title={detail.manifest.filename}>
+              {detail.manifest.filename}
+            </div>
+            <div className="w-row">
+              <span>格式</span>
+              <b>{detail.report.format.toUpperCase()}</b>
+            </div>
+            <div className="w-row">
+              <span>节点数</span>
+              <b>{detail.report.node_count}</b>
+            </div>
+          </div>
+          <div className="w-sum-block panel">
+            <div className="k">模型信息</div>
+            <div className="v" title={checkpointName}>
+              {checkpointName}
+            </div>
+            <div className="w-row">
+              <span>LoRA 数量</span>
+              <b>{loraCount}</b>
+            </div>
+          </div>
+          <div className="w-sum-block panel">
+            <div className="k">采样参数</div>
+            <div className="w-row">
+              <span>采样器</span>
+              <b>{formatActual(actuals.sampler_name)}</b>
+            </div>
+            <div className="w-row">
+              <span>步数 / CFG</span>
+              <b>
+                {formatActual(actuals.steps)} / {formatActual(actuals.cfg)}
+              </b>
+            </div>
+            <div className="w-row">
+              <span>分辨率</span>
+              <b>{resolution}</b>
+            </div>
+            <div className="w-row">
+              <span>Clip Skip</span>
+              <b>{formatActual(actuals.clip_skip)}</b>
+            </div>
+          </div>
+          <div className="w-sum-block panel">
+            <div className="k">规则比对结果</div>
+            <div className="v">
+              {compare ? (compare.status === "registered" ? "已登记" : "未登记") : "—"}
+            </div>
+            <div className="w-row">
+              <span>结果摘要</span>
+              <b title={compareSummaryText}>{compareSummaryText}</b>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="panel">
         <div className="section-heading">
           <div>
-            <h2>工作流工作区</h2>
             <p>
               导入、解析并确认 Prompt 节点。原始工作流只读，修改只写入工作副本。
             </p>

@@ -16,7 +16,7 @@ function readStoredView(): HistoryView {
   } catch {
     // 本地存储不可用时回落到列表视图。
   }
-  return "list";
+  return "grid";
 }
 
 function readStoredFilter(key: string): string {
@@ -744,7 +744,6 @@ export default function HistoryPanel() {
     <section className="panel">
       <div className="section-heading">
         <div>
-          <h2>生成历史</h2>
           <p>提交时刻固化的 Prompt 与模型快照；图片只记录文件名与存在性，不复制原图。</p>
         </div>
         <div className="actions">

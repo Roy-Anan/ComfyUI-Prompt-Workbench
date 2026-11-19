@@ -1,41 +1,41 @@
 :root {
-  /* R97: shared theme tokens (dark defaults) */
-  --bg: #10131a;
-  --bg-glow: #24334b;
-  --panel: rgb(25 31 42 / 92%);
-  --panel-alt: #151e2b;
-  --panel-2: #151c27;
-  --inset: #111722;
-  --inset-2: #1c2735;
-  --text: #e9edf5;
-  --text-strong: #c6d0df;
-  --text-muted: #9ca8ba;
-  --text-faint: #8b98ab;
-  --text-soft: #aebbd0;
-  --border: #2b3545;
-  --border-strong: #344052;
-  --border-input: #39475b;
-  --border-soft: #2a3646;
-  --btn-bg: #29456f;
-  --btn-border: #506b97;
-  --btn-text: #ffffff;
-  --accent: #779bd0;
-  --accent-strong: #83a9df;
-  --accent-eyebrow: #8ea9d5;
-  --selected-bg: #22344c;
-  --active-bg: #2b3a4d;
-  --active-border: #4a5f78;
-  --online: #49c58a;
-  --online-border: #2f7d59;
-  --online-shadow: #49c58a70;
-  --warn: #d18b68;
-  --warn-soft: #e0a37f;
-  --warn-text: #e8c3ae;
-  --warn-bg: #2b211e;
-  --danger-bg: #5a3325;
-  --danger-border: #8a5a3c;
+  /* 浅色主题（默认）—— 任务书 3.1 */
+  --bg: #F7F8FC;
+  --bg-glow: #EDF3FF;
+  --panel: #FFFFFF;
+  --panel-alt: #F1F4FA;
+  --panel-2: #F7F9FC;
+  --inset: #FFFFFF;
+  --inset-2: #E6ECF4;
+  --text: #24324A;
+  --text-strong: #2C3848;
+  --text-muted: #667085;
+  --text-faint: #98A2B3;
+  --text-soft: #45536A;
+  --border: #E7EBF2;
+  --border-strong: #C2CDDB;
+  --border-input: #B8C5D6;
+  --border-soft: #DCE3EC;
+  --btn-bg: #3568F5;
+  --btn-border: #5A7FAB;
+  --btn-text: #FFFFFF;
+  --accent: #3568F5;
+  --accent-strong: #2855D9;
+  --accent-eyebrow: #3F6DA0;
+  --selected-bg: #E2ECF8;
+  --active-bg: #D8E4F2;
+  --active-border: #8FB0D4;
+  --online: #16A36A;
+  --online-border: #2F7D59;
+  --online-shadow: #16A36A70;
+  --warn: #D99026;
+  --warn-soft: #A0522D;
+  --warn-text: #7C3F22;
+  --warn-bg: #FBF1E2;
+  --danger-bg: #FBECEC;
+  --danger-border: #C07A55;
 
-  font-family: Inter, "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -43,41 +43,42 @@
   font-size: 15px;
 }
 
-[data-theme="light"] {
-  --bg: #f4f6fa;
-  --bg-glow: #dce6f2;
-  --panel: rgb(255 255 255 / 92%);
-  --panel-alt: #eef2f8;
-  --panel-2: #f7f9fc;
-  --inset: #ffffff;
-  --inset-2: #e6ecf4;
-  --text: #1c2531;
-  --text-strong: #2c3848;
-  --text-muted: #5c6a7d;
-  --text-faint: #7a8798;
-  --text-soft: #45536a;
-  --border: #d4dce7;
-  --border-strong: #c2cddb;
-  --border-input: #b8c5d6;
-  --border-soft: #dce3ec;
-  --btn-bg: #2f558a;
-  --btn-border: #5a7fab;
-  --btn-text: #ffffff;
-  --accent: #2f558a;
-  --accent-strong: #244a78;
-  --accent-eyebrow: #3f6da0;
-  --selected-bg: #e2ecf8;
-  --active-bg: #d8e4f2;
-  --active-border: #8fb0d4;
-  --online: #2f9d68;
-  --online-border: #2f7d59;
-  --online-shadow: #2f9d6870;
-  --warn: #b5653f;
-  --warn-soft: #a0522d;
-  --warn-text: #7c3f22;
-  --warn-bg: #f6ece6;
-  --danger-bg: #f3ddd4;
-  --danger-border: #c07a55;
+[data-theme="dark"] {
+  /* 深色主题 —— 任务书 3.2 */
+  --bg: #171A21;
+  --bg-glow: #2D3543;
+  --panel: #222733;
+  --panel-alt: #2D3543;
+  --panel-2: #1F242E;
+  --inset: #1B212B;
+  --inset-2: #2D3543;
+  --text: #E8EDF5;
+  --text-strong: #D5DCE8;
+  --text-muted: #AAB4C5;
+  --text-faint: #7E899B;
+  --text-soft: #C2CBDB;
+  --border: #333C4B;
+  --border-strong: #3E4859;
+  --border-input: #465366;
+  --border-soft: #2D3543;
+  --btn-bg: #60A5FA;
+  --btn-border: #7DB6FC;
+  --btn-text: #FFFFFF;
+  --accent: #60A5FA;
+  --accent-strong: #7DB6FC;
+  --accent-eyebrow: #8FB8F0;
+  --selected-bg: #26314A;
+  --active-bg: #2D3543;
+  --active-border: #4A5F78;
+  --online: #34D399;
+  --online-border: #2F7D59;
+  --online-shadow: #34D39970;
+  --warn: #FBBF24;
+  --warn-soft: #FBBF24;
+  --warn-text: #FCD34D;
+  --warn-bg: #3A2F18;
+  --danger-bg: #3B2222;
+  --danger-border: #8A5A3C;
 }
 
 [data-font="small"] {
@@ -94,11 +95,8 @@
 
 body {
   margin: 0;
-  min-width: 760px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 80% 0%, var(--bg-glow) 0, transparent 35%),
-    var(--bg);
+  background: var(--w-bg, #F7F8FC);
 }
 
 button,
