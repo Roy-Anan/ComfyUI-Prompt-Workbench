@@ -10,9 +10,9 @@ import { formatStructured } from "./format";
 import HistoryPanel from "./HistoryPanel";
 import WorkflowWorkbench from "./WorkflowWorkbench";
 
-type PageKey = "settings" | "workflows" | "history";
+type PageKey = "settings" | "workflows" | "history" | "loras";
 
-const PAGE_KEYS: PageKey[] = ["settings", "workflows", "history"];
+const PAGE_KEYS: PageKey[] = ["settings", "workflows", "history", "loras"];
 
 function readStoredPage(): PageKey {
   try {
@@ -1241,7 +1241,9 @@ export default function App() {
       ? "工作流工作区"
       : activePage === "history"
         ? "生成历史"
-        : "服务与设置";
+        : activePage === "loras"
+          ? "LoRA 资料"
+          : "服务与设置";
   const primaryDevice = comfyStatus?.devices?.[0] ?? null;
 
   return (
@@ -1280,6 +1282,13 @@ export default function App() {
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-4.5-4.5L6 21" stroke="currentColor" stroke-width="2" /></svg>
             生成历史
+          </div>
+          <div
+            className={`w-nav-item ${activePage === "loras" ? "active" : ""}`}
+            onClick={() => switchPage("loras")}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2.5 3.5 7v10L12 21.5 20.5 17V7L12 2.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /><path d="M12 12 3.5 7M12 12l8.5-5M12 12v9.5" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /></svg>
+            LoRA 资料
           </div>
           <div
             className={`w-nav-item ${activePage === "settings" ? "active" : ""}`}
@@ -1351,6 +1360,35 @@ export default function App() {
         />
       ) : activePage === "history" ? (
         <HistoryPanel />
+      ) : activePage === "loras" ? (
+        <section className="panel" id="page-loras">
+          <div className="section-heading">
+            <div>
+              <h2>LoRA 资料</h2>
+              <p>
+                只读扫描本机 LoRA 的旁车元数据与手动资料；可补充触发词、底座与说明。
+                这里不复制权重、不向 ComfyUI 目录写角色卡，身份归并仅作只读提示。
+              </p>
+            </div>
+          </div>
+
+          {catalog ? (
+            catalog.online ? (
+              <ul className="catalog-list lora-list">
+                {catalog.loras.map((entry) => renderLoraEntry(entry))}
+                {catalog.loras.length === 0 && (
+                  <li className="catalog-empty">ComfyUI 未列出 LoRA</li>
+                )}
+              </ul>
+            ) : (
+              <p className="catalog-offline">
+                LoRA 资料不可用：{catalog.error ?? "ComfyUI 未连接"}
+              </p>
+            )
+          ) : (
+            <p>正在读取 LoRA 资料…</p>
+          )}
+        </section>
       ) : (
         <div className="w-settings">
           <nav className="w-settings-nav" aria-label="设置分类">
@@ -1383,16 +1421,6 @@ export default function App() {
               }
             >
               模型清单
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                document
-                  .getElementById("settings-loras")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            >
-              LoRA 资料
             </button>
             <button
               type="button"
@@ -1643,35 +1671,6 @@ export default function App() {
           )
         ) : (
           <p>正在读取模型清单…</p>
-        )}
-      </section>
-
-      <section className="panel" id="settings-loras">
-        <div className="section-heading">
-          <div>
-            <h2>LoRA 资料</h2>
-            <p>
-              只读扫描本机 LoRA 的旁车元数据与手动资料；可补充触发词、底座与说明。
-              这里不复制权重、不向 ComfyUI 目录写角色卡，身份归并仅作只读提示。
-            </p>
-          </div>
-        </div>
-
-        {catalog ? (
-          catalog.online ? (
-            <ul className="catalog-list lora-list">
-              {catalog.loras.map((entry) => renderLoraEntry(entry))}
-              {catalog.loras.length === 0 && (
-                <li className="catalog-empty">ComfyUI 未列出 LoRA</li>
-              )}
-            </ul>
-          ) : (
-            <p className="catalog-offline">
-              LoRA 资料不可用：{catalog.error ?? "ComfyUI 未连接"}
-            </p>
-          )
-        ) : (
-          <p>正在读取 LoRA 资料…</p>
         )}
       </section>
 
