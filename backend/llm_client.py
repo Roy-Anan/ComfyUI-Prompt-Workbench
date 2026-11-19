@@ -16,6 +16,7 @@ from urllib.request import Request as UrlRequest, urlopen
 
 APP_NAME = "ComfyUI-Prompt-Workbench"
 DEFAULT_TIMEOUT = 30.0
+MAX_CANDIDATE_CHARS = 200_000
 
 
 def chat(
@@ -23,16 +24,24 @@ def chat(
     model: str,
     messages: list[dict[str, str]],
     timeout: float = DEFAULT_TIMEOUT,
+    options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Send one non-streaming chat round to local Ollama ``/api/chat``.
 
     Returns ``{"ok": True, "content": str, "model": str, "error": None}`` on
     a usable response, otherwise ``{"ok": False, "content": None, ...}`` with
     an error string. Callers must treat ``ok is False`` as a failed request
-    and must not guess a candidate.
+    and must not guess a candidate. ``options`` carries only whitelisted
+    generation parameters (temperature / top_p / num_ctx).
     """
     target = ollama_url.rstrip("/") + "/api/chat"
-    payload = {"model": model, "messages": messages, "stream": False}
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+    }
+    if options:
+        payload["options"] = options
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = UrlRequest(target, data=body, method="POST")
     request.add_header("Content-Type", "application/json")
@@ -50,6 +59,13 @@ def chat(
                 "content": None,
                 "model": model,
                 "error": "empty model response",
+            }
+        if len(content.strip()) > MAX_CANDIDATE_CHARS:
+            return {
+                "ok": False,
+                "content": None,
+                "model": model,
+                "error": "candidate exceeds maximum allowed length",
             }
         return {
             "ok": True,

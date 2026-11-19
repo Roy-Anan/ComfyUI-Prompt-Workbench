@@ -423,8 +423,9 @@ def test_cancel_unknown_prompt_returns_404(client, monkeypatch):
 
 
 def _fake_chat_record(called: dict):
-    def fake_chat(url, model, messages, timeout=30.0):
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
         called["chat"] = True
+        called["options"] = options
         return {"ok": True, "content": "candidate", "model": model, "error": None}
 
     return fake_chat

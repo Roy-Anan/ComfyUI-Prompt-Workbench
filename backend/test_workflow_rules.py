@@ -254,10 +254,11 @@ def test_prompt_candidates_returns_text_without_writing_draft(
 
     captured: dict = {}
 
-    def fake_chat(url, model, messages, timeout=30.0):
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
         captured["url"] = url
         captured["model"] = model
         captured["messages"] = messages
+        captured["options"] = options
         return {
             "ok": True,
             "content": "candidate prompt text",
@@ -302,7 +303,7 @@ def test_prompt_candidates_reports_local_model_failure(client, monkeypatch):
     }
     workflow_id = _import_sample(test_client, main, workflow)
 
-    def fake_chat(url, model, messages, timeout=30.0):
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
         return {"ok": False, "content": None, "model": model, "error": "connection refused"}
 
     monkeypatch.setattr(llm_client, "chat", fake_chat)
@@ -331,6 +332,65 @@ def test_prompt_candidates_rejects_empty_model(client):
         json={"model": "   "},
     )
     assert response.status_code == 422
+
+
+def test_prompt_candidates_passes_whitelisted_options(client, monkeypatch):
+    test_client, main = client
+    workflow = {
+        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sample_checkpoint.safetensors"}},
+    }
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    captured: dict = {}
+
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
+        captured["options"] = options
+        return {"ok": True, "content": "text", "model": model, "error": None}
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers={"Authorization": "Bearer test-session-token"},
+        json={
+            "model": "comfyui-prompt:v1",
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "num_ctx": 4096,
+        },
+    )
+    assert response.status_code == 200
+    assert captured["options"] == {
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "num_ctx": 4096,
+    }
+
+
+def test_prompt_candidates_rejects_out_of_range_options(client, monkeypatch):
+    test_client, main = client
+    workflow = {
+        "5": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sample_checkpoint.safetensors"}},
+    }
+    workflow_id = _import_sample(test_client, main, workflow)
+
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
+        return {"ok": True, "content": "text", "model": model, "error": None}
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+
+    out_of_range = [
+        {"model": "m", "temperature": 3.0},
+        {"model": "m", "top_p": 1.5},
+        {"model": "m", "num_ctx": 128},
+    ]
+    for payload in out_of_range:
+        response = test_client.post(
+            f"/api/workflows/{workflow_id}/prompt/candidates",
+            headers={"Authorization": "Bearer test-session-token"},
+            json=payload,
+        )
+        assert response.status_code == 422
 
 
 def test_workflow_rules_unregistered_without_checkpoint(client):

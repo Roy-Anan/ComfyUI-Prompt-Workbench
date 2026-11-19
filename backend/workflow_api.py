@@ -105,6 +105,9 @@ class PromptWrite(BaseModel):
 class PromptCandidateRequest(BaseModel):
     model: str = Field(min_length=1, max_length=120)
     task: str | None = Field(default=None, max_length=2000)
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    num_ctx: int | None = Field(default=None, ge=1024, le=131_072)
 
     @field_validator("model")
     @classmethod
@@ -472,7 +475,19 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
                 "error": "ComfyUI 队列有待执行或运行中任务，请完成后再使用本地 LLM。",
             },
         )
-    result = llm_client.chat(_ollama_url(), payload.model, messages)
+    options: dict[str, Any] = {}
+    if payload.temperature is not None:
+        options["temperature"] = payload.temperature
+    if payload.top_p is not None:
+        options["top_p"] = payload.top_p
+    if payload.num_ctx is not None:
+        options["num_ctx"] = payload.num_ctx
+    result = llm_client.chat(
+        _ollama_url(),
+        payload.model,
+        messages,
+        options=options or None,
+    )
     if not result["ok"]:
         raise HTTPException(
             status_code=502,

@@ -452,6 +452,48 @@ function persistDraftGroupMode(value: DraftGroupMode): void {
   }
 }
 
+function readStoredParam(key: string): string {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    // 本地存储不可用时回落空参数。
+  }
+  return "";
+}
+
+function persistParam(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // 忽略本地存储写入失败。
+  }
+}
+
+function parseOptionalFloat(
+  text: string,
+  min: number,
+  max: number,
+): number | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < min || value > max) return null;
+  return value;
+}
+
+function parseOptionalInt(
+  text: string,
+  min: number,
+  max: number,
+): number | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < min || value > max) return null;
+  return value;
+}
+
 export default function WorkflowWorkbench() {
   const [items, setItems] = useState<WorkflowListItem[]>([]);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
@@ -466,6 +508,15 @@ export default function WorkflowWorkbench() {
   const [modelsOnline, setModelsOnline] = useState(true);
   const [selectedModel, setSelectedModel] = useState("");
   const [taskText, setTaskText] = useState("");
+  const [candidateTemp, setCandidateTemp] = useState(() =>
+    readStoredParam("workbench.candidateTemp"),
+  );
+  const [candidateTopP, setCandidateTopP] = useState(() =>
+    readStoredParam("workbench.candidateTopP"),
+  );
+  const [candidateCtx, setCandidateCtx] = useState(() =>
+    readStoredParam("workbench.candidateCtx"),
+  );
   const [candidate, setCandidate] = useState<string | null>(null);
   const [candidateBusy, setCandidateBusy] = useState(false);
   const [importedPrompt, setImportedPrompt] = useState<PromptImport | null>(null);
@@ -724,9 +775,19 @@ export default function WorkflowWorkbench() {
     setCandidateBusy(true);
     setCandidate(null);
     try {
+      const body: Record<string, unknown> = {
+        model: selectedModel,
+        task: taskText.trim() || null,
+      };
+      const temperature = parseOptionalFloat(candidateTemp, 0, 2);
+      const topP = parseOptionalFloat(candidateTopP, 0, 1);
+      const numCtx = parseOptionalInt(candidateCtx, 1024, 131_072);
+      if (temperature !== null) body.temperature = temperature;
+      if (topP !== null) body.top_p = topP;
+      if (numCtx !== null) body.num_ctx = numCtx;
       const result = await apiPost<CandidateResponse>(
         `/api/workflows/${workflowId}/prompt/candidates`,
-        { model: selectedModel, task: taskText.trim() || null },
+        body,
       );
       setCandidate(result.candidates[0] ?? null);
       setMessage(`已生成候选（规则状态：${result.rule_status}），采用前请核对。`);
@@ -1630,6 +1691,36 @@ export default function WorkflowWorkbench() {
                       value={taskText}
                       disabled={busy || candidateBusy}
                       onChange={(event) => setTaskText(event.target.value)}
+                    />
+                    <input
+                      type="text"
+                      placeholder="温度 0–2（可选）"
+                      value={candidateTemp}
+                      disabled={busy || candidateBusy}
+                      onChange={(event) => {
+                        setCandidateTemp(event.target.value);
+                        persistParam("workbench.candidateTemp", event.target.value);
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Top P 0–1（可选）"
+                      value={candidateTopP}
+                      disabled={busy || candidateBusy}
+                      onChange={(event) => {
+                        setCandidateTopP(event.target.value);
+                        persistParam("workbench.candidateTopP", event.target.value);
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="上下文长度（可选）"
+                      value={candidateCtx}
+                      disabled={busy || candidateBusy}
+                      onChange={(event) => {
+                        setCandidateCtx(event.target.value);
+                        persistParam("workbench.candidateCtx", event.target.value);
+                      }}
                     />
                     <button
                       disabled={busy || candidateBusy || !selectedModel}
