@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { apiDelete, apiGet, apiGetBlob, apiPost } from "./api";
+import {
+  apiDelete,
+  apiGet,
+  apiGetBlob,
+  apiPost,
+  apiPostBinary,
+} from "./api";
 import { formatStructured } from "./format";
 import HistoryPanel from "./HistoryPanel";
 import WorkflowWorkbench from "./WorkflowWorkbench";
@@ -329,6 +335,9 @@ export default function App() {
   const [openProfile, setOpenProfile] = useState<string | null>(null);
   const [preview, setPreview] = useState<ProfilePreview | null>(null);
   const settingsFileRef = useRef<HTMLInputElement>(null);
+  const backupFileRef = useRef<HTMLInputElement>(null);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreOverwrite, setRestoreOverwrite] = useState(false);
   const [importingProfile, setImportingProfile] = useState<string | null>(null);
   const [deletingRule, setDeletingRule] = useState<string | null>(null);
   const [importReports, setImportReports] = useState<
@@ -708,6 +717,43 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function pickBackupFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setRestoreOverwrite(false);
+    setRestoreFile(file);
+  }
+
+  async function confirmRestore() {
+    if (!restoreFile) return;
+    setBusy(true);
+    try {
+      const buffer = await restoreFile.arrayBuffer();
+      const query = restoreOverwrite ? "?overwrite=true" : "";
+      const report = await apiPostBinary(`/api/backup/restore${query}`, buffer);
+      const restored = Number(report.restored_count ?? 0);
+      const skipped = Number(
+        (report.skipped_existing as unknown[] | undefined)?.length ?? 0,
+      );
+      const overwritten = Number(report.overwritten_count ?? 0);
+      setMessage(
+        `恢复完成：写入 ${restored} 项，保留现有 ${skipped} 项，覆盖 ${overwritten} 项；` +
+          `恢复前备份：${String(report.pre_backup ?? "")}。建议刷新页面。`,
+      );
+      setRestoreFile(null);
+    } catch (error) {
+      setMessage(`恢复失败：${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function cancelRestore() {
+    setRestoreFile(null);
+    setRestoreOverwrite(false);
   }
 
   function importSettingsFile(event: ChangeEvent<HTMLInputElement>) {
@@ -1433,6 +1479,20 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => backupFileRef.current?.click()}
+            disabled={busy}
+          >
+            恢复备份
+          </button>
+          <input
+            ref={backupFileRef}
+            type="file"
+            accept="application/zip,.zip"
+            style={{ display: "none" }}
+            onChange={pickBackupFile}
+          />
+
+          <button
             onClick={() => settingsFileRef.current?.click()}
             disabled={busy || !settings}
           >
@@ -1445,6 +1505,37 @@ export default function App() {
             style={{ display: "none" }}
             onChange={importSettingsFile}
           />
+
+          {restoreFile && (
+            <div className="panel">
+              <p className="muted">
+                已选择备份：{restoreFile.name}。恢复前会先自动备份当前数据；
+                默认保留同名现有文件，不触碰模型权重与原图。
+              </p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={restoreOverwrite}
+                  disabled={busy}
+                  onChange={(event) =>
+                    setRestoreOverwrite(event.target.checked)
+                  }
+                />
+                覆盖同名现有文件（谨慎）
+              </label>
+              <div className="actions">
+                <button
+                  onClick={() => void confirmRestore()}
+                  disabled={busy}
+                >
+                  {busy ? "恢复中…" : "确认恢复"}
+                </button>
+                <button onClick={cancelRestore} disabled={busy}>
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
 
           <span className="message" role="status">
             {message}

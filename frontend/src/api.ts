@@ -103,6 +103,23 @@ export function apiDelete<T>(
   });
 }
 
+// Raw binary POST (e.g. restoring a backup ZIP). The body is sent as-is; the
+// CSRF header is attached for the cookie session.
+export async function apiPostBinary(
+  path: string,
+  body: Blob | ArrayBuffer,
+): Promise<Record<string, unknown>> {
+  await ensureSession();
+  const headers: Record<string, string> = {};
+  if (csrfToken) headers["X-Workbench-CSRF"] = csrfToken;
+  const response = await fetch(path, { method: "POST", headers, body });
+  if (!response.ok) {
+    const detail = await describeError(response);
+    throw new Error(`${response.status}: ${detail}`);
+  }
+  return response.json();
+}
+
 // Read-only binary download (e.g. the local backup ZIP). GET requests carry
 // the session cookie automatically and need no CSRF header.
 export async function apiGetBlob(path: string): Promise<Blob> {

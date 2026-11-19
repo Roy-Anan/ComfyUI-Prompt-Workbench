@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 import backup_export
+import backup_restore
 import comfy_tasks
 import datadir
 import generation_history
@@ -875,6 +876,30 @@ def backup_export_archive():
         "X-Workbench-Backup-Integrity": str(manifest["database"]["integrity"]),
     }
     return Response(content=data, media_type="application/zip", headers=headers)
+
+
+@app.post("/api/backup/restore")
+async def backup_restore_archive(request: Request, overwrite: bool = False):
+    """Restore a verified backup ZIP uploaded as the raw request body.
+
+    Fail-closed: the archive manifest and archived database integrity are
+    checked before any existing data is touched; a pre-restore backup of the
+    current root is written first. By default existing files are kept
+    (skipped and reported); ``overwrite=true`` replaces same-path files. The
+    database is restored as a whole file. ComfyUI weights and original images
+    are never part of the archive and are not touched here.
+    """
+    load_settings()
+    body = await request.body()
+    try:
+        report = backup_restore.restore_backup(
+            DATA_ROOT, body, overwrite=overwrite, version=APP_VERSION
+        )
+    except backup_restore.RestoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"恢复写入失败：{exc}")
+    return report
 
 
 @app.get("/api/ollama/models")
