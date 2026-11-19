@@ -731,6 +731,7 @@ button:disabled { background: var(--w-bg-2); color: var(--w-text-3); border-colo
 .lightbox-overlay { background: rgba(23, 30, 43, 0.55); }
 .asset-dialog,
 .asset-detail {
+  background: var(--w-panel);
   box-shadow: var(--w-shadow);
   border-radius: var(--r-lg);
 }
@@ -743,3 +744,86 @@ button:disabled { background: var(--w-bg-2); color: var(--w-text-3); border-colo
 /* —— 导航：选中态与悬停轻反馈（计划书 4.2） —— */
 .w-nav-item:hover:not(.active) { background: var(--w-bg-2); color: var(--w-text); }
 .w-step:hover:not(.active) { background: var(--w-bg-2); color: var(--w-text); }
+
+/* ============================================================
+ * 阶段二~五 布局与密度优化（计划书 5.1-5.8 / 七）
+ * 仅调整布局、间距、层级与自适应，不改业务结构与交互逻辑。
+ * ============================================================ */
+
+/* —— 全局内容密度 —— */
+.w-content { gap: var(--sp-3); padding: var(--sp-5) var(--sp-5) var(--sp-6); }
+.panel { padding: 18px; margin-bottom: var(--sp-3); }
+.section-heading { gap: 12px; }
+.section-heading h2,
+.panel h3 { margin-bottom: 6px; }
+
+/* 侧栏随主内容滚动时保持固定可见（修复既有滚出视野问题） */
+.w-sidebar { position: sticky; top: 0; height: 100vh; }
+
+/* —— 阶段二：工作流工作区 —— */
+/* 摘要信息卡紧凑，层级收敛 */
+.w-summary { gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.w-sum-block { padding: 14px 16px; }
+.w-sum-block .k { margin-bottom: 6px; }
+.w-sum-block .v { margin-bottom: 6px; }
+.w-row { padding: 3px 0; }
+
+/* 主双栏间距 */
+.workflow-columns { gap: var(--sp-5); margin-top: var(--sp-3); }
+
+/* 节点 / 列表行紧凑 */
+.workflow-node-row { padding: 10px 12px; gap: 12px; }
+.workflow-list,
+.workflow-node-list { gap: 8px; }
+
+/* 正 / 负 Prompt 并排：单子项占满，双子项各占一栏 */
+.prompt-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-3);
+}
+.prompt-pair .workflow-text-field { margin: 0; }
+.prompt-pair textarea { min-height: 150px; }
+
+/* 规则比对 / 候选等辅助区文字降权，不与主编辑区争焦点 */
+.compare-meta,
+.candidate-list-head { color: var(--w-text-3); }
+
+/* —— 阶段三：设置 / LoRA / 历史 —— */
+.status-card { min-height: 0; }
+.lora-list li.lora-meta { padding: 12px 14px; gap: 6px; }
+.history-timeline { gap: var(--sp-3); }
+.timeline-group { gap: 8px; }
+.history-filters { margin: var(--sp-2) 0; gap: var(--sp-3); }
+
+/* 长路径 / 长文件名截断时不撑破布局 */
+.dir-path,
+.lora-meta-source,
+.asset-detail-path { min-width: 0; }
+
+/* —— 阶段四：素材库 —— */
+.asset-body { grid-template-columns: 184px minmax(0, 1fr); gap: var(--sp-3); }
+.asset-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+.asset-card:hover { border-color: var(--w-brand); }
+.asset-card-meta { padding: 10px 12px; }
+
+/* —— 阶段五：弹窗 / 空态 / 响应式 —— */
+.asset-dialog,
+.asset-detail { gap: var(--sp-3); }
+.catalog-empty,
+.catalog-offline { line-height: 1.6; }
+
+/* 响应式：宽屏充分利用空间，窄窗逐级回落单栏 */
+@media (max-width: 1100px) {
+  .prompt-pair { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .asset-body { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .workflow-columns,
+  .candidate-compare { grid-template-columns: 1fr; }
+}

@@ -2384,6 +2384,7 @@ export default function WorkflowWorkbench({
           {canWrite && (
             <div className="panel">
               <h3>编辑工作副本 Prompt</h3>
+              <div className="prompt-pair">
               {detail.manifest.whitelist.some(
                 (item) => item.role === "positive",
               ) && (
@@ -2422,6 +2423,7 @@ export default function WorkflowWorkbench({
                   />
                 </label>
               )}
+              </div>
               {Array.from(
                 new Set([
                   ...splitPromptFragments(positiveText),
