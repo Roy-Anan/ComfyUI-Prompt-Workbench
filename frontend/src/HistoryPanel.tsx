@@ -19,6 +19,23 @@ function readStoredView(): HistoryView {
   return "list";
 }
 
+function readStoredFilter(key: string): string {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    // 本地存储不可用时回落到全部。
+  }
+  return "";
+}
+
+function persistFilter(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // 忽略本地存储写入失败。
+  }
+}
+
 type HistoryImage = {
   node_id: string;
   filename: string;
@@ -130,8 +147,8 @@ export default function HistoryPanel() {
   const [items, setItems] = useState<HistoryRecord[] | null>(null);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [workflowFilter, setWorkflowFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState(() => readStoredFilter("workbench.historyStatus"));
+  const [workflowFilter, setWorkflowFilter] = useState(() => readStoredFilter("workbench.historyWorkflow"));
   const [keyword, setKeyword] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -478,7 +495,10 @@ export default function HistoryPanel() {
             状态
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
+              onChange={(event) => {
+                setStatusFilter(event.target.value);
+                persistFilter("workbench.historyStatus", event.target.value);
+              }}
             >
               <option value="">全部</option>
               {STATUS_OPTIONS.map((status) => (
@@ -493,7 +513,10 @@ export default function HistoryPanel() {
               工作流
               <select
                 value={workflowFilter}
-                onChange={(event) => setWorkflowFilter(event.target.value)}
+                onChange={(event) => {
+                  setWorkflowFilter(event.target.value);
+                  persistFilter("workbench.historyWorkflow", event.target.value);
+                }}
               >
                 <option value="">全部</option>
                 {workflowOptions.map((workflowId) => (
