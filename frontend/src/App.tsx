@@ -693,6 +693,152 @@ export default function App() {
     }
   }
 
+  const renderLoraEntry = (entry: CatalogEntry) => {
+    const meta = entry.meta ?? null;
+    const detail = [
+      meta?.base_model ? `底座：${meta.base_model}` : "",
+      meta && meta.trigger_words.length > 0
+        ? `触发：${meta.trigger_words.slice(0, 4).join("、")}`
+        : "",
+      meta?.description
+        ? `说明：${
+            meta.description.length > 60
+              ? `${meta.description.slice(0, 60)}…`
+              : meta.description
+          }`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("　");
+    const source: "manual" | "sidecar" | "none" | null = meta
+      ? meta.source ?? (meta.manual_present ? "manual" : "sidecar")
+      : null;
+    const combos = meta?.combos ?? [];
+    return (
+      <li
+        key={entry.name}
+        className={meta ? `lora-meta lora-meta-${meta.status}` : "lora-meta"}
+      >
+        <span>
+          {entry.name}
+          {meta && (
+            <small className="lora-meta-status">
+              {LORA_META_LABEL[meta.status]}
+            </small>
+          )}
+          {source && (
+            <small className="lora-meta-source">
+              {LORA_SOURCE_LABEL[source]}
+            </small>
+          )}
+        </span>
+        <small>{identityLabel(entry)}</small>
+        <HashButton
+          category="lora"
+          entry={entry}
+          busyKey={hashingIdentity}
+          onHash={(cat, item) => void hashModelIdentity(cat, item)}
+        />
+        {detail && <small className="lora-meta-detail">{detail}</small>}
+        {meta && meta.trigger_words.length > 0 && (
+          <div className="lora-triggers">
+            {meta.trigger_words.map((word) => (
+              <span key={word} className="lora-trigger-chip">
+                {word}
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={() => void copyLoraTriggers(meta)}
+            >
+              复制触发词
+            </button>
+          </div>
+        )}
+        {combos.length > 0 && (
+          <ul className="lora-combos">
+            {combos.map((combo, index) => (
+              <li key={index}>
+                {combo.name && <strong>{combo.name}：</strong>}
+                {combo.trigger_words.join("、")}
+              </li>
+            ))}
+          </ul>
+        )}
+        {(entry.related ?? []).length > 0 && (
+          <small className="lora-related">
+            疑似同一身份：{(entry.related ?? []).join("、")}
+          </small>
+        )}
+        {(entry.related_triggers ?? []).length > 0 && (
+          <small className="lora-related">
+            共享触发词：{(entry.related_triggers ?? []).join("、")}
+          </small>
+        )}
+        {(entry.compatible ?? []).length > 0 && (
+          <small className="lora-related">
+            同底座可搭配：{(entry.compatible ?? []).join("、")}
+          </small>
+        )}
+        {editingLora === entry.name ? (
+          <div className="lora-edit">
+            <label>
+              触发词（逗号或换行分隔）
+              <textarea
+                rows={2}
+                value={loraTriggersText}
+                onChange={(event) =>
+                  setLoraTriggersText(event.target.value)
+                }
+              />
+            </label>
+            <label>
+              底座模型
+              <input
+                value={loraBaseModel}
+                onChange={(event) =>
+                  setLoraBaseModel(event.target.value)
+                }
+              />
+            </label>
+            <label>
+              说明
+              <textarea
+                rows={2}
+                value={loraDescription}
+                onChange={(event) =>
+                  setLoraDescription(event.target.value)
+                }
+              />
+            </label>
+            <div className="actions">
+              <button
+                onClick={() => void saveLoraManual(entry)}
+                disabled={loraSaveBusy}
+              >
+                保存资料
+              </button>
+              <button
+                className="secondary"
+                onClick={cancelLoraEdit}
+                disabled={loraSaveBusy}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className="secondary"
+            onClick={() => startLoraEdit(entry)}
+          >
+            编辑资料
+          </button>
+        )}
+      </li>
+    );
+  };
+
   function startLoraEdit(entry: CatalogEntry) {
     const meta = entry.meta ?? null;
     setEditingLora(entry.name);
@@ -1236,7 +1382,17 @@ export default function App() {
                   ?.scrollIntoView({ behavior: "smooth", block: "start" })
               }
             >
-              模型清单与 LoRA 资料
+              模型清单
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("settings-loras")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              LoRA 资料
             </button>
             <button
               type="button"
@@ -1436,161 +1592,6 @@ export default function App() {
               </div>
               <div className="catalog-col">
                 <div className="catalog-title">
-                  LoRA（{catalog.loras.length}）
-                </div>
-                <ul className="catalog-list">
-                  {catalog.loras.map((entry) => {
-                    const meta = entry.meta ?? null;
-                    const detail = [
-                      meta?.base_model ? `底座：${meta.base_model}` : "",
-                      meta && meta.trigger_words.length > 0
-                        ? `触发：${meta.trigger_words.slice(0, 4).join("、")}`
-                        : "",
-                      meta?.description
-                        ? `说明：${
-                            meta.description.length > 60
-                              ? `${meta.description.slice(0, 60)}…`
-                              : meta.description
-                          }`
-                        : "",
-                    ]
-                      .filter(Boolean)
-                      .join("　");
-                    const source: "manual" | "sidecar" | "none" | null = meta
-                      ? meta.source ?? (meta.manual_present ? "manual" : "sidecar")
-                      : null;
-                    const combos = meta?.combos ?? [];
-                    return (
-                      <li
-                        key={entry.name}
-                        className={meta ? `lora-meta lora-meta-${meta.status}` : "lora-meta"}
-                      >
-                        <span>
-                          {entry.name}
-                          {meta && (
-                            <small className="lora-meta-status">
-                              {LORA_META_LABEL[meta.status]}
-                            </small>
-                          )}
-                          {source && (
-                            <small className="lora-meta-source">
-                              {LORA_SOURCE_LABEL[source]}
-                            </small>
-                          )}
-                        </span>
-                        <small>{identityLabel(entry)}</small>
-                        <HashButton
-                          category="lora"
-                          entry={entry}
-                          busyKey={hashingIdentity}
-                          onHash={(cat, item) => void hashModelIdentity(cat, item)}
-                        />
-                        {detail && <small className="lora-meta-detail">{detail}</small>}
-                        {meta && meta.trigger_words.length > 0 && (
-                          <div className="lora-triggers">
-                            {meta.trigger_words.map((word) => (
-                              <span key={word} className="lora-trigger-chip">
-                                {word}
-                              </span>
-                            ))}
-                            <button
-                              type="button"
-                              onClick={() => void copyLoraTriggers(meta)}
-                            >
-                              复制触发词
-                            </button>
-                          </div>
-                        )}
-                        {combos.length > 0 && (
-                          <ul className="lora-combos">
-                            {combos.map((combo, index) => (
-                              <li key={index}>
-                                {combo.name && <strong>{combo.name}：</strong>}
-                                {combo.trigger_words.join("、")}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        {(entry.related ?? []).length > 0 && (
-                          <small className="lora-related">
-                            疑似同一身份：{(entry.related ?? []).join("、")}
-                          </small>
-                        )}
-                        {(entry.related_triggers ?? []).length > 0 && (
-                          <small className="lora-related">
-                            共享触发词：{(entry.related_triggers ?? []).join("、")}
-                          </small>
-                        )}
-                        {(entry.compatible ?? []).length > 0 && (
-                          <small className="lora-related">
-                            同底座可搭配：{(entry.compatible ?? []).join("、")}
-                          </small>
-                        )}
-                        {editingLora === entry.name ? (
-                          <div className="lora-edit">
-                            <label>
-                              触发词（逗号或换行分隔）
-                              <textarea
-                                rows={2}
-                                value={loraTriggersText}
-                                onChange={(event) =>
-                                  setLoraTriggersText(event.target.value)
-                                }
-                              />
-                            </label>
-                            <label>
-                              底座模型
-                              <input
-                                value={loraBaseModel}
-                                onChange={(event) =>
-                                  setLoraBaseModel(event.target.value)
-                                }
-                              />
-                            </label>
-                            <label>
-                              说明
-                              <textarea
-                                rows={2}
-                                value={loraDescription}
-                                onChange={(event) =>
-                                  setLoraDescription(event.target.value)
-                                }
-                              />
-                            </label>
-                            <div className="actions">
-                              <button
-                                onClick={() => void saveLoraManual(entry)}
-                                disabled={loraSaveBusy}
-                              >
-                                保存资料
-                              </button>
-                              <button
-                                className="secondary"
-                                onClick={cancelLoraEdit}
-                                disabled={loraSaveBusy}
-                              >
-                                取消
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            className="secondary"
-                            onClick={() => startLoraEdit(entry)}
-                          >
-                            编辑资料
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                  {catalog.loras.length === 0 && (
-                    <li className="catalog-empty">ComfyUI 未列出 LoRA</li>
-                  )}
-                </ul>
-              </div>
-              <div className="catalog-col">
-                <div className="catalog-title">
                   CLIP（{catalog.clips.length}）
                 </div>
                 <ul className="catalog-list">
@@ -1642,6 +1643,35 @@ export default function App() {
           )
         ) : (
           <p>正在读取模型清单…</p>
+        )}
+      </section>
+
+      <section className="panel" id="settings-loras">
+        <div className="section-heading">
+          <div>
+            <h2>LoRA 资料</h2>
+            <p>
+              只读扫描本机 LoRA 的旁车元数据与手动资料；可补充触发词、底座与说明。
+              这里不复制权重、不向 ComfyUI 目录写角色卡，身份归并仅作只读提示。
+            </p>
+          </div>
+        </div>
+
+        {catalog ? (
+          catalog.online ? (
+            <ul className="catalog-list lora-list">
+              {catalog.loras.map((entry) => renderLoraEntry(entry))}
+              {catalog.loras.length === 0 && (
+                <li className="catalog-empty">ComfyUI 未列出 LoRA</li>
+              )}
+            </ul>
+          ) : (
+            <p className="catalog-offline">
+              LoRA 资料不可用：{catalog.error ?? "ComfyUI 未连接"}
+            </p>
+          )
+        ) : (
+          <p>正在读取 LoRA 资料…</p>
         )}
       </section>
 

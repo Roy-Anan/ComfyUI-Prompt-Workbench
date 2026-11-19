@@ -665,3 +665,21 @@ button:focus-visible { outline: 2px solid var(--w-brand); outline-offset: 2px; }
   .w-summary, .w-grid-2 { grid-template-columns: 1fr; }
   .w-topbar { flex-wrap: wrap; height: auto; padding: 12px 16px; }
 }
+
+/* ===== LoRA 资料独立分区：全宽纵向卡片列表 ===== */
+.lora-list {
+  max-height: none;
+  overflow: visible;
+  gap: 10px;
+  margin-top: 16px;
+}
+.lora-list li.lora-meta {
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 12px 14px;
+}
+.lora-list .lora-meta-detail,
+.lora-list .lora-related {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
