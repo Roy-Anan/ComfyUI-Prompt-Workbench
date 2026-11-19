@@ -122,6 +122,28 @@ function historyImageUrl(image: HistoryImage): string {
   return `/api/history/image?${params.toString()}`;
 }
 
+// In-memory blob-URL cache: an already fetched output image keeps one
+// object URL for both thumbnails and the lightbox, so reopening a record
+// does not refetch the original file. No server-side resampling is done;
+// the original bytes are reused as-is.
+const objectUrlCache = new Map<string, string>();
+
+async function cachedObjectUrl(url: string): Promise<string> {
+  const cached = objectUrlCache.get(url);
+  if (cached) return cached;
+  const response = await fetch(url, { credentials: "include" });
+  if (!response.ok) throw new Error(`图片加载失败（${response.status}）`);
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  objectUrlCache.set(url, objectUrl);
+  return objectUrl;
+}
+
+type LightboxState = {
+  images: HistoryImage[];
+  index: number;
+};
+
 function summarize(text: string | null, limit = 80): string {
   if (!text) return "—";
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
@@ -166,6 +188,102 @@ const STATUS_OPTIONS = [
   "unknown",
 ];
 
+function HistoryThumb({ image, onOpen }: { image: HistoryImage; onOpen: () => void }) {
+  const url = historyImageUrl(image);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    cachedObjectUrl(url)
+      .then((cached) => {
+        if (alive) setObjectUrl(cached);
+      })
+      .catch(() => {
+        // 缓存 blob 不可用时回退到代理原图 URL。
+      });
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+
+  return (
+    <figure>
+      <img
+        src={objectUrl ?? url}
+        alt={image.filename}
+        loading="lazy"
+        onClick={onOpen}
+        title="点击查看大图"
+      />
+      <figcaption>{image.filename}</figcaption>
+    </figure>
+  );
+}
+
+function LightboxViewer({
+  state,
+  onClose,
+  onStep,
+}: {
+  state: LightboxState;
+  onClose: () => void;
+  onStep: (delta: number) => void;
+}) {
+  const image = state.images[state.index];
+  const url = historyImageUrl(image);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setObjectUrl(null);
+    cachedObjectUrl(url)
+      .then((cached) => {
+        if (alive) setObjectUrl(cached);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+
+  return (
+    <div
+      className="lightbox-overlay"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <button className="lightbox-close" onClick={onClose} aria-label="关闭大图">
+        ×
+      </button>
+      {state.images.length > 1 && (
+        <button
+          className="lightbox-nav lightbox-prev"
+          onClick={() => onStep(-1)}
+          aria-label="上一张"
+        >
+          ‹
+        </button>
+      )}
+      <figure className="lightbox-figure">
+        <img src={objectUrl ?? url} alt={image.filename} />
+        <figcaption>
+          {state.index + 1} / {state.images.length} · {image.filename}
+        </figcaption>
+      </figure>
+      {state.images.length > 1 && (
+        <button
+          className="lightbox-nav lightbox-next"
+          onClick={() => onStep(1)}
+          aria-label="下一张"
+        >
+          ›
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function HistoryPanel() {
   const [items, setItems] = useState<HistoryRecord[] | null>(null);
   const [error, setError] = useState("");
@@ -185,6 +303,34 @@ export default function HistoryPanel() {
     kind: "ok" | "err";
     text: string;
   } | null>(null);
+  const [lightbox, setLightbox] = useState<LightboxState | null>(null);
+
+  function openLightbox(images: HistoryImage[], index: number) {
+    setLightbox({ images, index });
+  }
+
+  function closeLightbox() {
+    setLightbox(null);
+  }
+
+  function stepLightbox(delta: number) {
+    setLightbox((prev) => {
+      if (!prev || prev.images.length === 0) return prev;
+      const next = (prev.index + delta + prev.images.length) % prev.images.length;
+      return { ...prev, index: next };
+    });
+  }
+
+  useEffect(() => {
+    if (!lightbox) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeLightbox();
+      else if (event.key === "ArrowLeft") stepLightbox(-1);
+      else if (event.key === "ArrowRight") stepLightbox(1);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lightbox]);
 
   function switchView(next: HistoryView) {
     setView(next);
@@ -425,22 +571,22 @@ export default function HistoryPanel() {
                 <div className="rule-row-main">
                   <strong>输出图片</strong>
                   <div className="history-images">
-                    {images.map((image) => (
-                      <figure key={`${image.subfolder}/${image.filename}`}>
-                        {image.exists === true ? (
-                          <img
-                            src={historyImageUrl(image)}
-                            alt={image.filename}
-                            loading="lazy"
-                          />
-                        ) : (
+                    {images.map((image, index) =>
+                      image.exists === true ? (
+                        <HistoryThumb
+                          key={`${image.subfolder}/${image.filename}`}
+                          image={image}
+                          onOpen={() => openLightbox(images, index)}
+                        />
+                      ) : (
+                        <figure key={`${image.subfolder}/${image.filename}`}>
                           <small className="muted">
                             {image.filename}（{existenceLabel(image)}）
                           </small>
-                        )}
-                        <figcaption>{image.filename}</figcaption>
-                      </figure>
-                    ))}
+                          <figcaption>{image.filename}</figcaption>
+                        </figure>
+                      ),
+                    )}
                   </div>
                 </div>
               </div>
@@ -613,6 +759,14 @@ export default function HistoryPanel() {
         <div className={view === "grid" ? "history-grid" : "rule-list"}>
           {filtered.map(renderRecord)}
         </div>
+      )}
+
+      {lightbox && (
+        <LightboxViewer
+          state={lightbox}
+          onClose={closeLightbox}
+          onStep={stepLightbox}
+        />
       )}
     </section>
   );

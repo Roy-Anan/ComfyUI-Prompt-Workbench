@@ -940,6 +940,83 @@ button.secondary {
   overflow-wrap: anywhere;
 }
 
+.history-images img {
+  cursor: zoom-in;
+}
+
+/* R117: history output image lightbox */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px;
+  background: rgba(8, 12, 18, 0.86);
+}
+
+.lightbox-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 1400px);
+  max-height: 100%;
+}
+
+.lightbox-figure img {
+  max-width: 100%;
+  max-height: 82vh;
+  object-fit: contain;
+  border-radius: 10px;
+  background: var(--inset);
+}
+
+.lightbox-figure figcaption {
+  color: #e6ecf3;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.lightbox-close,
+.lightbox-nav {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(20, 28, 38, 0.8);
+  color: #e6ecf3;
+  border-radius: 9px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.lightbox-close {
+  top: 18px;
+  right: 18px;
+  width: 38px;
+  height: 38px;
+  font-size: 1.3rem;
+}
+
+.lightbox-nav {
+  top: 50%;
+  transform: translateY(-50%);
+  width: 42px;
+  height: 42px;
+  font-size: 1.5rem;
+}
+
+.lightbox-prev {
+  left: 18px;
+}
+
+.lightbox-next {
+  right: 18px;
+}
+
 /* R96: draft list section headers */
 .draft-group-head {
   margin: 14px 0 6px;
