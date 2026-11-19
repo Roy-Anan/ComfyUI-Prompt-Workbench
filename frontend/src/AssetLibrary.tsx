@@ -301,6 +301,16 @@ export default function AssetLibrary() {
     }
   }
 
+  async function openAssetsDir() {
+    setMessage(null);
+    try {
+      await apiPost("/api/assets/open-dir", {});
+      setMessage({ kind: "ok", text: "已在系统文件夹中打开素材目录" });
+    } catch (err) {
+      setMessage({ kind: "err", text: String(err) });
+    }
+  }
+
   async function createGroup(name: string) {
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -419,6 +429,9 @@ export default function AssetLibrary() {
           </button>
           <button type="button" className="secondary" onClick={() => openImport("reference")}>
             粘贴路径引用
+          </button>
+          <button type="button" className="secondary" onClick={() => void openAssetsDir()}>
+            打开素材文件夹
           </button>
         </div>
       </div>
@@ -539,11 +552,11 @@ export default function AssetLibrary() {
 
             {importMode === "copy" ? (
               <p className="catalog-offline">
-                选择本机图片，字节会复制保存到工作台数据目录；之后原文件移动或删除不影响副本。
+                可一次勾选多张图片批量导入；字节会复制保存到工作台数据目录，之后原文件移动或删除不影响副本。
               </p>
             ) : (
               <p className="catalog-offline">
-                每行粘贴一个本机图片绝对路径（PNG/JPG/JPEG/WebP）。仅记录路径，不复制原图。
+                每行粘贴一个本机图片绝对路径（PNG/JPG/JPEG/WebP），可批量粘贴多行；仅记录路径，不复制原图。
               </p>
             )}
 

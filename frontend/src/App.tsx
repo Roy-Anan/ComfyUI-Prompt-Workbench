@@ -527,6 +527,19 @@ export default function App() {
     }
   }
 
+  function goToStep(step: string) {
+    if (step === "09") {
+      switchPage("history");
+      return;
+    }
+    if (step === "07") {
+      window.dispatchEvent(new Event("workbench:open-drafts"));
+      return;
+    }
+    const el = document.getElementById(`step-${step}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   useEffect(() => {
     function onNavigate(event: Event) {
       const detail = (
@@ -1349,15 +1362,15 @@ export default function App() {
           </div>
           {activePage === "workflows" && (
             <div className="w-steps">
-              <div className="w-step done"><span className="num">01</span>选择工作流</div>
-              <div className="w-step done"><span className="num">02</span>识别结果</div>
-              <div className="w-step done"><span className="num">03</span>规则比对</div>
-              <div className="w-step done"><span className="num">04</span>Prompt 确认</div>
-              <div className="w-step active"><span className="num">05</span>提示词候选</div>
-              <div className="w-step"><span className="num">06</span>编辑工作副本</div>
-              <div className="w-step"><span className="num">07</span>草稿与版本</div>
-              <div className="w-step"><span className="num">08</span>显存检查与提交</div>
-              <div className="w-step"><span className="num">09</span>生成历史</div>
+              <div className="w-step done" onClick={() => goToStep("01")}><span className="num">01</span>选择工作流</div>
+              <div className="w-step done" onClick={() => goToStep("02")}><span className="num">02</span>识别结果</div>
+              <div className="w-step done" onClick={() => goToStep("03")}><span className="num">03</span>规则比对</div>
+              <div className="w-step done" onClick={() => goToStep("04")}><span className="num">04</span>Prompt 确认</div>
+              <div className="w-step active" onClick={() => goToStep("05")}><span className="num">05</span>提示词候选</div>
+              <div className="w-step" onClick={() => goToStep("06")}><span className="num">06</span>编辑工作副本</div>
+              <div className="w-step" onClick={() => goToStep("07")}><span className="num">07</span>草稿与版本</div>
+              <div className="w-step" onClick={() => goToStep("08")}><span className="num">08</span>显存检查与提交</div>
+              <div className="w-step" onClick={() => goToStep("09")}><span className="num">09</span>生成历史</div>
             </div>
           )}
           <div

@@ -1,6 +1,7 @@
 import base64
 from pathlib import Path
 
+import asset_api
 import pytest
 
 
@@ -152,3 +153,28 @@ def test_missing_image_proxy_404(client):
     headers = _auth()
     response = test_client.get("/api/assets/image?asset_id=999999", headers=headers)
     assert response.status_code == 404
+
+
+def test_open_assets_dir_calls_fixed_opener(client, monkeypatch):
+    test_client, _ = client
+    captured: dict[str, str] = {}
+
+    def fake_open(directory):
+        captured["dir"] = str(directory)
+        return {"path": str(directory)}
+
+    monkeypatch.setattr(asset_api, "_open_fixed_dir", fake_open)
+    response = test_client.post("/api/assets/open-dir", headers=_auth())
+    assert response.status_code == 200
+    assert response.json()["path"] == captured["dir"]
+
+
+def test_open_assets_dir_os_error_returns_500(client, monkeypatch):
+    test_client, _ = client
+
+    def fake_open(directory):
+        raise OSError("boom")
+
+    monkeypatch.setattr(asset_api, "_open_fixed_dir", fake_open)
+    response = test_client.post("/api/assets/open-dir", headers=_auth())
+    assert response.status_code == 500

@@ -59,15 +59,16 @@ def _submit_one(test_client, monkeypatch, prompt_id="prompt-1"):
     monkeypatch.setattr(
         workflow_api.comfy_client,
         "loaded_ollama_models",
-        lambda url: {"online": True, "models": [], "error": None},
+        lambda url: {"online": True, "reachable": True, "models": [], "error": None},
     )
     monkeypatch.setattr(
         workflow_api.comfy_client,
         "release_resources",
         lambda ollama_url, comfyui_url, timeout=5.0: {
-            "ollama_online": True,
+            "ollama_reachable": True,
             "ollama_stopped": [],
             "ollama_errors": [],
+            "ollama_still_resident": [],
             "comfyui_freed": True,
             "comfyui_error": None,
         },

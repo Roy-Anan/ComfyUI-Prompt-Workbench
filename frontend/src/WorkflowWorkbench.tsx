@@ -209,9 +209,10 @@ type EnvSnapshot = {
 };
 
 type ReleaseVramResult = {
-  ollama_online: boolean;
+  ollama_reachable: boolean;
   ollama_stopped: string[];
   ollama_errors: string[];
+  ollama_still_resident: string[];
   comfyui_freed: boolean;
   comfyui_error: string | null;
 };
@@ -707,6 +708,7 @@ export default function WorkflowWorkbench({
   const [renameOld, setRenameOld] = useState("");
   const [renameNew, setRenameNew] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
+  const [draftPanelOpen, setDraftPanelOpen] = useState(false);
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -721,6 +723,11 @@ export default function WorkflowWorkbench({
   useEffect(() => {
     void loadModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const openDrafts = () => setDraftPanelOpen(true);
+    window.addEventListener("workbench:open-drafts", openDrafts);
+    return () => window.removeEventListener("workbench:open-drafts", openDrafts);
   }, []);
   function initialRoles(report: Analysis) {
     const next: Record<string, RoleChoice> = {};
@@ -1185,11 +1192,16 @@ export default function WorkflowWorkbench({
     try {
       const result = await apiPost<ReleaseVramResult>("/api/system/release-vram", {});
       const parts: string[] = [];
-      parts.push(
-        result.ollama_stopped.length
-          ? `已卸载 LLM：${result.ollama_stopped.join("、")}`
-          : "无驻留 LLM",
-      );
+      if (!result.ollama_reachable) {
+        parts.push("本地 LLM 未运行");
+      } else if (result.ollama_stopped.length) {
+        parts.push(`已卸载 LLM：${result.ollama_stopped.join("、")}`);
+      } else {
+        parts.push("无驻留 LLM");
+      }
+      if (result.ollama_still_resident.length) {
+        parts.push(`仍驻留：${result.ollama_still_resident.join("、")}`);
+      }
       parts.push(
         result.comfyui_freed ? "已释放 ComfyUI 模型显存" : "ComfyUI 模型释放未成功",
       );
@@ -1824,7 +1836,7 @@ export default function WorkflowWorkbench({
           </div>
         </div>
       )}
-      <div className="panel">
+      <div className="panel" id="step-01">
         <div className="section-heading">
           <div>
             <p>
@@ -1872,7 +1884,7 @@ export default function WorkflowWorkbench({
             )}
           </div>
           <div>
-            <h3>当前工作流识别结果</h3>
+            <h3 id="step-02">当前工作流识别结果</h3>
             {!detail ? (
               <p className="muted">导入或从左侧选择一个工作流。</p>
             ) : (
@@ -2009,7 +2021,7 @@ export default function WorkflowWorkbench({
         <>
           {compare && (
             <div className="panel">
-              <h3>规则与参数比对（只读）</h3>
+              <h3 id="step-03">规则与参数比对（只读）</h3>
               <div className="compare-meta">
                 <span>
                   状态：{compare.status === "registered" ? "已登记" : "未登记"}
@@ -2188,7 +2200,7 @@ export default function WorkflowWorkbench({
             </div>
           )}
           <div className="panel">
-            <h3>Prompt 节点确认</h3>
+            <h3 id="step-04">Prompt 节点确认</h3>
             {detail.report.prompt_nodes.length === 0 ? (
               <p className="muted">
                 没有识别到常见文本编码节点。请确认导入的工作流类型和节点结构。
@@ -2251,7 +2263,7 @@ export default function WorkflowWorkbench({
           </div>
           {detail && (
             <div className="panel">
-              <h3>提示词候选</h3>
+              <h3 id="step-05">提示词候选</h3>
               {!modelsOnline ? (
                 <p className="muted">本地 Ollama 不可用，无法生成候选。</p>
               ) : ollamaModels.length === 0 ? (
@@ -2420,7 +2432,7 @@ export default function WorkflowWorkbench({
           )}
           {canWrite && (
             <div className="panel">
-              <h3>编辑工作副本 Prompt</h3>
+              <h3 id="step-06">编辑工作副本 Prompt</h3>
               <div className="prompt-pair">
               {detail.manifest.whitelist.some(
                 (item) => item.role === "positive",
@@ -2566,12 +2578,42 @@ export default function WorkflowWorkbench({
             </div>
           )}
           {canWrite && (
-            <div className="panel">
-              <h3>草稿箱</h3>
-              <p className="muted">
-                手动保存的 Prompt 组合；保存与更新都不写入工作副本，载入编辑框后仍需确认写入。
-                载入后可在上方名称 / 备注框修改，更新时用当前编辑框内容与名称备注一并覆盖该草稿。
-              </p>
+            <div className="panel" id="step-07">
+              <div className="section-heading">
+                <div>
+                  <h3>草稿箱</h3>
+                  <p className="muted">
+                    手动保存的 Prompt 组合；保存与更新都不写入工作副本，载入编辑框后仍需确认写入。
+                  </p>
+                </div>
+                <button onClick={() => setDraftPanelOpen(true)}>
+                  打开草稿箱{drafts.length > 0 ? `（${drafts.length}）` : ""}
+                </button>
+              </div>
+            </div>
+          )}
+          {canWrite && draftPanelOpen && (
+            <div
+              className="lightbox-overlay"
+              onClick={() => !draftBusy && setDraftPanelOpen(false)}
+            >
+              <div
+                className="asset-detail"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="asset-dialog-head">
+                  <h3>草稿箱{drafts.length > 0 ? `（${drafts.length}）` : ""}</h3>
+                  <button
+                    type="button"
+                    className="lightbox-close"
+                    onClick={() => setDraftPanelOpen(false)}
+                    aria-label="关闭"
+                  >×</button>
+                </div>
+                <p className="muted">
+                  手动保存的 Prompt 组合；保存与更新都不写入工作副本，载入编辑框后仍需确认写入。
+                  载入后可在上方名称 / 备注框修改，更新时用当前编辑框内容与名称备注一并覆盖该草稿。
+                </p>
               <div className="actions">
                 <input
                   type="text"
@@ -2947,11 +2989,12 @@ export default function WorkflowWorkbench({
                   })}
                 </div>
               )}
+              </div>
             </div>
           )}
           {detail && (
             <div className="panel">
-              <h3>ComfyUI 任务</h3>
+              <h3 id="step-08">ComfyUI 任务</h3>
               {detail.manifest.format !== "api" ? (
                 <p className="muted">
                   UI 格式工作流不能直接提交，请先在 ComfyUI 中导出 API 格式。

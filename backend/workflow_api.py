@@ -656,9 +656,12 @@ def _submit_guarded(
 
     The submission fails closed: ComfyUI must be reachable, the workflow must
     already be in API format, the Prompt-node whitelist must be confirmed, and
-    the local LLM must be confirmed unloaded (or unreachable means unknown, so
-    it is rejected too). UI-format workflows cannot be converted here and are
-    rejected. A failed submit records no local task; retries are manual.
+    the local LLM must be confirmed unloaded. If the Ollama process is not
+    running (connection refused), no local LLM can be resident, so it is
+    treated as clear; only a reachable-but-malformed service or a model still
+    listed in `/api/ps` fails closed. UI-format workflows cannot be converted
+    here and are rejected. A failed submit records no local task; retries are
+    manual.
     """
     try:
         workflow = store().get_workflow(workflow_id)
@@ -710,12 +713,17 @@ def _submit_guarded(
         )
 
     loaded = comfy_client.loaded_ollama_models(ollama_url)
-    if not loaded["online"]:
+    if not loaded["reachable"]:
+        # Connection refused: the local Ollama process is not running, so no
+        # local LLM can be resident in VRAM. Treat this as "no resident LLM"
+        # rather than failing closed on an unknown.
+        pass
+    elif not loaded["online"]:
         raise HTTPException(
             status_code=502,
-            detail={"online": False, "error": "无法确认本地 LLM 已卸载，未提交任务。"},
+            detail={"online": False, "error": "无法确认本地 LLM 已卸载（Ollama 响应异常），未提交任务。"},
         )
-    if loaded["models"]:
+    elif loaded["models"]:
         raise HTTPException(
             status_code=409,
             detail={

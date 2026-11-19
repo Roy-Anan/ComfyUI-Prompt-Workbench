@@ -239,7 +239,7 @@
 .w-nav-item.active { background: var(--w-bg-blue); color: var(--w-brand); font-weight: 600; }
 
 .w-steps { margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--w-border); display: flex; flex-direction: column; gap: 2px; }
-.w-step { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--r-ctl); font-size: var(--fs-secondary); color: var(--w-text-2); }
+.w-step { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--r-ctl); font-size: var(--fs-secondary); color: var(--w-text-2); cursor: pointer; user-select: none; }
 .w-step .num { font-size: var(--fs-micro); color: var(--w-text-3); width: 20px; }
 .w-step.done .num { color: var(--w-success); }
 .w-step.active { background: var(--w-bg-blue); color: var(--w-brand); font-weight: 600; }

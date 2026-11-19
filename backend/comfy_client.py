@@ -43,24 +43,39 @@ def _post_json(
         return 0, None, str(exc)
 
 
+def _connection_refused(exc: Exception) -> bool:
+    """True when the local service process is not listening (connection refused).
+
+    urllib wraps a Windows ``WinError 10061`` / Linux ``ECONNREFUSED`` inside a
+    ``URLError`` whose ``reason`` is a ``ConnectionRefusedError``; other OSErrors
+    and timeouts are treated as a reachable-but-ambiguous state so the caller
+    still fails closed instead of assuming no model is resident.
+    """
+    reason = getattr(exc, "reason", exc)
+    return isinstance(reason, ConnectionRefusedError) or isinstance(
+        exc, ConnectionRefusedError
+    )
+
+
 def _get_json(
     url: str,
     timeout: float,
-) -> tuple[dict[str, Any] | None, str | None]:
+) -> tuple[dict[str, Any] | None, str | None, bool]:
     request = urllib.request.Request(url)
     request.add_header("User-Agent", APP_MARKER)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8", errors="replace")
         data = json.loads(raw)
-        return (data if isinstance(data, dict) else None), None
+        return (data if isinstance(data, dict) else None), None, True
     except (
         urllib.error.URLError,
         TimeoutError,
         OSError,
         json.JSONDecodeError,
     ) as exc:
-        return None, str(exc)
+        reachable = not _connection_refused(exc)
+        return None, str(exc), reachable
 
 
 def _queue_ids(items: Any) -> list[str]:
@@ -83,10 +98,10 @@ def fetch_task_states(
     submitted, cancelled, or reordered. A missing queue response fails closed
     with ``online=False`` and empty projections.
     """
-    queue_data, queue_error = _get_json(
+    queue_data, queue_error, _queue_reachable = _get_json(
         comfyui_url.rstrip("/") + "/queue", timeout
     )
-    history_data, history_error = _get_json(
+    history_data, history_error, _history_reachable = _get_json(
         comfyui_url.rstrip("/") + "/history", timeout
     )
 
@@ -147,7 +162,7 @@ def queue_has_active_task(
 
 def comfyui_online(comfyui_url: str, timeout: float = 2.5) -> bool:
     """True only if /system_stats answers with a JSON body."""
-    data, _ = _get_json(comfyui_url.rstrip("/") + "/system_stats", timeout)
+    data, _, _ = _get_json(comfyui_url.rstrip("/") + "/system_stats", timeout)
     return data is not None
 
 
@@ -162,7 +177,9 @@ def probe_vram_free(
     fails closed instead of guessing. With multiple devices the conservative
     minimum free figure is reported.
     """
-    data, error = _get_json(comfyui_url.rstrip("/") + "/system_stats", timeout)
+    data, error, _reachable = _get_json(
+        comfyui_url.rstrip("/") + "/system_stats", timeout
+    )
     if data is None:
         return {"online": False, "vram_free": None, "error": error}
     devices = data.get("devices")
@@ -187,28 +204,46 @@ def loaded_ollama_models(
     ollama_url: str,
     timeout: float = 2.5,
 ) -> dict[str, Any]:
-    """Read-only list of models currently loaded in Ollama (``/api/ps``)."""
-    data, error = _get_json(ollama_url.rstrip("/") + "/api/ps", timeout)
+    """Read-only list of models currently loaded in Ollama (``/api/ps``).
+
+    ``reachable`` reports whether the HTTP service answered at the connection
+    layer. A refused connection means the Ollama process is not running, so no
+    local LLM can be resident; an online-but-malformed response stays
+    ``reachable=True`` so the caller can still fail closed on ambiguity.
+    """
+    data, error, reachable = _get_json(
+        ollama_url.rstrip("/") + "/api/ps", timeout
+    )
     if data is None:
-        return {"online": False, "models": [], "error": error}
+        return {
+            "online": False,
+            "reachable": reachable,
+            "models": [],
+            "error": error,
+        }
     entries = data.get("models")
     names: list[str] = []
     if isinstance(entries, list):
         for item in entries:
             if isinstance(item, dict) and isinstance(item.get("name"), str):
                 names.append(item["name"])
-    return {"online": True, "models": names, "error": None}
+    return {"online": True, "reachable": True, "models": names, "error": None}
 
 
-def stop_ollama_model(
+def unload_ollama_model(
     ollama_url: str,
     model: str,
     timeout: float = 5.0,
 ) -> dict[str, Any]:
-    """Unload one resident Ollama model via ``/api/stop``."""
+    """Unload one resident Ollama model.
+
+    Ollama has no dedicated stop HTTP route: the supported way to release a
+    model from memory is a ``/api/generate`` round with an empty prompt and
+    ``keep_alive: 0`` (unload immediately after the request).
+    """
     _status, _data, error = _post_json(
-        ollama_url.rstrip("/") + "/api/stop",
-        {"model": model},
+        ollama_url.rstrip("/") + "/api/generate",
+        {"model": model, "prompt": "", "keep_alive": 0, "stream": False},
         timeout,
     )
     return {"ok": error is None, "model": model, "error": error}
@@ -240,24 +275,32 @@ def release_resources(
 
     Never raises: per-target failures are collected and returned so the
     caller can fall back to the existing fail-closed VRAM / LLM-resident
-    gates instead of failing the whole release on one target.
+    gates instead of failing the whole release on one target. After issuing
+    the unload calls the resident list is re-probed so models that still
+    show up are reported as ``still_resident`` rather than assumed freed.
     """
     loaded = loaded_ollama_models(ollama_url, timeout)
     ollama_stopped: list[str] = []
     ollama_errors: list[str] = []
-    if loaded["online"]:
+    if loaded["reachable"]:
         for name in loaded["models"]:
-            result = stop_ollama_model(ollama_url, name, timeout)
+            result = unload_ollama_model(ollama_url, name, timeout)
             if result["ok"]:
                 ollama_stopped.append(name)
             else:
                 ollama_errors.append(f"{name}: {result['error']}")
 
+        after = loaded_ollama_models(ollama_url, timeout)
+        still_resident = [name for name in after["models"]]
+    else:
+        still_resident = []
+
     comfy = free_comfyui_models(comfyui_url, timeout)
     return {
-        "ollama_online": loaded["online"],
+        "ollama_reachable": loaded["reachable"],
         "ollama_stopped": ollama_stopped,
         "ollama_errors": ollama_errors,
+        "ollama_still_resident": still_resident,
         "comfyui_freed": comfy["ok"],
         "comfyui_error": comfy["error"],
     }

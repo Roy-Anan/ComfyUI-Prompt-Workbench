@@ -39,6 +39,9 @@ def chat(
         "model": model,
         "messages": messages,
         "stream": False,
+        # Release the model from VRAM as soon as this round finishes instead
+        # of leaving it resident for the server default keep-alive window.
+        "keep_alive": 0,
     }
     if options:
         payload["options"] = options

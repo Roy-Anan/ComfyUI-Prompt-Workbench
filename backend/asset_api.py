@@ -7,6 +7,9 @@ there is no open local-file reader.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -232,3 +235,31 @@ def asset_image(asset_id: int = Query(...)):
     if path is None:
         raise HTTPException(status_code=404, detail="图片不存在或已失效")
     return FileResponse(path)
+
+
+def _open_fixed_dir(directory: Path) -> dict[str, Any]:
+    """Open the fixed asset directory in the host file manager.
+
+    Only this fixed directory is ever opened; no caller-supplied path is
+    accepted. The directory is created if absent so a fresh library can still
+    be browsed.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        os.startfile(str(directory))  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.run(["open", str(directory)], check=True)
+    else:
+        subprocess.run(["xdg-open", str(directory)], check=True)
+    return {"path": str(directory)}
+
+
+@router.post("/open-dir")
+def open_assets_dir():
+    """Open the local asset storage folder in the system file manager."""
+    try:
+        return _open_fixed_dir(_assets_dir())
+    except FileNotFoundError as exc:
+        raise HTTPException(404, f"素材目录不存在: {exc}") from None
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(500, f"无法打开素材目录: {exc}") from exc

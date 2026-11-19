@@ -56,7 +56,7 @@ def _patch_gates(monkeypatch, online=True, loaded=None, submit=None, vram=None):
         workflow_api.comfy_client, "probe_vram_free", lambda url, timeout=2.5: vram
     )
     if loaded is None:
-        loaded = {"online": True, "models": [], "error": None}
+        loaded = {"online": True, "reachable": True, "models": [], "error": None}
     monkeypatch.setattr(
         workflow_api.comfy_client, "loaded_ollama_models", lambda url: loaded
     )
@@ -64,9 +64,10 @@ def _patch_gates(monkeypatch, online=True, loaded=None, submit=None, vram=None):
         workflow_api.comfy_client,
         "release_resources",
         lambda ollama_url, comfyui_url, timeout=5.0: {
-            "ollama_online": True,
+            "ollama_reachable": True,
             "ollama_stopped": [],
             "ollama_errors": [],
+            "ollama_still_resident": [],
             "comfyui_freed": True,
             "comfyui_error": None,
         },
@@ -152,11 +153,43 @@ def test_submit_rejects_when_comfyui_offline(client, monkeypatch):
     assert response.json()["detail"]["online"] is False
 
 
-def test_submit_rejects_when_ollama_offline(client, monkeypatch):
+def test_submit_allows_when_ollama_process_not_running(client, monkeypatch):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())
     _confirm(test_client, workflow_id)
-    loaded = {"online": False, "models": [], "error": "connection refused"}
+    loaded = {
+        "online": False,
+        "reachable": False,
+        "models": [],
+        "error": "connection refused",
+    }
+
+    def fake_submit(url, prompt_api, client_id, timeout=10.0):
+        return {
+            "ok": True,
+            "prompt_id": "prompt-1",
+            "node_errors": {},
+            "error": None,
+        }
+
+    _patch_gates(monkeypatch, loaded=loaded, submit=fake_submit)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks", headers=AUTH
+    )
+    assert response.status_code == 200
+
+
+def test_submit_rejects_when_ollama_response_malformed(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    _confirm(test_client, workflow_id)
+    loaded = {
+        "online": False,
+        "reachable": True,
+        "models": [],
+        "error": "malformed response",
+    }
     _patch_gates(monkeypatch, loaded=loaded)
 
     response = test_client.post(
@@ -170,7 +203,12 @@ def test_submit_rejects_when_llm_still_loaded(client, monkeypatch):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())
     _confirm(test_client, workflow_id)
-    loaded = {"online": True, "models": ["qwen3:latest"], "error": None}
+    loaded = {
+        "online": True,
+        "reachable": True,
+        "models": ["qwen3:latest"],
+        "error": None,
+    }
     _patch_gates(monkeypatch, loaded=loaded)
 
     response = test_client.post(
@@ -1166,9 +1204,10 @@ def test_draft_favorite_toggle_roundtrip(client):
 def test_release_vram_endpoint(client, monkeypatch):
     test_client, _ = client
     payload = {
-        "ollama_online": True,
+        "ollama_reachable": True,
         "ollama_stopped": ["m:v1"],
         "ollama_errors": [],
+        "ollama_still_resident": [],
         "comfyui_freed": True,
         "comfyui_error": None,
     }
