@@ -22,12 +22,23 @@ async function bootstrap(): Promise<void> {
   });
 
   if (!response.ok) {
-    const detail = await response.text();
+    const detail = await describeError(response);
     throw new Error(`bootstrap ${response.status}: ${detail}`);
   }
 
   const body = (await response.json()) as BootstrapResponse;
   csrfToken = body.csrf;
+}
+
+async function describeError(response: Response): Promise<string> {
+  const text = await response.text();
+  try {
+    const parsed = JSON.parse(text) as { detail?: unknown };
+    if (typeof parsed?.detail === "string") return parsed.detail;
+  } catch {
+    // Non-JSON body: fall back to the raw response text.
+  }
+  return text;
 }
 
 async function ensureSession(): Promise<void> {
@@ -61,7 +72,7 @@ async function request<T>(
   const response = await fetch(path, { ...init, method, headers });
 
   if (!response.ok) {
-    const detail = await response.text();
+    const detail = await describeError(response);
     throw new Error(`${response.status}: ${detail}`);
   }
 
@@ -98,7 +109,7 @@ export async function apiGetBlob(path: string): Promise<Blob> {
   await ensureSession();
   const response = await fetch(path, { method: "GET" });
   if (!response.ok) {
-    const detail = await response.text();
+    const detail = await describeError(response);
     throw new Error(`${response.status}: ${detail}`);
   }
   return response.blob();
