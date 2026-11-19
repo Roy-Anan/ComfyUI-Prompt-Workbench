@@ -164,6 +164,7 @@ type QueueItem = {
   status: string;
   prompt_id: string | null;
   last_error: string | null;
+  has_snapshot: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -224,6 +225,14 @@ const DRAFT_GROUP_LABEL: Record<"pinned" | "favored" | "plain", string> = {
 function draftTagKeys(draft: DraftEntry): string[] {
   const tags = draft.tags || [];
   return tags.length > 0 ? tags : ["未标签"];
+}
+
+function draftGroupRank(draft: DraftEntry): [number, number] {
+  return [draft.pinned ? 0 : 1, draft.favored ? 0 : 1];
+}
+
+function draftRecency(draft: DraftEntry): string {
+  return draft.updated_at ?? draft.created_at ?? "";
 }
 
 type ExpandedDraft = { draft: DraftEntry; groupKey: string };
@@ -1525,7 +1534,15 @@ export default function WorkflowWorkbench({
           .flatMap((draft) =>
             draftTagKeys(draft).map((groupKey) => ({ draft, groupKey })),
           )
-          .sort((a, b) => a.groupKey.localeCompare(b.groupKey, "zh-Hans-CN"))
+          .sort((a, b) => {
+            const keyCmp = a.groupKey.localeCompare(b.groupKey, "zh-Hans-CN");
+            if (keyCmp !== 0) return keyCmp;
+            const ra = draftGroupRank(a.draft);
+            const rb = draftGroupRank(b.draft);
+            if (ra[0] !== rb[0]) return ra[0] - rb[0];
+            if (ra[1] !== rb[1]) return ra[1] - rb[1];
+            return draftRecency(b.draft).localeCompare(draftRecency(a.draft));
+          })
       : filteredDrafts.map((draft) => ({ draft, groupKey: draftGroup(draft) }));
   const [restoringStamp, setRestoringStamp] = useState<string | null>(null);
   const [confirmStamp, setConfirmStamp] = useState<string | null>(null);
@@ -2760,6 +2777,11 @@ export default function WorkflowWorkbench({
                                 <strong>
                                   #{index + 1} {item.workflow_name}
                                 </strong>
+                                <small className="workflow-meta">
+                                  {item.has_snapshot
+                                    ? "已冻结快照"
+                                    : "未冻结（提交时用当前副本）"}
+                                </small>
                                 {item.note && <small>备注：{item.note}</small>}
                                 {item.last_error && (
                                   <small className="workflow-warning">

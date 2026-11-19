@@ -174,6 +174,7 @@ type CatalogEntry = {
   identity?: IdentitySummary;
   meta?: LoraMeta | null;
   related?: string[];
+  related_triggers?: string[];
 };
 
 const LORA_META_LABEL: Record<LoraMetaStatus, string> = {
@@ -953,12 +954,29 @@ export default function App() {
           }
         }
 
+        // Protected terms: whitelist a string array, strip/dedupe/limit the
+        // same way the backend does; anything else is ignored conservatively.
+        const incomingPrompt =
+          (parsed.prompt as Record<string, unknown>) ?? {};
+        const incomingTerms = incomingPrompt.protected_terms;
+        let nextTerms: string[] = settings.prompt?.protected_terms ?? [];
+        if (Array.isArray(incomingTerms)) {
+          const normalized = incomingTerms
+            .filter((term): term is string => typeof term === "string")
+            .map((term) => term.trim())
+            .filter(Boolean)
+            .map((term) => term.slice(0, 60));
+          nextTerms = Array.from(new Set(normalized)).slice(0, 50);
+          applied += 1;
+        }
+
         // Managed storage paths and root are rebuilt against the current data
         // root; values from the imported file are not trusted for those keys.
         setSettings({
           ...settings,
           storage: nextStorage,
           connections: nextConnections,
+          prompt: { protected_terms: nextTerms },
         });
         setMessage(
           applied > 0
@@ -1320,6 +1338,11 @@ export default function App() {
                         {(entry.related ?? []).length > 0 && (
                           <small className="lora-related">
                             疑似同一身份：{(entry.related ?? []).join("、")}
+                          </small>
+                        )}
+                        {(entry.related_triggers ?? []).length > 0 && (
+                          <small className="lora-related">
+                            共享触发词：{(entry.related_triggers ?? []).join("、")}
                           </small>
                         )}
                         {editingLora === entry.name ? (

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -211,6 +212,22 @@ def _protected_terms() -> list[str]:
                     if isinstance(term, str) and term.strip()
                 ]
     return []
+
+
+_FENCE_RE = re.compile(r"^\s*```[^\n`]*\n?(.*?)\n?```\s*$", re.DOTALL)
+
+
+def _clean_candidate_content(content: str) -> str:
+    """Conservatively strip an outer markdown code fence from a candidate.
+
+    Only the outermost fence wrapping the whole reply is removed; inner lines,
+    labels and wording are left untouched. Nothing is rewritten or invented.
+    """
+    text = content.strip()
+    match = _FENCE_RE.match(text)
+    if match:
+        text = match.group(1).strip()
+    return text
 
 
 def _unregistered_context() -> dict[str, Any]:
@@ -566,10 +583,17 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
             detail={"online": False, "error": result["error"]},
         )
 
+    cleaned = _clean_candidate_content(result["content"])
+    if not cleaned:
+        raise HTTPException(
+            status_code=502,
+            detail={"online": True, "error": "模型返回内容为空，未生成候选。"},
+        )
+
     return {
         "model": result["model"],
         "mode": payload.mode,
-        "candidates": [result["content"]],
+        "candidates": [cleaned],
         "rule_status": rule_payload["status"],
         "conflicts": rule_payload["conflicts"],
         "unknown": rule_payload["unknown"],

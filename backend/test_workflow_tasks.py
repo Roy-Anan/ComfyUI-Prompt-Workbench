@@ -754,6 +754,56 @@ def test_candidate_rejects_unknown_mode(client, monkeypatch):
     assert response.status_code == 422
 
 
+def test_candidate_strips_outer_fence(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": True, "active": False, "error": None},
+    )
+
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
+        return {
+            "ok": True,
+            "content": "```prompt\n1girl, smile\n```",
+            "model": model,
+            "error": None,
+        }
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={"model": "qwen3:latest"},
+    )
+    assert response.status_code == 200
+    assert response.json()["candidates"] == ["1girl, smile"]
+
+
+def test_candidate_rejects_empty_cleaned(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": True, "active": False, "error": None},
+    )
+
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
+        return {"ok": True, "content": "```\n```", "model": model, "error": None}
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={"model": "qwen3:latest"},
+    )
+    assert response.status_code == 502
+
+
 def test_draft_create_read_update_delete_roundtrip(client):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())

@@ -1135,16 +1135,19 @@ def models_catalog():
     # R127: read-only identity grouping. Two LoRAs are flagged related when
     # they share a file stem (case-insensitive) or at least one trigger word.
     # This is a hint for manual review, not an automatic merge.
-    related = _group_related_loras(catalog.get("loras", []), lora_meta)
+    related, related_triggers = _group_related_loras(
+        catalog.get("loras", []), lora_meta
+    )
     for entry in catalog.get("loras", []):
         entry["related"] = related.get(entry["name"], [])
+        entry["related_triggers"] = related_triggers.get(entry["name"], [])
 
     return catalog
 
 
 def _group_related_loras(
     loras: list[dict[str, Any]], meta: dict[str, dict[str, Any]]
-) -> dict[str, list[str]]:
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     by_stem: dict[str, list[str]] = {}
     by_trigger: dict[str, list[str]] = {}
     names = [entry["name"] for entry in loras if isinstance(entry.get("name"), str)]
@@ -1164,7 +1167,25 @@ def _group_related_loras(
         if len(group) > 1:
             for name in group:
                 related[name].update(other for other in group if other != name)
-    return {name: sorted(values) for name, values in related.items()}
+
+    trigger_map: dict[str, set[str]] = {}
+    for name in names:
+        record = meta.get(name) or {}
+        trigger_map[name] = {
+            word.strip().lower()
+            for word in record.get("trigger_words", [])
+            if isinstance(word, str) and word.strip()
+        }
+
+    related_triggers: dict[str, set[str]] = {name: set() for name in names}
+    for name, others in related.items():
+        for other in others:
+            related_triggers[name].update(trigger_map[name] & trigger_map[other])
+
+    return (
+        {name: sorted(values) for name, values in related.items()},
+        {name: sorted(values) for name, values in related_triggers.items()},
+    )
 
 
 @app.post("/api/models/loras/{name}/manual")
@@ -1355,12 +1376,20 @@ def _queue_store() -> WorkflowStore:
     return WorkflowStore(DATA_ROOT / "workflows")
 
 
+def _queue_public(item: dict[str, Any]) -> dict[str, Any]:
+    """Project a queue row for the API: expose only a snapshot flag, not the
+    frozen snapshot body (which can be large)."""
+    public = {key: value for key, value in item.items() if key != "prompt_snapshot"}
+    public["has_snapshot"] = item.get("prompt_snapshot") is not None
+    return public
+
+
 @app.get("/api/queue")
 def list_queue(workflow_id: str | None = None):
     """List local pending/settled queue items, newest order by queue position."""
     with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
         task_queue.ensure_schema(connection)
-        items = task_queue.list_items(connection, workflow_id)
+        items = [_queue_public(item) for item in task_queue.list_items(connection, workflow_id)]
     return {"items": items, "global_paused": queue_dispatcher.is_global_paused()}
 
 
@@ -1402,9 +1431,10 @@ def enqueue_queue(payload: QueueEnqueue):
     }
     with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
         task_queue.ensure_schema(connection)
-        return task_queue.enqueue(
+        created = task_queue.enqueue(
             connection, payload.workflow_id, name, payload.note, snapshot
         )
+    return _queue_public(created)
 
 
 @app.delete("/api/queue/{queue_id}")

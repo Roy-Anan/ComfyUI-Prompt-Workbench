@@ -304,3 +304,24 @@ def test_catalog_endpoint_attaches_identity_for_clip_vae_dirs(
     assert vae_identity["known"] is True
     assert vae_identity["on_disk"] is True
     assert vae_identity["size_bytes"] == len(b"vae-bytes")
+
+
+def test_group_related_loras_reports_shared_triggers():
+    import main
+
+    loras = [
+        {"name": "hero.safetensors"},
+        {"name": "hero-v2.safetensors"},
+        {"name": "other.safetensors"},
+    ]
+    meta = {
+        "hero.safetensors": {"trigger_words": ["hero name", "dress"]},
+        "hero-v2.safetensors": {"trigger_words": ["hero name", "solo"]},
+        "other.safetensors": {"trigger_words": ["other"]},
+    }
+    related, triggers = main._group_related_loras(loras, meta)
+    assert related["hero.safetensors"] == ["hero-v2.safetensors"]
+    assert triggers["hero.safetensors"] == ["hero name"]
+    assert triggers["hero-v2.safetensors"] == ["hero name"]
+    assert related["other.safetensors"] == []
+    assert triggers["other.safetensors"] == []

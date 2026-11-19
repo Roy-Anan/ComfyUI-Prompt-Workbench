@@ -98,11 +98,15 @@ def test_enqueue_freezes_working_snapshot(client):
 
     response = _enqueue(test_client, workflow_id, "frozen")
     assert response.status_code == 200
-    snapshot = response.json()["prompt_snapshot"]
-    assert isinstance(snapshot, dict)
-    assert isinstance(snapshot["working"], dict)
-    assert "1" in snapshot["working"]
-    assert isinstance(snapshot["prompts"], list)
+    body = response.json()
+    # The API exposes only a snapshot flag, not the frozen snapshot body.
+    assert body["has_snapshot"] is True
+    assert "prompt_snapshot" not in body
+
+    listing = test_client.get("/api/queue", headers=AUTH)
+    listed = listing.json()["items"][0]
+    assert listed["has_snapshot"] is True
+    assert "prompt_snapshot" not in listed
 
 
 def test_item_pause_and_resume(client):
