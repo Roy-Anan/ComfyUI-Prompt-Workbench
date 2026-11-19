@@ -392,6 +392,23 @@ function persistFavoredOnly(value: boolean): void {
   }
 }
 
+function readStoredTagFilter(): string {
+  try {
+    return localStorage.getItem("workbench.tagFilter") || "";
+  } catch {
+    // 本地存储不可用时回落全部标签。
+  }
+  return "";
+}
+
+function persistTagFilter(value: string): void {
+  try {
+    localStorage.setItem("workbench.tagFilter", value);
+  } catch {
+    // 忽略本地存储写入失败。
+  }
+}
+
 export default function WorkflowWorkbench() {
   const [items, setItems] = useState<WorkflowListItem[]>([]);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
@@ -419,7 +436,7 @@ export default function WorkflowWorkbench() {
   const [draftName, setDraftName] = useState("");
   const [draftNote, setDraftNote] = useState("");
   const [draftTags, setDraftTags] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState(readStoredTagFilter);
   const [draftBusy, setDraftBusy] = useState(false);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [updatingDraftId, setUpdatingDraftId] = useState<string | null>(null);
@@ -493,6 +510,7 @@ export default function WorkflowWorkbench() {
       setDraftNote("");
       setDraftTags("");
       setTagFilter("");
+      persistTagFilter("");
       setDeletingDraftId(null);
       setUpdatingDraftId(null);
       setCopyingDraftId(null);
@@ -554,6 +572,7 @@ export default function WorkflowWorkbench() {
       setDraftNote("");
       setDraftTags("");
       setTagFilter("");
+      persistTagFilter("");
       setDeletingDraftId(null);
       setUpdatingDraftId(null);
       setCopyingDraftId(null);
@@ -1741,7 +1760,10 @@ export default function WorkflowWorkbench() {
                     <select
                       value={tagFilter}
                       disabled={draftBusy || busy}
-                      onChange={(event) => setTagFilter(event.target.value)}
+                      onChange={(event) => {
+                        setTagFilter(event.target.value);
+                        persistTagFilter(event.target.value);
+                      }}
                     >
                       <option value="">全部标签</option>
                       {allDraftTags.map((tag) => (
