@@ -160,6 +160,24 @@ small,
   font-size: 0.867rem;
 }
 
+.section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dir-path {
+  font-family: monospace;
+  font-size: 0.767rem;
+  color: var(--text-faint);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 button {
   border: 1px solid var(--btn-border);
   border-radius: 9px;

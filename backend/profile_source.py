@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +29,33 @@ def profiles_dir() -> Path:
     if override:
         return Path(override).expanduser().resolve()
     return Path(__file__).resolve().parent.parent / "legacy-materials" / "profiles"
+
+
+def profiles_dir_info() -> dict[str, Any]:
+    """Return the resolved profile directory path and whether it exists."""
+    directory = profiles_dir()
+    return {"path": str(directory), "exists": directory.is_dir()}
+
+
+def open_profiles_dir() -> dict[str, Any]:
+    """Open the fixed profile directory in the host file manager.
+
+    Only this fixed directory is ever opened; no caller-supplied path is
+    accepted. Raises ``FileNotFoundError`` when the directory is absent and
+    ``OSError`` when the OS opener fails.
+    """
+    directory = profiles_dir()
+    if not directory.is_dir():
+        raise FileNotFoundError(str(directory))
+
+    if sys.platform == "win32":
+        os.startfile(str(directory))  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.run(["open", str(directory)], check=True)
+    else:
+        subprocess.run(["xdg-open", str(directory)], check=True)
+
+    return {"path": str(directory)}
 
 
 def _read_text(path: Path) -> str:

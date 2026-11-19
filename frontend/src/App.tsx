@@ -255,6 +255,11 @@ type ProfileSummary = {
   error: string | null;
 };
 
+type ProfileDirInfo = {
+  path: string;
+  exists: boolean;
+};
+
 type ProfilePreview = {
   file: string;
   filename: string | null;
@@ -462,6 +467,8 @@ export default function App() {
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
   const [rules, setRules] = useState<RuleRecord[] | null>(null);
   const [profiles, setProfiles] = useState<ProfileSummary[] | null>(null);
+  const [profileDir, setProfileDir] = useState<ProfileDirInfo | null>(null);
+  const [openingDir, setOpeningDir] = useState(false);
   const [openProfile, setOpenProfile] = useState<string | null>(null);
   const [preview, setPreview] = useState<ProfilePreview | null>(null);
   const settingsFileRef = useRef<HTMLInputElement>(null);
@@ -557,6 +564,11 @@ export default function App() {
     setCatalog(catalogResult);
     setRules(ruleResult.items);
     setProfiles(profileResult.items);
+
+    // 档案目录路径为只读辅助信息；独立容错，取不到不影响主面板。
+    apiGet<ProfileDirInfo>("/api/profiles/dir")
+      .then(setProfileDir)
+      .catch(() => setProfileDir(null));
 
     // 显存与队列为只读摘要；独立容错，取不到置空，不影响主面板连接状态。
     apiGet<ComfyStatus>("/api/comfyui/status")
@@ -713,6 +725,18 @@ export default function App() {
       setMessage(`档案导入失败：${String(error)}`);
     } finally {
       setImportingProfile(null);
+    }
+  }
+
+  async function openProfileDir() {
+    setOpeningDir(true);
+    try {
+      await apiPost<{ path: string }>("/api/profiles/open-dir", {});
+      setMessage("已在文件管理器中打开档案目录。");
+    } catch (error) {
+      setMessage(`打开档案目录失败：${String(error)}`);
+    } finally {
+      setOpeningDir(false);
     }
   }
 
@@ -1893,6 +1917,21 @@ export default function App() {
               名单来自 legacy 档案文本解析；可整档导入为规则，落库前由后端逐条校验，
               非法候选在报告中拒绝。逐候选勾选 / 驳回与差异预览留后续版本。
             </p>
+          </div>
+          <div className="section-actions">
+            {profileDir && (
+              <small className="dir-path" title={profileDir.path}>
+                {profileDir.path}
+              </small>
+            )}
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => void openProfileDir()}
+              disabled={openingDir || (profileDir !== null && !profileDir.exists)}
+            >
+              {openingDir ? "正在打开…" : "打开档案目录"}
+            </button>
           </div>
         </div>
 

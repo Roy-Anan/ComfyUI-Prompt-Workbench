@@ -1,5 +1,7 @@
 import textwrap
 
+import profile_source
+
 
 def _seed_profiles(root, monkeypatch):
     monkeypatch.setenv("WORKBENCH_PROFILES_DIR", str(root))
@@ -257,3 +259,55 @@ def test_list_missing_directory_is_empty_not_error(client, monkeypatch):
     response = test_client.get("/api/profiles", headers=headers)
     assert response.status_code == 200
     assert response.json()["items"] == []
+
+
+def test_profiles_dir_info_follows_env(client, tmp_path, monkeypatch):
+    test_client, _ = client
+    monkeypatch.setenv("WORKBENCH_PROFILES_DIR", str(tmp_path))
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    response = test_client.get("/api/profiles/dir", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["path"] == str(tmp_path)
+    assert body["exists"] is True
+
+
+def test_open_profiles_dir_success(client, tmp_path, monkeypatch):
+    test_client, _ = client
+    monkeypatch.setenv("WORKBENCH_PROFILES_DIR", str(tmp_path))
+    captured: dict[str, bool] = {}
+
+    def fake_open():
+        captured["called"] = True
+        return {"path": str(tmp_path)}
+
+    monkeypatch.setattr(profile_source, "open_profiles_dir", fake_open)
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    response = test_client.post("/api/profiles/open-dir", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["path"] == str(tmp_path)
+    assert captured["called"] is True
+
+
+def test_open_profiles_dir_missing_returns_404(client, monkeypatch):
+    test_client, _ = client
+    monkeypatch.setenv("WORKBENCH_PROFILES_DIR", "Z:/does/not/exist")
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    response = test_client.post("/api/profiles/open-dir", headers=headers)
+    assert response.status_code == 404
+
+
+def test_open_profiles_dir_os_error_returns_500(client, monkeypatch):
+    test_client, _ = client
+
+    def fake_open():
+        raise OSError("boom")
+
+    monkeypatch.setattr(profile_source, "open_profiles_dir", fake_open)
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    response = test_client.post("/api/profiles/open-dir", headers=headers)
+    assert response.status_code == 500

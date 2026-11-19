@@ -7,6 +7,7 @@ import platform
 import secrets
 import shutil
 import sqlite3
+import subprocess
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -1388,6 +1389,27 @@ def list_profiles():
     Read-only: no candidate is persisted to the rule store by this endpoint.
     """
     return {"items": profile_source.list_profiles()}
+
+
+@app.get("/api/profiles/dir")
+def profiles_dir_info():
+    """Return the resolved legacy profile directory path and existence flag."""
+    return profile_source.profiles_dir_info()
+
+
+@app.post("/api/profiles/open-dir")
+def open_profiles_dir():
+    """Open the fixed legacy profile directory in the host file manager.
+
+    Only the configured profile directory is opened; no caller-supplied path
+    is accepted.
+    """
+    try:
+        return profile_source.open_profiles_dir()
+    except FileNotFoundError as exc:
+        raise HTTPException(404, f"Profile directory not found: {exc}") from None
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(500, f"Cannot open profile directory: {exc}") from exc
 
 
 @app.get("/api/profiles/{file_name}")
