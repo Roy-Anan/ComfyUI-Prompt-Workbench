@@ -9,7 +9,7 @@
 
 - 阶段：**多模块主体落地，确定性辅助切片收尾**（M0 骨架与安全基线完成；工作流解析/白名单、规则库与参数比对、本地 LLM 候选审核、任务队列、生成历史、多命名草稿与收藏、只读诊断/设置/备份导出主体已落地；剩余大头为口径未决、缺依赖、高风险写入或空数据项，见各节 backlog）。
 - 当前任务：**R95–R98 批次落地收口** —— R95 历史图片只读代理与缩略图、R96 草稿置顶/收藏/普通分区小标题、R97 深浅主题切换与字号三档本地记忆、R98 LoRA 同名 json 元数据只读骨架与完整度标注；后端 249 passed，前端构建绿；真机逐条闭环留阶段收口统一验收。
-- 开发分支：`dev`，R95–R98 feat 均为**本地提交**（`cd96e02`、`b47f3ff`、`06480b6`、`7b0ff5c`）。**新口径（2026-11-19 起）**：全部本地开发，不再 `git push` 远端、不做远端核对；origin/dev 缓存停在 R91 docs `c579f09`，仅作历史参照。main `3084866aa85595133c7a1179b15ddd71e659d8f3` 未改、未合并。
+- 开发分支：`dev`，R95–R98 feat 均为**本地提交**（`cd96e02`、`b47f3ff`、`06480b6`、`7b0ff5c`）。~~全部本地开发，不再 `git push` 远端~~（该旧口径已于 149 节作废：应用户要求恢复推送 `origin/dev`，main 保持不动）。origin/dev 缓存原停在 R91 docs `c579f09`。main `3084866aa85595133c7a1179b15ddd71e659d8f3` 未改、未合并。
 - 版本：`0.1.0-dev.5`。
 - 注：第 3.1 节 Rust/Tauri 编译与桌面壳条目为 ADR-0001 废弃路线的历史记录；ADR-0002 已改为免安装本机浏览器 Web 应用，该遗留不再阻塞当前 Web 路线。
 - **方向（ADR-0002，2026-11-18）**：免安装本机浏览器 Web 应用；默认 `http://127.0.0.1:17890`（原 8000 与本机酒馆冲突，已改），只绑定回环；不做 EXE/NSIS 安装包，不开发 Tauri/Rust 宿主。ADR-0001 旧路线已废弃，仅作历史记录。
@@ -3536,3 +3536,40 @@
   优先、不被自动扫描覆盖等既定口径不变。
 - 身份哈希、受保护术语、诊断备份等其余分类仍并入既有面板，未按任务书九分类继续独立成块；
   顶级页签的本地记忆沿用既有 `workbench.activePage` 存取口径。
+
+## 149. D:\AI 目录整理与远端推送恢复（2026-11-19）
+
+### 149.1 目录整理
+
+- 背景：`D:\AI` 根目录散落工作台早期原型、任务书/指令原稿与其他应用旧日志；按「对工作台
+  有用入仓、无用删除」口径逐项判定，未纳入 git、未推远端。
+- 判定为无用、本地备份后删除：
+  - `workbench-ui-mockup/`：正式开发前的静态高保真原型（HTML + 核对截图），已被 `frontend/src`
+    正式 React 前端取代，仓库不引用。
+  - `工作台UI设计需求.txt`：UI 重构任务书原稿，需求已落地，要点见 `docs/REQUIREMENTS_BASELINE.md`
+    与阶段三~六 `TASK_EVIDENCE`。
+  - `comfyui工作台-项目指令.md`：豆包项目配置口径原稿，非仓库产物；项目说明见 README / ARCHITECTURE。
+  - `sillytavern.log` / `sillytavern-err.log` / `webui.log` / `webui-err.log`：SillyTavern 与
+    A1111 webui 的 2026-11-1 旧运行日志，与本工作台无关。
+- 兜底备份：`D:\AI\cleanup-backup-20261119-183131.zip`（4 条目，179.2 KB，本地保留，不入库）。
+- 保留不动：仓库 `ComfyUI-Prompt-Workbench-Git`、`Qiuye`（ComfyUI 整合包）、`LoRA`、`MODELS`、
+  `SillyTavern` 运行环境目录；`.venv`、`node_modules`、`userdata/` 业务数据、`legacy/`、
+  `legacy-materials/profiles/`、docs 验收归档。
+
+### 149.2 仓库内清理（承接上一轮）
+
+- 移除 19 条开发测试/旧版本工作流导入副本，保留对应 ComfyUI 现存文件的 3 条；169 份重复旧
+  设置快照只留最新 1 份。
+- 清可再生缓存（`__pycache__`、`.pytest_cache`）、旧运行日志；旧 `frontend/dist` 删除后重新构建。
+- 数据库 `generation_history` / `comfy_task` / `workbench_queue` / `workbench_rule` 表均为空，
+  `model_identity` 16 行保留；清理未连带历史、图片、草稿。
+
+### 149.3 回归与远端
+
+- 后端 **313 passed, 1 warning**（沿用基线；遗留 StarletteDeprecationWarning）；前端
+  `tsc -b && vite build` 绿；健康检查 200。
+- 远端核对：origin `https://github.com/Roy-Anan/ComfyUI-Prompt-Workbench` 读连通正常；
+  `origin/dev`（`c579f09`）是本地 dev 祖先，可快进、无分叉；本地领先 68、落后 0；跟踪文件
+  未混入 `userdata/`、`dist/`、`.venv/`、`node_modules/`。
+- 口径变更：第 1 节「不再 git push 远端」的旧口径自本轮起作废；应用户要求将 dev 推送到
+  `origin/dev`，main 保持不动。
