@@ -1197,6 +1197,7 @@ class WorkflowStore:
                     "positive": record.get("positive") or "",
                     "negative": record.get("negative") or "",
                     "favored": bool(record.get("favored") or False),
+                    "pinned": bool(record.get("pinned") or False),
                     "tags": _clean_tags(record.get("tags")),
                     "trashed": trashed,
                     "source_history_id": _clean_source_ref(
@@ -1209,11 +1210,11 @@ class WorkflowStore:
                     "updated_at": record.get("updated_at"),
                 }
             )
-        return sorted(
-            entries,
-            key=lambda item: item.get("updated_at") or "",
-            reverse=True,
-        )
+        # Stable two-pass sort: newest update first within each group, then
+        # pinned drafts float to the top ahead of unpinned ones.
+        entries.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
+        entries.sort(key=lambda item: 0 if item["pinned"] else 1)
+        return entries
 
     def save_draft(
         self,
@@ -1275,6 +1276,7 @@ class WorkflowStore:
                 or _extract_env_snapshot(None)
             )
             record.setdefault("favored", False)
+            record.setdefault("pinned", False)
             record["updated_at"] = _now()
             record.setdefault("created_at", record.get("updated_at"))
         else:
@@ -1290,6 +1292,7 @@ class WorkflowStore:
                 "source_history_id": clean_source,
                 "env_snapshot": self._current_env_snapshot(workflow_id),
                 "favored": False,
+                "pinned": False,
                 "trashed": False,
                 "created_at": _now(),
                 "updated_at": _now(),
@@ -1381,5 +1384,21 @@ class WorkflowStore:
             raise WorkflowError("指定的草稿不存在")
         record = self._read_draft_file(path)
         record["favored"] = not bool(record.get("favored") or False)
+        _atomic_json(path, record)
+        return record
+
+    def toggle_pinned(self, workflow_id: str, draft_id: str) -> dict[str, Any]:
+        """Flip the pinned flag on one draft.
+
+        Pinned drafts sort ahead of unpinned ones; the marker is reversible and
+        does not bump ``updated_at``. The working copy and snapshots are
+        untouched.
+        """
+        drafts_dir = self._drafts_dir(workflow_id)
+        path = self._draft_path(drafts_dir, draft_id)
+        if not path.is_file():
+            raise WorkflowError("指定的草稿不存在")
+        record = self._read_draft_file(path)
+        record["pinned"] = not bool(record.get("pinned") or False)
         _atomic_json(path, record)
         return record

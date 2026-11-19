@@ -829,6 +829,38 @@ def test_draft_favored_toggle_and_preserved_on_update(tmp_path):
         )
 
 
+def test_draft_pinned_toggle_and_sorts_first(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+
+    draft_a = store.save_draft(workflow_id, None, "草稿A", "positive-a", None, "")
+    draft_b = store.save_draft(workflow_id, None, "草稿B", "positive-b", None, "")
+
+    # Newest update first: B before A.
+    names = [d["name"] for d in store.list_drafts(workflow_id)]
+    assert names == ["草稿B", "草稿A"]
+
+    store.toggle_pinned(workflow_id, draft_a["id"])
+    names = [d["name"] for d in store.list_drafts(workflow_id)]
+    assert names == ["草稿A", "草稿B"]
+    assert store.list_drafts(workflow_id)[0]["pinned"] is True
+
+    # Updating the draft keeps the pinned marker.
+    updated = store.save_draft(
+        workflow_id, draft_a["id"], "草稿A改", "positive-a2", None, ""
+    )
+    assert updated["pinned"] is True
+
+    back = store.toggle_pinned(workflow_id, draft_a["id"])
+    assert back["pinned"] is False
+
+    with pytest.raises(WorkflowError, match="草稿不存在"):
+        store.toggle_pinned(
+            workflow_id, "11111111-1111-4111-8111-111111111111"
+        )
+
+
 def test_draft_tags_cleaned_and_preserved_on_update(tmp_path):
     store = WorkflowStore(tmp_path / "workflows")
     imported = store.import_workflow("sample_api.json", sample_api_workflow())

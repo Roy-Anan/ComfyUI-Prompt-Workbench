@@ -324,6 +324,15 @@ def toggle_draft_favored(workflow_id: str, draft_id: str):
         _raise_api_error(exc)
 
 
+@router.post("/{workflow_id}/drafts/{draft_id}/pin")
+def toggle_draft_pinned(workflow_id: str, draft_id: str):
+    """Flip the pinned marker on one draft. Pinned drafts sort first; working copy untouched."""
+    try:
+        return store().toggle_pinned(workflow_id, draft_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
 @router.post("/{workflow_id}/confirm")
 def confirm_prompt_nodes(
     workflow_id: str,

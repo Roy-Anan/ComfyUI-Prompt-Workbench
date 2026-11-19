@@ -152,6 +152,7 @@ type DraftEntry = {
   negative: string;
   note: string;
   favored?: boolean;
+  pinned?: boolean;
   tags?: string[];
   trashed?: boolean;
   source_history_id?: string | null;
@@ -923,6 +924,20 @@ export default function WorkflowWorkbench() {
       setMessage(draft.favored ? `已取消收藏草稿「${draft.name}」。` : `已收藏草稿「${draft.name}」。`);
     } catch (error) {
       setMessage(`切换收藏失败：${String(error)}`);
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function togglePin(draft: DraftEntry) {
+    if (!workflowId) return;
+    setDraftBusy(true);
+    try {
+      await apiPost(`/api/workflows/${workflowId}/drafts/${draft.id}/pin`, {});
+      await loadDrafts(workflowId, showTrashed);
+      setMessage(draft.pinned ? `已取消置顶草稿「${draft.name}」。` : `已置顶草稿「${draft.name}」。`);
+    } catch (error) {
+      setMessage(`切换置顶失败：${String(error)}`);
     } finally {
       setDraftBusy(false);
     }
@@ -1744,6 +1759,9 @@ export default function WorkflowWorkbench() {
                         {showTrashed && (
                           <small className="workflow-meta">已删除</small>
                         )}
+                        {draft.pinned && !showTrashed && (
+                          <small className="workflow-meta">置顶</small>
+                        )}
                         {draft.favored && !showTrashed && (
                           <small className="workflow-meta">已收藏</small>
                         )}
@@ -1789,6 +1807,12 @@ export default function WorkflowWorkbench() {
                           disabled={draftBusy || busy}
                         >
                           {draft.favored ? "取消收藏" : "收藏"}
+                        </button>
+                        <button
+                          onClick={() => void togglePin(draft)}
+                          disabled={draftBusy || busy}
+                        >
+                          {draft.pinned ? "取消置顶" : "置顶"}
                         </button>
                         {copyingDraftId === draft.id ? (
                           <>
