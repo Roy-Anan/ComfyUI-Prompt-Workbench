@@ -2979,3 +2979,150 @@
   后重新拉取。
 - 跨记录大图并列对比、灯箱内多图网格、缓存上限淘汰策略留后续切片；历史原图仍只登记
   文件名与存在性，不复制进受管数据目录。
+
+## 125. TASK-003.1-R118 显存空闲阈值闸门（5GB，fail-closed）（2026-11-19）
+
+### 125.1 落地内容
+
+- `comfy_client.py` 新增常量 `VRAM_FREE_MIN_BYTES = 5 * 1024**3`（5 GiB）与
+  `probe_vram_free(comfyui_url, timeout=2.5)`：GET `/system_stats` 解析
+  `devices[*].vram_free`，多卡取最小空闲；不可达返回 `online=False`，无空闲字段返回
+  `vram_free=None`。
+- `workflow_api._submit_guarded` 在 ComfyUI 在线检查后、Ollama/LLM 驻留检查前插入显存闸：
+  不可达或读不到空闲 → 502「无法确认显存空闲，未提交任务」；空闲低于阈值 → 409
+  「显存空闲不足 5GB（当前约 X.XGB）…」，detail 含 `online/vram_free/error`。读不到显存按
+  unknown 拒绝（fail-closed），不臆测余量。
+- 前端 `App.tsx` 对齐常量与 `vramGateLabel`（达标 / 不足 5GB / 显存未知），服务卡片设备行
+  追加达标标记，不足用 `workflow-warning`、达标用 `workflow-meta`。
+
+### 125.2 回归
+
+- 后端全量 **289 passed, 1 warning**；新增显存不足 409、unknown 502 两例；历史提交样板
+  补 `probe_vram_free` patch（8GB 充足）。
+- 前端 `tsc -b && vite build` 绿。
+
+### 125.3 边界与 backlog
+
+- 阈值固定 5 GiB，不提供前端可调入口；闸门只挡提交，不自动卸载 LLM 或清理显存。
+- 多卡取最小空闲；`/system_stats` 字段缺失即 unknown 拒绝，不回退常驻显存估算。
+
+## 126. TASK-003.1-R119 档案候选与已存规则差异预览（2026-11-19）
+
+### 126.1 落地内容
+
+- `profile_source.py` 新增 `_normalized`（`json.dumps(sort_keys=True, ensure_ascii=False,
+  default=str)` 规整）与 `annotate_diff(connection, preview)`：按 level/scope_key/rule_key
+  三元组用 `rule_store.lookup_rule` 比对，无库行 → `diff="new"`；存在且 value+structured
+  规整后一致 → `diff="same"`；否则 → `diff="override"`，附只读 `stored_value/stored_version`。
+- `main.py` 档案预览端点打开 DB 连接、`ensure_schema` 后调用 annotate_diff，只读不写库。
+- 前端 `ProfileCandidate` 加可选 `diff/stored_value/stored_version`；候选行 meta 区加差异标签
+  （新增=中性、将覆盖=warning、一致=meta），覆盖态展示已存值。
+
+### 126.2 回归
+
+- 后端全量 **289 passed, 1 warning**；测试覆盖空库全 new、import 后全 same、改一条后该条
+  override 其余 same。
+- 前端 `tsc -b && vite build` 绿。
+
+### 126.3 边界与 backlog
+
+- 差异预览为只读标注，不自动覆盖；批量/单条导入仍走既有白名单写入与确认口径。
+- 规整仅用于等值判定，不做语义相似度匹配。
+
+## 127. TASK-003.1-R120 多模型/LoRA 组合冲突集中裁决视图（2026-11-19）
+
+### 127.1 落地内容
+
+- `rule_compare.compare_workflow` 抽取 payload fields 中 `status=="conflict"` 条目生成
+  `conflict_entries`（`{key, message, sources}`），并透传顶层 `conflicts`/`unknown`（key
+  列表）；既有 `compare_rule` 对非 resolved 条目的 unknown/rule_conflict 口径保持不变，仍不替选。
+- 前端 `WorkflowWorkbench.tsx` 新增 `ConflictSource/ConflictEntry` 类型与冲突裁决区块：比对表
+  上方逐条列 key、message、各来源 tag（level·scope·provenance·confidence·version·note），
+  badge 标「冲突」，文案明示系统不替选、需人工核对。`STATUS_LABEL` 补 `conflict: "冲突"`。
+- `styles.css` 新增 `.compare-badge.conflict`、`.compare-conflicts`、`.compare-sources`。
+
+### 127.2 回归
+
+- 后端全量 **289 passed, 1 warning**；`conflict_entries` 透传一例；既有 conflict 规则仍落
+  unknown/rule_conflict 的口径用例保持通过。
+- 前端 `tsc -b && vite build` 绿。
+
+### 127.3 边界与 backlog
+
+- 同层冲突仅集中呈现来源与分歧，不给出自动采纳建议；人工裁决后再由规则库维护入口落库。
+
+## 128. TASK-003.1-R121 LLM 候选多创作模式（2026-11-19）
+
+### 128.1 落地内容
+
+- `PromptCandidateRequest` 加 `mode: str = "draft"`，白名单校验（非法 422）；模块级
+  `CANDIDATE_MODES` 四模式：`draft` 起草补全、`polish` 润色、`trim` 精简、`bilingual` 中英
+  对照，各带中文 `instruction`。`_user_message` 结尾指令按模式切换，候选返回体回显 `mode`。
+- 前端 `CANDIDATE_MODE_OPTIONS` 四选项；`candidateMode` 状态接本地记忆
+  `workbench.candidateMode`（非法值回落 draft），请求体带 mode，模型选择旁加模式 select。
+
+### 128.2 回归
+
+- 后端全量 **289 passed, 1 warning**；polish 透传且 user message 含「润色」、非法 mode
+  `rocket` → 422 两例。
+- 前端 `tsc -b && vite build` 绿。
+
+### 128.3 边界与 backlog
+
+- 模式只切换 Prompt 生成指令，不改模型/参数白名单；结构化输出校验、锁定片段与术语保护留后。
+
+## 129. TASK-003.1-R122 草稿标签重命名与合并（2026-11-19）
+
+### 129.1 落地内容
+
+- `workflow_service.py` 新增 `_clean_tag`（正则白名单归一：非字母数字中文 `._-` 空格 → `_`，
+  去首尾 `.` 空格，截 30 字符，空返回 None），`_clean_tags` 复用之；`rename_tag(old_tag,
+  new_tag)` 遍历草稿根下所有工作流文件夹 `drafts/*.json`（含回收站草稿），旧标签替换为新标签
+  后再过 clean + 去重；仅当旧标签出现在原始 tags 才计 renamed 并原子写回、更新 `updated_at`，
+  返回 `{renamed, old, new}`。
+- `workflow_api.py` 新增 `TagRename` 模型（old/new 各 1–30 字符）与
+  `POST /api/workflows/tags/rename`（注册在 `/import` 之前，两段路径不被 `/{workflow_id}` 吞）；
+  `WorkflowError` → 400。
+- 前端两步态小表单：旧标签下拉（取自全部草稿标签）、新标签输入（maxLength 30）、确认/取消；
+  成功后刷新当前草稿箱并反馈涉及草稿数。`styles.css` 新增 `.draft-tag-rename` 容器。
+
+### 129.2 回归
+
+- 后端全量 **291 passed, 1 warning**；跨草稿重命名去重合并（renamed=2）、同标签 400 两例。
+- 前端 `tsc -b && vite build` 绿。
+
+### 129.3 边界与 backlog
+
+- 重命名跨工作流生效；只改 tags，不动名称/备注/Prompt/收藏置顶标记。新标签同样走白名单清洗与
+  12 个上限；空标签、新旧相同拒绝。
+
+## 130. TASK-003.1-R123 剩余方向收口：跨流队列视图、多标签交叉归属、筛选记忆（2026-11-19）
+
+### 130.1 落地内容
+
+- **跨工作流队列视图**：前端队列区加「全部工作流」开关（记忆 `workbench.queueGlobal`）；
+  `loadQueue` 全局模式或未选流时不带 `workflow_id` 查询，后端 `list_items` 本就支持全量聚合；
+  行内已展示 `workflow_name` 区分来源，暂停/调序/移除按 queue_id 操作，与所属流无关。
+- **多标签交叉归属**：标签分组模式下，一条含多标签的草稿在其每个标签组下各出现一次（展开为
+  `{draft, groupKey}` 条目，无标签归「未标签」）；分区模式保持置顶/收藏/普通原顺序。Fragment
+  key 带 groupKey 避免同稿多组冲突。
+- **筛选条件本地记忆**：草稿关键词 `workbench.draftKeyword`；历史关键词
+  `workbench.historyKeyword`、起止日期 `workbench.historyFrom/historyTo`，切换工作流时草稿
+  关键词随既有筛选一并清空记忆。
+
+### 130.2 回归
+
+- 后端 **291 passed, 1 warning**（本切片未改后端，沿用基线；遗留 StarletteDeprecationWarning）。
+- 前端 `tsc -b && vite build` 绿，产物 `index-eMYRIJb1.js` 228,488 字节 / gzip 69.75 kB，
+  `index-Bdox5WVg.css` 16,176 字节 / gzip 3.77 kB。
+
+### 130.3 边界与 backlog（待拍板 / 既定不做）
+
+- **队列项 Prompt 快照冻结**：当前 dispatcher 提交瞬间读取当时确认工作副本；入队时冻结 Prompt
+  快照涉及队列表字段与调度逻辑变更，属行为口径待拍板，本轮不擅自改。
+- **M4 锁定片段 / 术语保护 / 区块编辑**：交互与数据结构口径待拍板，留后。
+- **M8 LoRA 手动资料前端编辑入口**：写 `knowledge/lora/` 文件属写入路径，保守维持只读；
+  元数据身份归并、跨 LoRA 多卡组合建议深化留后。角色卡写入 ComfyUI 目录既定不做。
+- **M7 跨记录大图并排对比**：待拍板；**M9 数据库自动迁移 / 崩溃自动修复**维持巡检只读，不自动
+  改写数据。
+- 安全边界（白名单写入、unknown 不臆测、CSRF、回环绑定、fail-closed 闸门）保持不变。
