@@ -2723,3 +2723,27 @@
 
 - 参数仅作用于候选生成当次请求，不落库、不改 Ollama 模型默认配置；未提供参数时沿用 Ollama
   模型自身默认。采样器/出图参数不在本切片范围，候选 Prompt 之外的环境参数仍走既有闸门与核对链路。
+
+## 117. TASK-003.1-R110 诊断只读巡检：损坏草稿/版本与孤儿文件（2026-11-19）
+
+### 117.1 落地内容
+
+- 后端 `workflow_service.py`：`WorkflowStore.inspect_storage()` 只读扫描工作流目录树，按既有
+  布局（根目录 `manifest/original/working/analysis.json`、`drafts/`、`versions/`）核对条目；
+  统计并列出损坏 manifest、损坏草稿 JSON、损坏版本快照 JSON、未知域孤儿文件（含非 `.json`
+  残留与未知子目录/文件），全部以相对路径保守记录，**不删除、不修复、不改写**。
+- `main.py`：诊断端点在既有工作流/草稿计数块内调用巡检，结果挂到报告 `storage_health`；
+  扫描异常时降级为 `None`，与既有 `database_error` 保守口径一致。
+- 测试：导入工作流后写入损坏草稿/版本 JSON、`.tmp` 残留与根目录孤儿文件，断言四类计数与路径
+  归类正确。
+
+### 117.2 回归
+
+- 后端 **256 passed, 1 warning**（原 255 + 新增 1；遗留 StarletteDeprecationWarning）。
+- 前端诊断仍为「导出 JSON」口径，巡检字段随报告导出可见，本切片无前端改动、无需重新构建。
+- **提交状态**：feat 已在本地 dev（`01954aa`）；不再 push 远端、不做远端核对。
+
+### 117.3 边界与 backlog
+
+- 巡检只覆盖本地 workflows 目录树；SQLite 内记录、历史图片索引、外部 ComfyUI 目录不在扫描范围。
+- 不提供一键清理/修复入口；孤儿与损坏项需人工核对后手动处理。
