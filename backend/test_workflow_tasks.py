@@ -1,3 +1,5 @@
+import pytest
+
 import llm_client
 import workflow_api
 
@@ -62,6 +64,15 @@ def _patch_gates(monkeypatch, online=True, loaded=None, submit=None, vram=None):
         monkeypatch.setattr(
             workflow_api.comfy_client, "submit_prompt", submit
         )
+
+
+def test_user_message_keeps_protected_terms():
+    message = workflow_api._user_message(
+        [], None, "draft", ["白发少女", "ru"]
+    )
+    assert "白发少女" in message
+    assert "ru" in message
+    assert "保留原写法" in message
 
 
 def test_submit_rejects_unconfirmed_workflow(client, monkeypatch):
@@ -184,6 +195,40 @@ def test_submit_records_task_when_gates_pass(client, monkeypatch):
         f"/api/workflows/{workflow_id}/tasks", headers=AUTH
     ).json()
     assert [item["prompt_id"] for item in listed["items"]] == ["prompt-1"]
+
+
+def test_submit_guarded_prefers_frozen_snapshot(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    _confirm(test_client, workflow_id)
+
+    captured = {}
+
+    def fake_submit(url, prompt_api, client_id, timeout=10.0):
+        captured["prompt_api"] = prompt_api
+        return {"ok": True, "prompt_id": "prompt-9", "node_errors": {}, "error": None}
+
+    _patch_gates(monkeypatch, submit=fake_submit)
+
+    frozen_working = {"99": {"class_type": "NOTE", "inputs": {"text": "frozen"}}}
+    record = workflow_api._submit_guarded(
+        workflow_id, snapshot={"working": frozen_working, "prompts": []}
+    )
+    assert record["prompt_id"] == "prompt-9"
+    assert captured["prompt_api"] == frozen_working
+
+
+def test_submit_guarded_rejects_broken_snapshot(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    _confirm(test_client, workflow_id)
+    _patch_gates(monkeypatch)
+
+    with pytest.raises(workflow_api.HTTPException) as exc:
+        workflow_api._submit_guarded(
+            workflow_id, snapshot={"working": None, "prompts": []}
+        )
+    assert exc.value.status_code == 400
 
 
 def test_submit_failure_records_no_task(client, monkeypatch):

@@ -1049,6 +1049,51 @@ button.secondary {
   right: 18px;
 }
 
+/* R126: side-by-side history image comparison */
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  width: min(96vw, 1600px);
+  max-height: 100%;
+}
+
+.compare-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.compare-figure img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 10px;
+  background: var(--inset);
+}
+
+.compare-figure figcaption {
+  color: #e6ecf3;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.compare-pick {
+  margin-top: 4px;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .compare-grid {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+}
+
 /* R96: draft list section headers */
 .draft-group-head {
   margin: 14px 0 6px;
@@ -1144,4 +1189,36 @@ button.secondary {
   color: var(--text-faint);
   font-size: 0.767rem;
   line-height: 1.5;
+}
+
+.lora-related {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-size: 0.767rem;
+}
+
+.lora-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--inset);
+}
+
+.lora-edit label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.767rem;
+  color: var(--text-faint);
+}
+
+.lora-edit textarea,
+.lora-edit input {
+  width: 100%;
+  box-sizing: border-box;
 }

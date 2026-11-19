@@ -122,6 +122,9 @@ type Settings = {
     ollama_url: string;
     comfyui_url: string;
   };
+  prompt?: {
+    protected_terms?: string[];
+  };
 };
 
 type PathCheck = {
@@ -170,6 +173,7 @@ type CatalogEntry = {
   on_disk: boolean | null;
   identity?: IdentitySummary;
   meta?: LoraMeta | null;
+  related?: string[];
 };
 
 const LORA_META_LABEL: Record<LoraMetaStatus, string> = {
@@ -378,6 +382,11 @@ export default function App() {
   const [restoreOverwrite, setRestoreOverwrite] = useState(false);
   const [importingProfile, setImportingProfile] = useState<string | null>(null);
   const [deletingRule, setDeletingRule] = useState<string | null>(null);
+  const [editingLora, setEditingLora] = useState<string | null>(null);
+  const [loraTriggersText, setLoraTriggersText] = useState("");
+  const [loraDescription, setLoraDescription] = useState("");
+  const [loraBaseModel, setLoraBaseModel] = useState("");
+  const [loraSaveBusy, setLoraSaveBusy] = useState(false);
   const [openRuleHistory, setOpenRuleHistory] = useState<string | null>(null);
   const [ruleHistory, setRuleHistory] = useState<RuleHistoryItem[]>([]);
   const [restoringHistory, setRestoringHistory] = useState<number | null>(null);
@@ -653,6 +662,44 @@ export default function App() {
     }
   }
 
+  function startLoraEdit(entry: CatalogEntry) {
+    const meta = entry.meta ?? null;
+    setEditingLora(entry.name);
+    setLoraTriggersText((meta?.trigger_words ?? []).join("，"));
+    setLoraDescription(meta?.description ?? "");
+    setLoraBaseModel(meta?.base_model ?? "");
+  }
+
+  function cancelLoraEdit() {
+    setEditingLora(null);
+  }
+
+  async function saveLoraManual(entry: CatalogEntry) {
+    setLoraSaveBusy(true);
+    try {
+      const trigger_words = loraTriggersText
+        .split(/[\n,，]/)
+        .map((term) => term.trim())
+        .filter(Boolean);
+      await apiPost(
+        `/api/models/loras/${encodeURIComponent(entry.name)}/manual`,
+        {
+          trigger_words,
+          description: loraDescription.trim(),
+          base_model: loraBaseModel.trim(),
+          combos: entry.meta?.combos ?? [],
+        },
+      );
+      setEditingLora(null);
+      setMessage(`已保存「${entry.name}」手动资料（仅写入本地知识目录）。`);
+      await refresh();
+    } catch (error) {
+      setMessage(`保存手动资料失败：${String(error)}`);
+    } finally {
+      setLoraSaveBusy(false);
+    }
+  }
+
   async function removeRule(rule: RuleRecord) {
     const identity = ruleIdentity(rule);
     if (deletingRule !== identity) {
@@ -741,6 +788,9 @@ export default function App() {
         {
           storage: editableStorage,
           connections: settings.connections,
+          prompt: {
+            protected_terms: settings.prompt?.protected_terms ?? [],
+          },
         },
       );
 
@@ -784,6 +834,9 @@ export default function App() {
       version: 2,
       storage: settings.storage,
       connections: settings.connections,
+      prompt: {
+        protected_terms: settings.prompt?.protected_terms ?? [],
+      },
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json;charset=utf-8",
@@ -952,6 +1005,18 @@ export default function App() {
     });
   }
 
+  function updateProtectedTerms(raw: string) {
+    if (!settings) return;
+    const terms = raw
+      .split(/[\n,，]/)
+      .map((term) => term.trim())
+      .filter(Boolean);
+    setSettings({
+      ...settings,
+      prompt: { protected_terms: terms },
+    });
+  }
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -1011,6 +1076,7 @@ export default function App() {
       {activePage === "workflows" ? (
         <WorkflowWorkbench
           comfyuiUrl={settings?.connections.comfyui_url ?? ""}
+          protectedTerms={settings?.prompt?.protected_terms ?? []}
         />
       ) : activePage === "history" ? (
         <HistoryPanel />
@@ -1250,6 +1316,66 @@ export default function App() {
                               </li>
                             ))}
                           </ul>
+                        )}
+                        {(entry.related ?? []).length > 0 && (
+                          <small className="lora-related">
+                            疑似同一身份：{(entry.related ?? []).join("、")}
+                          </small>
+                        )}
+                        {editingLora === entry.name ? (
+                          <div className="lora-edit">
+                            <label>
+                              触发词（逗号或换行分隔）
+                              <textarea
+                                rows={2}
+                                value={loraTriggersText}
+                                onChange={(event) =>
+                                  setLoraTriggersText(event.target.value)
+                                }
+                              />
+                            </label>
+                            <label>
+                              底座模型
+                              <input
+                                value={loraBaseModel}
+                                onChange={(event) =>
+                                  setLoraBaseModel(event.target.value)
+                                }
+                              />
+                            </label>
+                            <label>
+                              说明
+                              <textarea
+                                rows={2}
+                                value={loraDescription}
+                                onChange={(event) =>
+                                  setLoraDescription(event.target.value)
+                                }
+                              />
+                            </label>
+                            <div className="actions">
+                              <button
+                                onClick={() => void saveLoraManual(entry)}
+                                disabled={loraSaveBusy}
+                              >
+                                保存资料
+                              </button>
+                              <button
+                                className="secondary"
+                                onClick={cancelLoraEdit}
+                                disabled={loraSaveBusy}
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            className="secondary"
+                            onClick={() => startLoraEdit(entry)}
+                          >
+                            编辑资料
+                          </button>
                         )}
                       </li>
                     );
@@ -1661,6 +1787,16 @@ export default function App() {
                     event.target.value,
                   )
                 }
+              />
+            </label>
+
+            <label>
+              <span>受保护术语（逗号或换行分隔）</span>
+              <textarea
+                rows={3}
+                value={(settings.prompt?.protected_terms ?? []).join("，")}
+                onChange={(event) => updateProtectedTerms(event.target.value)}
+                placeholder="例如：角色名、特定风格词、LoRA 触发词"
               />
             </label>
           </div>

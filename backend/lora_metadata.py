@@ -233,6 +233,106 @@ def load_manual(manual_dir: str, name: str) -> dict[str, Any]:
     return record
 
 
+MAX_MANUAL_TERMS = 30
+MAX_MANUAL_TERM_CHARS = 60
+MAX_MANUAL_DESC_CHARS = 2000
+MAX_MANUAL_BASE_CHARS = 120
+MAX_MANUAL_COMBOS = 20
+
+
+def _manual_write_path(manual_dir: Path, name: str) -> Path | None:
+    """Resolve the managed manual note path for writing, rejecting traversal."""
+    if not name or name in (".", ".."):
+        return None
+    candidate = Path(name)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        return None
+    try:
+        base_resolved = manual_dir.resolve()
+        stem_path = (base_resolved / f"{candidate.stem}.json").resolve()
+        stem_path.relative_to(base_resolved)
+        return stem_path
+    except (ValueError, OSError):
+        return None
+
+
+def _normalize_combo(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    name = _as_text(value.get("name") or value.get("title"))[:120]
+    words = _as_text_list(value.get("trigger_words") or value.get("words"))
+    words = [word[:MAX_MANUAL_TERM_CHARS] for word in words]
+    if not name and not words:
+        return None
+    return {"name": name, "trigger_words": words}
+
+
+def save_manual(
+    manual_dir: str, name: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Validate and persist a manual LoRA note under the managed knowledge dir.
+
+    Only whitelisted fields are written; the ComfyUI LoRA directory is never
+    touched. Raises ``ValueError`` on an invalid name or payload shape.
+    """
+    if not name or not str(name).strip():
+        raise ValueError("LoRA 名称不能为空")
+    if not manual_dir or not str(manual_dir).strip():
+        raise ValueError("手动资料目录未配置")
+
+    raw_terms = payload.get("trigger_words", [])
+    if not isinstance(raw_terms, list):
+        raise ValueError("trigger_words 必须是列表")
+    terms: list[str] = []
+    seen: set[str] = set()
+    for item in raw_terms:
+        if not isinstance(item, str):
+            raise ValueError("trigger_words 条目必须是字符串")
+        term = item.strip()
+        if not term or term in seen:
+            continue
+        if len(term) > MAX_MANUAL_TERM_CHARS:
+            raise ValueError("触发词过长")
+        seen.add(term)
+        terms.append(term)
+    if len(terms) > MAX_MANUAL_TERMS:
+        raise ValueError(f"触发词最多 {MAX_MANUAL_TERMS} 个")
+
+    description = _as_text(payload.get("description"))[:MAX_MANUAL_DESC_CHARS]
+    base_model = _as_text(payload.get("base_model"))[:MAX_MANUAL_BASE_CHARS]
+
+    raw_combos = payload.get("combos", [])
+    if not isinstance(raw_combos, list):
+        raise ValueError("combos 必须是列表")
+    combos: list[dict[str, Any]] = []
+    for item in raw_combos:
+        combo = _normalize_combo(item)
+        if combo is not None:
+            combos.append(combo)
+    if len(combos) > MAX_MANUAL_COMBOS:
+        raise ValueError(f"组合最多 {MAX_MANUAL_COMBOS} 个")
+
+    record = {
+        "trigger_words": terms,
+        "description": description,
+        "base_model": base_model,
+        "combos": combos,
+    }
+
+    base = Path(str(manual_dir).strip()).expanduser()
+    base.mkdir(parents=True, exist_ok=True)
+    path = _manual_write_path(base, str(name).strip())
+    if path is None:
+        raise ValueError("非法 LoRA 名称，拒绝写入")
+
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    tmp.replace(path)
+    return record
+
+
 def merge_lora_meta(sidecar: dict[str, Any], manual: dict[str, Any]) -> dict[str, Any]:
     """Merge manual note over the auto-scanned sidecar metadata.
 

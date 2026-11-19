@@ -552,11 +552,14 @@ function parseOptionalInt(
   return value;
 }
 
-type WorkbenchProps = { comfyuiUrl: string };
+type WorkbenchProps = { comfyuiUrl: string; protectedTerms: string[] };
 
 type TaskProgress = { value: number; max: number; node?: string };
 
-export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
+export default function WorkflowWorkbench({
+  comfyuiUrl,
+  protectedTerms,
+}: WorkbenchProps) {
   const [items, setItems] = useState<WorkflowListItem[]>([]);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
   const [compare, setCompare] = useState<ComparePayload | null>(null);
@@ -888,7 +891,17 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
     }
   }
   function adoptCandidate() {
-    if (candidate) setPositiveText(candidate);
+    if (!candidate) return;
+    // Keep protected terms that already exist in the current positive text but
+    // were dropped from the candidate; append them rather than overwriting.
+    const missing = protectedTerms.filter(
+      (term) =>
+        term && !candidate.includes(term) && positiveText.includes(term),
+    );
+    const merged = missing.length
+      ? `${candidate.trimEnd()}${candidate.trim() ? ", " : ""}${missing.join(", ")}`
+      : candidate;
+    setPositiveText(merged);
   }
 
   async function copyCandidate() {

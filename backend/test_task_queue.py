@@ -91,6 +91,20 @@ def test_enqueue_rejects_unconfirmed_ui_and_missing(client):
     assert missing.status_code == 404
 
 
+def test_enqueue_freezes_working_snapshot(client):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    _confirm(test_client, workflow_id)
+
+    response = _enqueue(test_client, workflow_id, "frozen")
+    assert response.status_code == 200
+    snapshot = response.json()["prompt_snapshot"]
+    assert isinstance(snapshot, dict)
+    assert isinstance(snapshot["working"], dict)
+    assert "1" in snapshot["working"]
+    assert isinstance(snapshot["prompts"], list)
+
+
 def test_item_pause_and_resume(client):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())

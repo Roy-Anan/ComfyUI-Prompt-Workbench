@@ -191,3 +191,44 @@ def test_manual_path_rejects_traversal(tmp_path):
     manual_dir.mkdir()
     result = lora_metadata.load_manual(str(manual_dir), "../evil.safetensors")
     assert result["present"] is False
+
+
+def test_save_manual_normalizes_and_reads_back(tmp_path):
+    manual_dir = str(tmp_path / "knowledge" / "lora")
+    record = lora_metadata.save_manual(
+        manual_dir,
+        "hero.safetensors",
+        {
+            "trigger_words": ["  hero name ", "hero name", "", "dress"],
+            "description": "curated note",
+            "base_model": "SDXL",
+            "combos": [{"name": "outfit A", "trigger_words": ["dress"]}],
+        },
+    )
+    assert record["trigger_words"] == ["hero name", "dress"]
+    assert record["description"] == "curated note"
+    assert record["base_model"] == "SDXL"
+    assert record["combos"] == [
+        {"name": "outfit A", "trigger_words": ["dress"]}
+    ]
+
+    loaded = lora_metadata.load_manual(manual_dir, "hero.safetensors")
+    assert loaded["present"] is True
+    assert loaded["trigger_words"] == ["hero name", "dress"]
+
+
+def test_save_manual_rejects_traversal_and_bad_payload(tmp_path):
+    manual_dir = str(tmp_path / "manual")
+    try:
+        lora_metadata.save_manual(manual_dir, "../evil.safetensors", {})
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "非法" in str(exc)
+
+    try:
+        lora_metadata.save_manual(
+            manual_dir, "hero.safetensors", {"trigger_words": "not-a-list"}
+        )
+        assert False, "expected ValueError"
+    except ValueError:
+        pass

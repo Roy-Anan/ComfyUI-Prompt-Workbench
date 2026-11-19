@@ -83,7 +83,9 @@ def _dispatch_one() -> None:
         task_queue.mark_submitting(connection, item["queue_id"])
 
     try:
-        record = workflow_api._submit_guarded(item["workflow_id"])
+        record = workflow_api._submit_guarded(
+            item["workflow_id"], snapshot=item.get("prompt_snapshot")
+        )
     except Exception as exc:  # HTTPException or unexpected failure
         with model_identity.connect(_database_path()) as connection:
             task_queue.mark_failed(connection, item["queue_id"], _detail_text(exc))

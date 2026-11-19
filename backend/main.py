@@ -241,6 +241,17 @@ def load_settings() -> dict[str, Any]:
             if key in connections and isinstance(connections[key], str):
                 settings["connections"][key] = connections[key]
 
+        loaded_prompt = loaded.get("prompt", {})
+        if isinstance(loaded_prompt, dict):
+            try:
+                settings["prompt"]["protected_terms"] = _normalize_protected_terms(
+                    loaded_prompt.get("protected_terms", [])
+                )
+            except ValueError:
+                # A malformed persisted term list fails open to an empty list
+                # rather than blocking settings startup.
+                settings["prompt"]["protected_terms"] = []
+
     ensure_managed_directories(settings)
     initialize_database(settings)
     save_settings_file(settings)
@@ -250,11 +261,47 @@ def load_settings() -> dict[str, Any]:
 class SettingsUpdate(BaseModel):
     storage: dict[str, str] = Field(default_factory=dict)
     connections: dict[str, str] = Field(default_factory=dict)
+    prompt: dict[str, Any] = Field(default_factory=dict)
+
+
+ALLOWED_PROMPT_KEYS = {"protected_terms"}
+MAX_PROTECTED_TERMS = 50
+MAX_PROTECTED_TERM_CHARS = 60
+
+
+def _normalize_protected_terms(raw: Any) -> list[str]:
+    """Validate and de-duplicate the protected-term list; raise on bad shape."""
+    if not isinstance(raw, list):
+        raise ValueError("prompt.protected_terms must be a list")
+    terms: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            raise ValueError("protected_terms entries must be strings")
+        term = item.strip()
+        if not term or term in seen:
+            continue
+        if len(term) > MAX_PROTECTED_TERM_CHARS:
+            raise ValueError(
+                f"protected term too long (max {MAX_PROTECTED_TERM_CHARS} chars)"
+            )
+        seen.add(term)
+        terms.append(term)
+    if len(terms) > MAX_PROTECTED_TERMS:
+        raise ValueError(f"too many protected terms (max {MAX_PROTECTED_TERMS})")
+    return terms
 
 
 class StorageValidation(BaseModel):
     path: str
     create: bool = False
+
+
+class LoraManualUpdate(BaseModel):
+    trigger_words: list[str] = Field(default_factory=list)
+    description: str = ""
+    base_model: str = ""
+    combos: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RuleUpsert(BaseModel):
@@ -529,6 +576,19 @@ def update_settings(payload: SettingsUpdate):
             raise HTTPException(400, f"Invalid URL: {key}")
 
         candidate["connections"][key] = value.rstrip("/")
+
+    unknown_prompt = set(payload.prompt) - ALLOWED_PROMPT_KEYS
+    if unknown_prompt:
+        raise HTTPException(400, f"Unknown prompt keys: {sorted(unknown_prompt)}")
+
+    terms_raw = payload.prompt.get(
+        "protected_terms", candidate.get("prompt", {}).get("protected_terms", [])
+    )
+    try:
+        terms = _normalize_protected_terms(terms_raw)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    candidate.setdefault("prompt", {})["protected_terms"] = terms
 
     try:
         ensure_managed_directories(candidate)
@@ -1072,7 +1132,57 @@ def models_catalog():
     for entry in catalog.get("loras", []):
         entry["meta"] = lora_meta.get(entry["name"])
 
+    # R127: read-only identity grouping. Two LoRAs are flagged related when
+    # they share a file stem (case-insensitive) or at least one trigger word.
+    # This is a hint for manual review, not an automatic merge.
+    related = _group_related_loras(catalog.get("loras", []), lora_meta)
+    for entry in catalog.get("loras", []):
+        entry["related"] = related.get(entry["name"], [])
+
     return catalog
+
+
+def _group_related_loras(
+    loras: list[dict[str, Any]], meta: dict[str, dict[str, Any]]
+) -> dict[str, list[str]]:
+    by_stem: dict[str, list[str]] = {}
+    by_trigger: dict[str, list[str]] = {}
+    names = [entry["name"] for entry in loras if isinstance(entry.get("name"), str)]
+    for entry in loras:
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        stem = Path(name).stem.lower()
+        by_stem.setdefault(stem, []).append(name)
+        record = meta.get(name) or {}
+        for word in record.get("trigger_words", []):
+            if isinstance(word, str) and word.strip():
+                by_trigger.setdefault(word.strip().lower(), []).append(name)
+
+    related: dict[str, set[str]] = {name: set() for name in names}
+    for group in list(by_stem.values()) + list(by_trigger.values()):
+        if len(group) > 1:
+            for name in group:
+                related[name].update(other for other in group if other != name)
+    return {name: sorted(values) for name, values in related.items()}
+
+
+@app.post("/api/models/loras/{name}/manual")
+def save_lora_manual(name: str, payload: LoraManualUpdate):
+    """Persist the manual LoRA note in the managed ``knowledge/lora`` dir.
+
+    Whitelisted fields only; the ComfyUI LoRA directory is never written to.
+    A missing/unconfigured knowledge root rejects the write conservatively.
+    """
+    settings = load_settings()
+    manual_dir = Path(settings["storage"].get("knowledge", "")).expanduser() / "lora"
+    try:
+        record = lora_metadata.save_manual(
+            str(manual_dir), name, payload.model_dump()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"name": name, "manual": record}
 
 
 @app.get("/api/rules")
@@ -1280,9 +1390,21 @@ def enqueue_queue(payload: QueueEnqueue):
         )
 
     name = str(manifest.get("filename") or payload.workflow_id)
+    # Freeze the confirmed working copy and Prompt list at enqueue time so a
+    # later edit to the working copy does not change what a queued item submits.
+    try:
+        working = _queue_store().read_working(payload.workflow_id)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    snapshot = {
+        "working": working,
+        "prompts": workflow.get("working_prompts", []),
+    }
     with model_identity.connect(datadir.database_path(DATA_ROOT)) as connection:
         task_queue.ensure_schema(connection)
-        return task_queue.enqueue(connection, payload.workflow_id, name, payload.note)
+        return task_queue.enqueue(
+            connection, payload.workflow_id, name, payload.note, snapshot
+        )
 
 
 @app.delete("/api/queue/{queue_id}")

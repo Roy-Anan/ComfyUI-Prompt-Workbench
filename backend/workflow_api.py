@@ -196,6 +196,23 @@ def _comfyui_url() -> str:
     return settings["connections"]["comfyui_url"].rstrip("/")
 
 
+def _protected_terms() -> list[str]:
+    """Read the local protected-term list from settings (fail-open to empty)."""
+    root = datadir.default_data_root()
+    loaded = datadir.load_settings_file(root)
+    if isinstance(loaded, dict):
+        prompt = loaded.get("prompt")
+        if isinstance(prompt, dict):
+            terms = prompt.get("protected_terms")
+            if isinstance(terms, list):
+                return [
+                    str(term).strip()
+                    for term in terms
+                    if isinstance(term, str) and term.strip()
+                ]
+    return []
+
+
 def _unregistered_context() -> dict[str, Any]:
     return {
         "status": "unregistered",
@@ -229,6 +246,7 @@ def _user_message(
     working_prompts: list[dict[str, Any]],
     task: str | None,
     mode: str = "draft",
+    protected_terms: list[str] | None = None,
 ) -> str:
     by_role: dict[str, list[str]] = {"positive": [], "negative": []}
     for item in working_prompts:
@@ -244,6 +262,11 @@ def _user_message(
         lines.append("负向：" + " / ".join(by_role["negative"]))
     if task and task.strip():
         lines.append(f"任务要求：{task.strip()}")
+    if protected_terms:
+        lines.append(
+            "以下术语必须保留原写法，不得翻译、改写、删除或替换："
+            + "、".join(protected_terms)
+        )
     instruction = CANDIDATE_MODES.get(mode, CANDIDATE_MODES["draft"])["instruction"]
     lines.append(instruction)
     return "\n".join(lines)
@@ -508,7 +531,10 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
         {
             "role": "user",
             "content": _user_message(
-                workflow.get("working_prompts", []), payload.task, payload.mode
+                workflow.get("working_prompts", []),
+                payload.task,
+                payload.mode,
+                _protected_terms(),
             ),
         },
     ]
@@ -550,7 +576,9 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
     }
 
 
-def _submit_guarded(workflow_id: str) -> dict[str, Any]:
+def _submit_guarded(
+    workflow_id: str, snapshot: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Shared fail-closed submission gate used by first submit and manual retry.
 
     The submission fails closed: ComfyUI must be reachable, the workflow must
@@ -618,7 +646,19 @@ def _submit_guarded(workflow_id: str) -> dict[str, Any]:
             },
         )
 
-    working = store().read_working(workflow_id)
+    if snapshot is not None:
+        frozen_working = snapshot.get("working")
+        frozen_prompts = snapshot.get("prompts", [])
+        if not isinstance(frozen_working, dict):
+            raise HTTPException(
+                status_code=400,
+                detail="队列快照损坏，未提交任务；请重新加入队列。",
+            )
+        working = frozen_working
+        prompts = frozen_prompts
+    else:
+        working = store().read_working(workflow_id)
+        prompts = workflow.get("working_prompts", [])
     client_id = str(uuid.uuid4())
     result = comfy_client.submit_prompt(comfyui_url, working, client_id)
     if not result["ok"]:
@@ -644,7 +684,7 @@ def _submit_guarded(workflow_id: str) -> dict[str, Any]:
             connection,
             result["prompt_id"],
             workflow_id,
-            workflow.get("working_prompts", []),
+            prompts,
             workflow.get("report", {}),
             "submitted",
         )

@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS workbench_queue (
     status TEXT NOT NULL,
     prompt_id TEXT,
     last_error TEXT,
+    prompt_snapshot TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -58,8 +59,21 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ensure_column(connection: sqlite3.Connection, column: str, decl: str) -> None:
+    cols = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(workbench_queue)").fetchall()
+    }
+    if column not in cols:
+        connection.execute(
+            f"ALTER TABLE workbench_queue ADD COLUMN {column} {decl}"
+        )
+
+
 def ensure_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(_SCHEMA)
+    # Idempotent backfill for queues created before the snapshot column existed.
+    _ensure_column(connection, "prompt_snapshot", "TEXT")
     connection.commit()
 
 
@@ -75,11 +89,21 @@ def _row(row: sqlite3.Row | tuple[Any, ...] | None) -> dict[str, Any] | None:
         "status",
         "prompt_id",
         "last_error",
+        "prompt_snapshot",
         "created_at",
         "updated_at",
     ]
     record = dict(zip(keys, row))
     record["note"] = record.get("note") or ""
+    raw_snapshot = record.get("prompt_snapshot")
+    if isinstance(raw_snapshot, str) and raw_snapshot.strip():
+        try:
+            parsed = json.loads(raw_snapshot)
+            record["prompt_snapshot"] = parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            record["prompt_snapshot"] = None
+    else:
+        record["prompt_snapshot"] = None
     return record
 
 
@@ -117,12 +141,19 @@ def enqueue(
     workflow_id: str,
     workflow_name: str,
     note: str,
+    snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     workflow_id = workflow_id.strip()
     workflow_name = workflow_name.strip() or workflow_id
     note = (note or "").strip()[:1000]
     if not workflow_id:
         raise ValueError("workflow_id 不能为空")
+
+    snapshot_text = (
+        json.dumps(snapshot, ensure_ascii=False, sort_keys=True)
+        if isinstance(snapshot, dict)
+        else None
+    )
 
     now = _now()
     queue_id = str(uuid.uuid4())
@@ -135,8 +166,8 @@ def enqueue(
         """
         INSERT INTO workbench_queue
             (queue_id, workflow_id, workflow_name, note, sort_order,
-             status, prompt_id, last_error, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)
+             status, prompt_id, last_error, prompt_snapshot, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?)
         """,
         (
             queue_id,
@@ -144,6 +175,7 @@ def enqueue(
             workflow_name[:120],
             note,
             int(max_order) + 1,
+            snapshot_text,
             now,
             now,
         ),

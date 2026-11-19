@@ -284,6 +284,9 @@ def default_settings(root: Path) -> dict[str, Any]:
             "ollama_url": "http://127.0.0.1:11434",
             "comfyui_url": "http://127.0.0.1:8188",
         },
+        "prompt": {
+            "protected_terms": [],
+        },
     }
 
 

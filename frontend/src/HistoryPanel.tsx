@@ -188,7 +188,19 @@ const STATUS_OPTIONS = [
   "unknown",
 ];
 
-function HistoryThumb({ image, onOpen }: { image: HistoryImage; onOpen: () => void }) {
+type ComparePick = { record: HistoryRecord; image: HistoryImage };
+
+function HistoryThumb({
+  image,
+  onOpen,
+  onCompare,
+  picked,
+}: {
+  image: HistoryImage;
+  onOpen: () => void;
+  onCompare?: () => void;
+  picked?: boolean;
+}) {
   const url = historyImageUrl(image);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
@@ -216,7 +228,63 @@ function HistoryThumb({ image, onOpen }: { image: HistoryImage; onOpen: () => vo
         title="点击查看大图"
       />
       <figcaption>{image.filename}</figcaption>
+      {onCompare && (
+        <button className="secondary compare-pick" onClick={onCompare}>
+          {picked ? "移出对比" : "加入对比"}
+        </button>
+      )}
     </figure>
+  );
+}
+
+function CompareImage({ pick, label }: { pick: ComparePick; label: string }) {
+  const url = historyImageUrl(pick.image);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    cachedObjectUrl(url)
+      .then((cached) => {
+        if (alive) setObjectUrl(cached);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+
+  return (
+    <figure className="compare-figure">
+      <img src={objectUrl ?? url} alt={pick.image.filename} />
+      <figcaption>
+        {label} · {formatTime(pick.record.created_at)} · {pick.image.filename}
+      </figcaption>
+    </figure>
+  );
+}
+
+function CompareViewer({
+  picks,
+  onClose,
+}: {
+  picks: [ComparePick, ComparePick];
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="lightbox-overlay"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <button className="lightbox-close" onClick={onClose} aria-label="关闭对比">
+        ×
+      </button>
+      <div className="compare-grid">
+        <CompareImage pick={picks[0]} label="左" />
+        <CompareImage pick={picks[1]} label="右" />
+      </div>
+    </div>
   );
 }
 
@@ -304,9 +372,27 @@ export default function HistoryPanel() {
     text: string;
   } | null>(null);
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
+  const [comparePicks, setComparePicks] = useState<ComparePick[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   function openLightbox(images: HistoryImage[], index: number) {
     setLightbox({ images, index });
+  }
+
+  function pickKey(pick: ComparePick): string {
+    return `${pick.record.prompt_id}/${pick.image.subfolder}/${pick.image.filename}`;
+  }
+
+  function toggleCompare(pick: ComparePick) {
+    setComparePicks((prev) => {
+      const key = pickKey(pick);
+      const exists = prev.some((entry) => pickKey(entry) === key);
+      if (exists) {
+        return prev.filter((entry) => pickKey(entry) !== key);
+      }
+      const next = [...prev, pick];
+      return next.length > 2 ? next.slice(next.length - 2) : next;
+    });
   }
 
   function closeLightbox() {
@@ -322,15 +408,20 @@ export default function HistoryPanel() {
   }
 
   useEffect(() => {
-    if (!lightbox) return;
+    if (!lightbox && !compareOpen) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeLightbox();
-      else if (event.key === "ArrowLeft") stepLightbox(-1);
-      else if (event.key === "ArrowRight") stepLightbox(1);
+      if (event.key === "Escape") {
+        closeLightbox();
+        setCompareOpen(false);
+      } else if (lightbox && event.key === "ArrowLeft") {
+        stepLightbox(-1);
+      } else if (lightbox && event.key === "ArrowRight") {
+        stepLightbox(1);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lightbox]);
+  }, [lightbox, compareOpen]);
 
   function switchView(next: HistoryView) {
     setView(next);
@@ -571,12 +662,18 @@ export default function HistoryPanel() {
                 <div className="rule-row-main">
                   <strong>输出图片</strong>
                   <div className="history-images">
-                    {images.map((image, index) =>
-                      image.exists === true ? (
+                    {images.map((image, index) => {
+                      const pick: ComparePick = { record, image };
+                      const picked = comparePicks.some(
+                        (entry) => pickKey(entry) === pickKey(pick),
+                      );
+                      return image.exists === true ? (
                         <HistoryThumb
                           key={`${image.subfolder}/${image.filename}`}
                           image={image}
                           onOpen={() => openLightbox(images, index)}
+                          onCompare={() => toggleCompare(pick)}
+                          picked={picked}
                         />
                       ) : (
                         <figure key={`${image.subfolder}/${image.filename}`}>
@@ -585,8 +682,8 @@ export default function HistoryPanel() {
                           </small>
                           <figcaption>{image.filename}</figcaption>
                         </figure>
-                      ),
-                    )}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -661,6 +758,13 @@ export default function HistoryPanel() {
               {option.label}视图
             </button>
           ))}
+          <button
+            onClick={() => setCompareOpen(true)}
+            disabled={comparePicks.length !== 2}
+            title="先在两张图片上点「加入对比」，再并排查看"
+          >
+            并排对比（{comparePicks.length}/2）
+          </button>
           <button onClick={exportHistory} disabled={filtered.length === 0}>
             导出 JSON
           </button>
@@ -775,6 +879,13 @@ export default function HistoryPanel() {
           state={lightbox}
           onClose={closeLightbox}
           onStep={stepLightbox}
+        />
+      )}
+
+      {compareOpen && comparePicks.length === 2 && (
+        <CompareViewer
+          picks={[comparePicks[0], comparePicks[1]]}
+          onClose={() => setCompareOpen(false)}
         />
       )}
     </section>

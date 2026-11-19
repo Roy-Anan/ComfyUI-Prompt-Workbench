@@ -118,6 +118,42 @@ def test_post_requires_csrf_header(client):
     assert ok.status_code == 200
 
 
+def test_settings_persists_protected_terms(client):
+    test_client, _ = client
+    csrf = bootstrap(client)
+    ok = test_client.post(
+        "/api/settings",
+        headers=csrf,
+        json={
+            "prompt": {
+                "protected_terms": ["白发少女", "白发少女", "", "ru"]
+            }
+        },
+    )
+    assert ok.status_code == 200
+    body = test_client.get("/api/settings", headers=auth()).json()
+    assert body["prompt"]["protected_terms"] == ["白发少女", "ru"]
+
+
+def test_settings_rejects_unknown_prompt_key_and_bad_list(client):
+    test_client, _ = client
+    csrf = bootstrap(client)
+
+    unknown = test_client.post(
+        "/api/settings",
+        headers=csrf,
+        json={"prompt": {"other": ["x"]}},
+    )
+    assert unknown.status_code == 400
+
+    bad_list = test_client.post(
+        "/api/settings",
+        headers=csrf,
+        json={"prompt": {"protected_terms": "not-a-list"}},
+    )
+    assert bad_list.status_code == 400
+
+
 def test_cors_allows_vite_origin(client):
     test_client, _ = client
 
