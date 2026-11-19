@@ -2782,3 +2782,35 @@
 - 数据库为整文件替换，不做表级/记录级合并；跨版本库结构不兼容时以预备份人工回滚。
 - 恢复后受管路径与外部路径已尽量保留，但运行中内存里的设置需刷新/重启后重读；归档不含权重
   与原图，恢复不会还原 ComfyUI 目录里的模型与已生成图片。
+
+## 119. TASK-003.1-R112 ComfyUI `/ws` 进度订阅与前端实时进度（2026-11-19）
+
+### 119.1 落地内容
+
+- 方案取舍：采用浏览器原生 WebSocket 直连本机 ComfyUI `/ws`，后端零改动、不引入新的
+  异步桥接库。依据：浏览器 WS 为标准能力；仅连回环 127.0.0.1；进度只做只读实时增强，
+  任务状态权威仍在后端轮询校准；后端回归面最小。
+- 前端 `WorkflowWorkbench` 新增 `comfyuiUrl` prop（由 `App.tsx` 从
+  `settings.connections.comfyui_url` 传入）；WS 地址由 `http→ws` / `https→wss`、去尾斜杠后
+  拼 `/ws?clientId=workbench`。
+- 帧解析归一化：`executing` 以最近一次 `prompt_id` 记为当前运行任务，空闲（`prompt_id`
+  为 null）清空；`progress` 优先取帧内 `prompt_id`，缺失时回退当前运行任务，`value/max` 经
+  `Number` + 有限性 + `max>0` 校验后归属；`executed` / `execution_error` 删除对应进度。非 JSON
+  或畸形帧静默忽略。
+- 断线与兜底：`onclose` 置空连接并 3s 退避重连；页面卸载清理 timer 与 socket。WS 缺口不把
+  任务判为失败；存在 `running` / `submitted` 任务时 5s 低频 `loadTasks(true)` 轮询校准，
+  既有「刷新状态」手动兜底保留。
+- 任务行在 `running` 且有有效进度时显示 `进度 value/max（百分比）`；无进度或非运行态不显示。
+
+### 119.2 回归
+
+- 后端 **262 passed, 1 warning**（本切片后端零改动，沿用基线；遗留 StarletteDeprecationWarning）。
+- 前端 `tsc -b && vite build` 绿，产物 `index-RQNJWidR.js` 209.80 kB / gzip 66.38 kB，
+  `index--eVNY1pt.css` 13.61 kB / gzip 3.23 kB。
+
+### 119.3 边界与 backlog
+
+- WS 进度仅为展示增强，不参与提交闸门与 fail-closed 判定；ComfyUI 离线或 WS 断线时仍以
+  后端 `/tasks?refresh=true` 校准结果为准。
+- 进度帧不带 `prompt_id` 且错过 `executing` 归属窗口时，该帧保守丢弃，不臆测归属。
+- 未实现后端 WS 代理；跨主机/非回环 ComfyUI 连接不在本切片范围。
