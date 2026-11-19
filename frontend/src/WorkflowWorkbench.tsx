@@ -88,6 +88,10 @@ type ComparisonEntry = {
   status: string;
   reason?: string;
   rule?: unknown;
+  set_role?: "specific" | "general";
+  set_index?: number;
+  fell_back?: boolean;
+  general_checked?: boolean;
 };
 type GroupComparison = {
   sampler_node_id: string | null;
@@ -1763,6 +1767,7 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
                           </div>
                           <span className={`compare-badge ${entry.status}`}>
                             {STATUS_LABEL[entry.status] ?? entry.status}
+                            {entry.fell_back ? "（指南套放宽）" : entry.set_role === "specific" ? "（专用套）" : ""}
                             {entry.reason ? `（${entry.reason}）` : ""}
                           </span>
                         </div>

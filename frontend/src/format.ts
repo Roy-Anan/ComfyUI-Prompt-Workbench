@@ -34,8 +34,8 @@ export function formatStructured(value: unknown): string {
       return (Array.isArray(record.items) ? record.items : []).map(String).join(" / ");
     case "sets":
       // Semicolon-separated suggestion groups; each group renders with its own
-      // summary, joined by a semicolon. Comparison keeps sets unresolved until
-      // an example-vs-recommendation priority rule is defined.
+      // summary, joined by a semicolon. The first group is the specific set,
+      // later groups are general fallbacks per the R73 priority call.
       return (Array.isArray(record.items) ? record.items : [])
         .map((item) => formatStructured(item))
         .join("；");

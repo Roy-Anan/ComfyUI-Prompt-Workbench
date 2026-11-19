@@ -131,6 +131,68 @@ def _compare_list(structured: dict[str, Any], actual: Any) -> dict[str, Any]:
     }
 
 
+def _compare_one(
+    structured: dict[str, Any],
+    actuals: dict[str, Any],
+    actual_key: str | None,
+    field: str,
+) -> dict[str, Any]:
+    """Compare one single-group structured rule against the actuals."""
+    kind = structured.get("kind")
+    if kind in ("value", "range", "floor"):
+        return _compare_number(structured, actuals.get(actual_key))
+    if kind == "resolutions":
+        return _compare_resolutions(structured, actuals)
+    if kind == "list":
+        return _compare_list(structured, actuals.get(actual_key))
+    return {"status": "unknown", "reason": "structured_kind_unhandled"}
+
+
+def _compare_sets(
+    structured: dict[str, Any],
+    actuals: dict[str, Any],
+    actual_key: str | None,
+    field: str,
+) -> dict[str, Any]:
+    """Compare a ``sets`` record: specific group first, general groups as fallback.
+
+    Per the R73 priority call, the first set is the specific/示例 group and
+    later sets are general/指南 groups. A match on the specific group wins; if
+    the specific group does not match, each general group is tried in order and
+    the first match is reported with a ``fell_back`` flag. When no group
+    matches, the specific group's verdict is kept conservatively. A missing or
+    non-numeric actual on the specific group stays ``unknown`` and does not
+    fall back to general groups. Same-group disagreement is not silently merged
+    here; sets only carry one normalized group each.
+    """
+    items = structured.get("items")
+    if not isinstance(items, list) or not items:
+        return {"status": "unknown", "reason": "sets_empty"}
+
+    specific = items[0]
+    if not isinstance(specific, dict):
+        return {"status": "unknown", "reason": "sets_item_unhandled"}
+    specific_verdict = _compare_one(specific, actuals, actual_key, field)
+    specific_verdict["set_index"] = 0
+    specific_verdict["set_role"] = "specific"
+
+    if specific_verdict["status"] in ("match", "unknown"):
+        return specific_verdict
+
+    for index, general in enumerate(items[1:], start=1):
+        if not isinstance(general, dict):
+            continue
+        general_verdict = _compare_one(general, actuals, actual_key, field)
+        if general_verdict["status"] == "match":
+            general_verdict["set_index"] = index
+            general_verdict["set_role"] = "general"
+            general_verdict["fell_back"] = True
+            return general_verdict
+
+    specific_verdict["general_checked"] = True
+    return specific_verdict
+
+
 def compare_rule(rule: dict[str, Any], actuals: dict[str, Any]) -> dict[str, Any]:
     """Compare one resolved rule field against one workflow's sampler actuals.
 
@@ -169,14 +231,10 @@ def compare_rule(rule: dict[str, Any], actuals: dict[str, Any]) -> dict[str, Any
         return result
 
     kind = structured.get("kind")
-    if kind in ("value", "range", "floor"):
-        verdict = _compare_number(structured, actual)
-    elif kind == "resolutions":
-        verdict = _compare_resolutions(structured, actuals)
-    elif kind == "list":
-        verdict = _compare_list(structured, actual)
+    if kind == "sets":
+        verdict = _compare_sets(structured, actuals, actual_key, field)
     else:
-        verdict = {"status": "unknown", "reason": "structured_kind_unhandled"}
+        verdict = _compare_one(structured, actuals, actual_key, field)
     result.update(verdict)
     return result
 

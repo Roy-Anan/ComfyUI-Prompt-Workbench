@@ -130,6 +130,91 @@ def test_conflict_rule_passthrough_unknown():
     assert verdict["reason"] == "rule_conflict"
 
 
+def test_sets_specific_match_wins():
+    rule = _field(
+        "GENERATION SETTINGS::Steps",
+        structured={
+            "kind": "sets",
+            "items": [
+                {"kind": "value", "value": 35},
+                {"kind": "range", "low": 25, "high": 40},
+            ],
+        },
+    )
+    verdict = rule_compare.compare_rule(rule, {"steps": 35})
+    assert verdict["status"] == "match"
+    assert verdict["set_role"] == "specific"
+    assert verdict["set_index"] == 0
+
+
+def test_sets_falls_back_to_general_group():
+    rule = _field(
+        "GENERATION SETTINGS::Steps",
+        structured={
+            "kind": "sets",
+            "items": [
+                {"kind": "value", "value": 35},
+                {"kind": "range", "low": 25, "high": 40},
+            ],
+        },
+    )
+    verdict = rule_compare.compare_rule(rule, {"steps": 30})
+    assert verdict["status"] == "match"
+    assert verdict["set_role"] == "general"
+    assert verdict["set_index"] == 1
+    assert verdict["fell_back"] is True
+
+
+def test_sets_no_group_match_keeps_specific_verdict():
+    rule = _field(
+        "GENERATION SETTINGS::CFG",
+        structured={
+            "kind": "sets",
+            "items": [
+                {"kind": "value", "value": 4},
+                {"kind": "range", "low": 4, "high": 6},
+            ],
+        },
+    )
+    verdict = rule_compare.compare_rule(rule, {"cfg": 7})
+    assert verdict["status"] == "out_of_range"
+    assert verdict["set_role"] == "specific"
+    assert verdict["general_checked"] is True
+
+
+def test_sets_missing_actual_stays_unknown_no_fallback():
+    rule = _field(
+        "GENERATION SETTINGS::Steps",
+        structured={
+            "kind": "sets",
+            "items": [
+                {"kind": "value", "value": 35},
+                {"kind": "range", "low": 25, "high": 40},
+            ],
+        },
+    )
+    verdict = rule_compare.compare_rule(rule, {})
+    assert verdict["status"] == "unknown"
+    assert verdict["reason"] == "actual_missing"
+    assert verdict["set_role"] == "specific"
+
+
+def test_sets_list_general_match():
+    rule = _field(
+        "GENERATION SETTINGS::Sampler",
+        structured={
+            "kind": "sets",
+            "items": [
+                {"kind": "list", "items": ["dpm++ 2m sde"]},
+                {"kind": "list", "items": ["dpm++ 2m karras"]},
+            ],
+        },
+    )
+    verdict = rule_compare.compare_rule(rule, {"sampler_name": "DPM++ 2M Karras"})
+    assert verdict["status"] == "match"
+    assert verdict["set_role"] == "general"
+
+
 def test_compare_workflow_counts():
     payload = {
         "status": "registered",
