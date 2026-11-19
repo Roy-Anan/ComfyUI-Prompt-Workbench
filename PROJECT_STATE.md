@@ -2620,3 +2620,23 @@
 
 - 仅提取字符串 detail；对象型 detail（服务在线状态结构）不做二次翻译，仍回退原文。错误文案为
   只读展示，不参与重试或状态判定。
+
+## 113. TASK-003.1-R106 LoRA 元数据边界分支测试加固（2026-11-19）
+
+### 113.1 落地内容
+
+- 纯测试切片：`test_lora_metadata.py` 补 `test_describe_empty_dict_and_non_dict_json`，覆盖
+  旁车 JSON 为空对象（无识别字段）、JSON 数组、JSON 标量三种 `empty` 分支；既有 complete /
+  partial / missing / unreadable / 越界 / 未配置目录 / 子目录 / 批量扫描用例保持不变。
+- 后端实现与行为未改动。
+
+### 113.2 回归
+
+- 后端 **252 passed, 1 warning**（原 251 + 新增 1；遗留 StarletteDeprecationWarning）。纯测试
+  切片，未重跑前端构建。
+- **提交状态**：已在本地 dev（`376a545`）；不再 push 远端、不做远端核对。
+
+### 113.3 边界与 backlog
+
+- 仅补覆盖，未改动元数据解析口径；LoRA 身份归并、角色卡写入、触发词常用组合与手动资料优先
+  口径仍待拍板。
