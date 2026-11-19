@@ -201,6 +201,44 @@ def annotate_exists(
     return images
 
 
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+
+
+def resolve_image_path(
+    output_dir: str | None, filename: Any, subfolder: Any
+) -> Path | None:
+    """Resolve a recorded image to a safe on-disk path for read-only serving.
+
+    Returns ``None`` when the output directory is unconfigured, the filename is
+    not a plain image name, the extension is not an image type, the resolved
+    path escapes the output directory, or the file is missing. Original images
+    are never copied or modified.
+    """
+    if not output_dir or not str(output_dir).strip():
+        return None
+    if not isinstance(filename, str) or not filename.strip():
+        return None
+    name = filename.strip()
+    if name in (".", "..") or "/" in name or "\\" in name or Path(name).name != name:
+        return None
+    if Path(name).suffix.lower() not in IMAGE_EXTENSIONS:
+        return None
+    base = Path(str(output_dir).strip()).expanduser()
+    try:
+        base_resolved = base.resolve()
+    except OSError:
+        base_resolved = base
+    folder = subfolder if isinstance(subfolder, str) else ""
+    candidate = (base_resolved / folder / name).resolve()
+    try:
+        candidate.relative_to(base_resolved)
+    except (ValueError, OSError):
+        return None
+    if not candidate.is_file():
+        return None
+    return candidate
+
+
 def record_snapshot(
     connection: sqlite3.Connection,
     prompt_id: str,

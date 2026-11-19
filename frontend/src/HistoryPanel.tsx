@@ -74,6 +74,14 @@ function existenceLabel(image: HistoryImage): string {
   return image.exists ? "存在" : "丢失";
 }
 
+function historyImageUrl(image: HistoryImage): string {
+  const params = new URLSearchParams({
+    filename: image.filename,
+    subfolder: image.subfolder || "",
+  });
+  return `/api/history/image?${params.toString()}`;
+}
+
 function summarize(text: string | null, limit = 80): string {
   if (!text) return "—";
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
@@ -362,14 +370,24 @@ export default function HistoryPanel() {
               <div className="rule-row">
                 <div className="rule-row-main">
                   <strong>输出图片</strong>
-                  <small>
-                    {images
-                      .map(
-                        (image) =>
-                          `${image.filename}（${existenceLabel(image)}）`,
-                      )
-                      .join("、")}
-                  </small>
+                  <div className="history-images">
+                    {images.map((image) => (
+                      <figure key={`${image.subfolder}/${image.filename}`}>
+                        {image.exists === true ? (
+                          <img
+                            src={historyImageUrl(image)}
+                            alt={image.filename}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <small className="muted">
+                            {image.filename}（{existenceLabel(image)}）
+                          </small>
+                        )}
+                        <figcaption>{image.filename}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

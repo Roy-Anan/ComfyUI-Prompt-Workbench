@@ -760,3 +760,34 @@ button.secondary {
   border-color: #4a5f78;
   color: #e9edf5;
 }
+
+/* R95: history output image thumbnails */
+.history-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.history-images figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 150px;
+}
+
+.history-images img {
+  width: 150px;
+  height: 150px;
+  object-fit: cover;
+  border: 1px solid #344052;
+  border-radius: 8px;
+  background: #111722;
+}
+
+.history-images figcaption {
+  font-size: 11px;
+  color: #8b98ab;
+  overflow-wrap: anywhere;
+}

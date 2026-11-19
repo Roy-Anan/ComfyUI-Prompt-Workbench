@@ -922,6 +922,20 @@ def generation_history_detail(prompt_id: str):
     return record
 
 
+@app.get("/api/history/image")
+def history_image(filename: str, subfolder: str = ""):
+    """Serve a recorded output image read-only from the configured output dir.
+
+    Path traversal and non-image extensions are rejected at the resolver; the
+    original file is never copied or modified.
+    """
+    output_dir = load_settings().get("storage", {}).get("output", "")
+    path = generation_history.resolve_image_path(output_dir, filename, subfolder)
+    if path is None:
+        raise HTTPException(status_code=404, detail="图片不存在或不可访问")
+    return FileResponse(path)
+
+
 @app.get("/api/models/catalog")
 def models_catalog():
     """Read-only checkpoint / LoRA names exposed by ComfyUI.

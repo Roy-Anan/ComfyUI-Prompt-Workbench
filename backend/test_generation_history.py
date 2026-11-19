@@ -237,6 +237,31 @@ def test_annotate_exists_marks_present_and_missing(tmp_path):
     assert annotated[1]["exists"] is False
 
 
+def test_resolve_image_path_allows_inside_rejects_traversal_and_non_image(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "a.png").write_bytes(b"x")
+
+    resolved = generation_history.resolve_image_path(
+        str(tmp_path), "a.png", "sub"
+    )
+    assert resolved is not None and resolved.is_file()
+
+    # Missing file, unconfigured dir, non-image extension, traversal and
+    # path separators in the filename all resolve to None.
+    assert generation_history.resolve_image_path(str(tmp_path), "missing.png", "") is None
+    assert generation_history.resolve_image_path("", "a.png", "") is None
+    assert generation_history.resolve_image_path(str(tmp_path), "x.txt", "") is None
+    assert generation_history.resolve_image_path(
+        str(tmp_path), "../a.png", ""
+    ) is None
+    assert generation_history.resolve_image_path(
+        str(tmp_path), "sub/a.png", ""
+    ) is None
+    assert generation_history.resolve_image_path(
+        str(tmp_path), "a.png", "../../etc"
+    ) is None
+
+
 def test_annotate_exists_none_without_output_dir():
     images = [{"filename": "a.png", "exists": None}]
     assert generation_history.annotate_exists(images, "")[0]["exists"] is None
