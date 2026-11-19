@@ -371,6 +371,7 @@ def test_diagnostics_report_is_read_only_and_conservative(client):
         "model_identities",
         "workflows",
         "profiles",
+        "drafts",
     }
     for value in body["counts"].values():
         assert value is None or isinstance(value, int)
@@ -378,6 +379,57 @@ def test_diagnostics_report_is_read_only_and_conservative(client):
     assert "comfyui" in body["services"]
     assert "directories" in body
     assert "external_directories" in body
+
+
+def test_diagnostics_counts_drafts_including_trashed(client):
+    test_client, _ = client
+    workflow = {
+        "1": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "pos", "clip": ["5", 0]},
+        },
+        "2": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": "neg", "clip": ["5", 0]},
+        },
+        "5": {
+            "class_type": "CheckpointLoaderSimple",
+            "inputs": {"ckpt_name": "x.safetensors"},
+        },
+    }
+    imported = test_client.post(
+        "/api/workflows/import",
+        headers=auth(),
+        json={"filename": "w.json", "workflow": workflow},
+    )
+    assert imported.status_code == 200
+    workflow_id = imported.json()["id"]
+    confirmed = test_client.post(
+        f"/api/workflows/{workflow_id}/confirm",
+        headers=auth(),
+        json={"positive_node_ids": ["1"], "negative_node_ids": ["2"]},
+    )
+    assert confirmed.status_code == 200
+
+    saved = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=auth(),
+        json={"name": "draft-1", "positive": "pos", "negative": "neg"},
+    )
+    assert saved.status_code == 200
+    trashed_id = saved.json()["id"]
+
+    body = test_client.get("/api/diagnostics", headers=auth()).json()
+    assert body["counts"]["workflows"] == 1
+    assert body["counts"]["drafts"] == 1
+
+    # Soft-deleted recycle-bin drafts still count toward the total.
+    removed = test_client.delete(
+        f"/api/workflows/{workflow_id}/drafts/{trashed_id}", headers=auth()
+    )
+    assert removed.status_code == 200
+    body2 = test_client.get("/api/diagnostics", headers=auth()).json()
+    assert body2["counts"]["drafts"] == 1
 
 
 def test_ollama_models_passes_through_discovered_names(client, monkeypatch):

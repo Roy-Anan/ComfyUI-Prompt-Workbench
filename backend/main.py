@@ -30,7 +30,7 @@ import profile_source
 import rule_engine
 import rule_store
 from workflow_api import router as workflow_router
-from workflow_service import WorkflowStore
+from workflow_service import WorkflowStore, WorkflowError
 
 APP_NAME = "ComfyUI-Prompt-Workbench"
 APP_VERSION = "0.1.0-dev.5"
@@ -771,6 +771,7 @@ def diagnostics():
         "model_identities": None,
         "workflows": None,
         "profiles": None,
+        "drafts": None,
     }
     db_error: str | None = None
     db_integrity: str | None = None
@@ -803,9 +804,18 @@ def diagnostics():
 
     try:
         workflows_root = Path(storage.get("workflows", "")).expanduser()
-        counts["workflows"] = len(WorkflowStore(workflows_root).list_workflows())
-    except OSError as exc:
+        workflow_store = WorkflowStore(workflows_root)
+        workflows = workflow_store.list_workflows()
+        counts["workflows"] = len(workflows)
+        # Drafts are file-stored per workflow; count the full draft box,
+        # including soft-deleted recycle-bin entries, conservatively.
+        counts["drafts"] = sum(
+            len(workflow_store.list_drafts(item["id"], include_trashed=True))
+            for item in workflows
+        )
+    except (OSError, WorkflowError, FileNotFoundError) as exc:
         counts["workflows"] = None
+        counts["drafts"] = None
         db_error = f"{db_error} | workflows: {exc}" if db_error else f"workflows: {exc}"
 
     try:
