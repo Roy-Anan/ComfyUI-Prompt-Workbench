@@ -3334,6 +3334,84 @@
 
 ### 141.3 边界与 backlog
 
-- 区块编辑、锁定片段、数据库自动迁移、损坏数据自动修复、身份自动合并、角色卡写入 ComfyUI 目录
-  维持既定不做；真机浏览器闭环留用户自行验收。
+- 真机浏览器闭环留用户自行验收；队列暂停、灯箱/对比层、导入预览、粘贴框等临时交互态保持会话内，
+  不持久化。
+- 数据维护维持只读巡检口径：不做数据库结构自动迁移、不自动改写损坏数据；LoRA 身份归并与角色卡
+  落盘维持只读，不自动合并、不向 ComfyUI 目录写角色卡；历史图片复用前端内存缓存，不引入服务端
+  像素压缩。
 - 安全边界（白名单写入、unknown 不臆测、CSRF、回环绑定、fail-closed 闸门）保持不变。
+
+## 142. TASK-003.1-R135 请求级锁定片段（2026-11-19）
+
+### 142.1 落地内容
+
+- `PromptCandidateRequest` 加 `locked_fragments: list[str] | None`；`_clean_locked_fragments`
+  严格白名单：None → `[]`；非 list 抛 `ValueError`；逐项必须为字符串，strip/去空/去重/截断 60 字、
+  上限 30 条；非字符串直接 raise（不静默跳过），`ValueError` → 422。
+- `_user_message` 加锁定片段参数；非空时追加“以下片段必须原样保留，不得改写、删除、翻译或替换”
+  指令行，与受保护术语“保留原写法”行并列、作用域区分；候选端点透传。
+
+### 142.2 回归
+
+- 新增 `test_user_message_keeps_locked_fragments`、`test_clean_locked_fragments_normalizes`、
+  `test_clean_locked_fragments_rejects_non_string`、`test_clean_locked_fragments_rejects_non_list`、
+  `test_candidate_passes_locked_fragments`、`test_candidate_rejects_non_string_locked`。
+
+### 142.3 边界与 backlog
+
+- 请求级锁定，不引入草稿/工作副本新持久化字段；锁定片段为会话内 state，不接 localStorage；
+  不替 LLM 合并或改写片段。
+
+## 143. TASK-003.1-R136 同底座可搭配只读提示（2026-11-19）
+
+### 143.1 落地内容
+
+- `_group_compatible_loras`：按归一化 `base_model`（strip().lower()，空底座不参与）分组，组内
+  互标；catalog 端点给每条 LoRA 挂 `compatible`，与 `related`/`related_triggers` 并列。
+- 只读提示，不替选、不自动合并身份。
+
+### 143.2 回归
+
+- 新增 `test_group_compatible_loras_matches_shared_base`：同底座互标、异底座独立、空底座不分组。
+
+### 143.3 边界与 backlog
+
+- 同底座仅表示可人工核对是否叠加，不是自动兼容判定；不向 ComfyUI 目录写角色卡。
+
+## 144. TASK-003.1-R137 前端锁定片段区块 / 搭配行 / 任务要求记忆（2026-11-19）
+
+### 144.1 落地内容
+
+- M4：模块级 `splitPromptFragments` 按逗号/分号/换行拆分、trim 去空去重；`lockedFragments`
+  会话内 state + 切换 helper；编辑面板内片段勾选区块；提交 body 带 `locked_fragments`；采用候选时
+  补回候选丢失的锁定片段（不要求当前文本已包含）。
+- M8：`CatalogEntry` 加 `compatible`；LoRA 列表追加“同底座可搭配：…”只读行，复用既有样式。
+- M10：候选任务要求 `taskText` 初始化读 `workbench.candidateTask`、变更持久化；补锁定片段勾选样式。
+
+### 144.2 回归
+
+- 前端 `tsc -b && vite build` 绿；产物 `index-06UFeiZi.js` 234,310 字节 / gzip 71.48 kB，
+  `index-B7GdDH2b.css` 17,353 字节 / gzip 3.93 kB，`dist/index.html` 975 字节 / gzip 0.49 kB。
+
+### 144.3 边界与 backlog
+
+- 队列暂停、灯箱/对比层、导入预览、粘贴框等临时交互态保持会话内；未做泛化布局大改。
+
+## 145. TASK-003.1-R138 任务书清理与收口（2026-11-19）
+
+### 145.1 落地内容
+
+- 既定不做项从任务书待办口径移除：服务端像素压缩（Pillow）、身份自动合并、角色卡写入 ComfyUI
+  目录、数据库自动迁移、损坏数据自动修复；既有只读巡检、只读归并提示、手动资料只读优先等代码与
+  功能保留不动。
+- ROADMAP 当前剩余方向、README 阶段表、PROJECT_STATE 最新 backlog 同步口径。
+
+### 145.2 回归
+
+- 全量后端 **309 passed, 1 warning**（基线 302 + R135 六个 + R136 一个）；遗留
+  StarletteDeprecationWarning。前端构建复跑绿。
+
+### 145.3 边界与 backlog
+
+- 真机浏览器闭环留用户自行验收；安全边界（白名单写入、unknown 不臆测、CSRF、回环绑定、
+  fail-closed 闸门）保持不变。
