@@ -114,34 +114,10 @@ def _extract_env_snapshot(report: Any) -> dict[str, Any]:
         entries = model_snapshot.get(key)
         snapshot[key] = entries if isinstance(entries, list) else []
 
-    latent = report.get("latent")
-    if isinstance(latent, dict):
-        width = latent.get("width")
-        height = latent.get("height")
-        if isinstance(width, int) and isinstance(height, int):
-            snapshot["resolution"] = f"{width}x{height}"
-
-    clip_skip = report.get("clip_skip")
-    if isinstance(clip_skip, dict) and isinstance(clip_skip.get("clip_skip"), int):
-        snapshot["clip_skip"] = clip_skip["clip_skip"]
-
-    samplers: list[dict[str, Any]] = []
-    groups = report.get("prompt_groups")
-    if isinstance(groups, list):
-        for group in groups:
-            if not isinstance(group, dict):
-                continue
-            params = group.get("params")
-            if not isinstance(params, dict):
-                continue
-            clean_params = {
-                key: params[key]
-                for key in _SAMPLER_PARAM_KEYS
-                if key in params and params[key] is not None
-            }
-            if clean_params:
-                samplers.append(clean_params)
-    snapshot["samplers"] = samplers
+    env_params = generation_history.extract_env_params(report)
+    snapshot["resolution"] = env_params["resolution"]
+    snapshot["clip_skip"] = env_params["clip_skip"]
+    snapshot["samplers"] = env_params["samplers"]
     return snapshot
 
 

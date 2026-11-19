@@ -46,12 +46,19 @@ type HistoryImage = {
 
 type ModelFile = { node_id: string; file: string };
 
+type SamplerParams = Record<string, string | number | boolean | null>;
+
 type ModelSnapshot = {
   checkpoints: ModelFile[];
   loras: ModelFile[];
   vaes: ModelFile[];
   clips: ModelFile[];
+  resolution?: string | null;
+  clip_skip?: number | null;
+  samplers?: SamplerParams[];
 };
+
+type ModelFileKey = "checkpoints" | "loras" | "vaes" | "clips";
 
 type LinkedDraft = { id: string; name: string };
 
@@ -82,8 +89,24 @@ function formatTime(value: string): string {
   return value.replace("T", " ").slice(0, 16);
 }
 
-function snapshotFiles(snapshot: ModelSnapshot, key: keyof ModelSnapshot): string[] {
+function snapshotFiles(snapshot: ModelSnapshot, key: ModelFileKey): string[] {
   return (snapshot[key] || []).map((entry) => entry.file).filter(Boolean);
+}
+
+function samplerSummary(samplers: SamplerParams[] | undefined): string {
+  if (!samplers || samplers.length === 0) return "—";
+  return samplers
+    .map((params) => {
+      const parts = [
+        params.steps != null ? `Steps ${params.steps}` : "",
+        params.cfg != null ? `CFG ${params.cfg}` : "",
+        params.sampler_name ? String(params.sampler_name) : "",
+        params.scheduler ? String(params.scheduler) : "",
+      ].filter(Boolean);
+      return parts.join(" / ");
+    })
+    .filter(Boolean)
+    .join("；") || "—";
 }
 
 function existenceLabel(image: HistoryImage): string {
@@ -363,6 +386,20 @@ export default function HistoryPanel() {
                     `LoRA：${loras.join("、") || "—"}`,
                     `VAE：${snapshotFiles(record.model_snapshot, "vaes").join("、") || "—"}`,
                     `CLIP：${snapshotFiles(record.model_snapshot, "clips").join("、") || "—"}`,
+                  ].join(" · ")}
+                </small>
+              </div>
+            </div>
+            <div className="rule-row">
+              <div className="rule-row-main">
+                <strong>采样参数</strong>
+                <small>
+                  {[
+                    `分辨率：${record.model_snapshot.resolution || "—"}`,
+                    `Clip Skip：${
+                      record.model_snapshot.clip_skip ?? "—"
+                    }`,
+                    `采样器：${samplerSummary(record.model_snapshot.samplers)}`,
                   ].join(" · ")}
                 </small>
               </div>

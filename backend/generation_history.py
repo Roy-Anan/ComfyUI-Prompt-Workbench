@@ -110,15 +110,65 @@ def _names_from_nodes(nodes: Any, input_keys: tuple[str, ...]) -> list[dict[str,
     return entries
 
 
+_SAMPLER_PARAM_KEYS = ("steps", "cfg", "sampler_name", "scheduler", "denoise")
+
+
+def extract_env_params(report: dict[str, Any]) -> dict[str, Any]:
+    """Freeze resolution / clip skip / sampler groups recognized at parse time.
+
+    Only facts the workflow parser already recognized are recorded; missing or
+    unrecognized inputs stay absent rather than being filled in.
+    """
+    params: dict[str, Any] = {
+        "resolution": None,
+        "clip_skip": None,
+        "samplers": [],
+    }
+    if not isinstance(report, dict):
+        return params
+
+    latent = report.get("latent")
+    if isinstance(latent, dict):
+        width = latent.get("width")
+        height = latent.get("height")
+        if isinstance(width, int) and isinstance(height, int):
+            params["resolution"] = f"{width}x{height}"
+
+    clip_skip = report.get("clip_skip")
+    if isinstance(clip_skip, dict) and isinstance(
+        clip_skip.get("clip_skip"), int
+    ):
+        params["clip_skip"] = clip_skip["clip_skip"]
+
+    samplers: list[dict[str, Any]] = []
+    groups = report.get("prompt_groups")
+    if isinstance(groups, list):
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            group_params = group.get("params")
+            if not isinstance(group_params, dict):
+                continue
+            clean_params = {
+                key: group_params[key]
+                for key in _SAMPLER_PARAM_KEYS
+                if key in group_params and group_params[key] is not None
+            }
+            if clean_params:
+                samplers.append(clean_params)
+    params["samplers"] = samplers
+    return params
+
+
 def extract_model_snapshot(report: dict[str, Any]) -> dict[str, Any]:
-    """Freeze the recognized checkpoint / LoRA / VAE / CLIP file names.
+    """Freeze recognized model file names plus sampler/environment parameters.
 
     Only values the workflow parser already recognized are recorded; an
     unrecognized or missing model stays absent rather than being filled in.
     """
     model_nodes = report.get("model_nodes")
     lora_nodes = report.get("lora_nodes")
-    return {
+    snapshot = {
         "checkpoints": _names_from_nodes(
             model_nodes, ("ckpt_name", "unet_name")
         ),
@@ -128,6 +178,8 @@ def extract_model_snapshot(report: dict[str, Any]) -> dict[str, Any]:
             model_nodes, ("clip_name", "clip_name1", "clip_name2")
         ),
     }
+    snapshot.update(extract_env_params(report))
+    return snapshot
 
 
 def extract_images(outputs: Any) -> list[dict[str, Any]]:

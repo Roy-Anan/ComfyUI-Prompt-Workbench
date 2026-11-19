@@ -223,7 +223,51 @@ def test_extract_images_supports_list_and_dict_shapes():
 
 def test_model_snapshot_stays_conservative_on_unknown_report():
     snapshot = generation_history.extract_model_snapshot({})
-    assert snapshot == {"checkpoints": [], "loras": [], "vaes": [], "clips": []}
+    assert snapshot == {
+        "checkpoints": [],
+        "loras": [],
+        "vaes": [],
+        "clips": [],
+        "resolution": None,
+        "clip_skip": None,
+        "samplers": [],
+    }
+
+
+def test_extract_env_params_freezes_resolution_clip_skip_and_samplers():
+    report = {
+        "latent": {"width": 768, "height": 1024},
+        "clip_skip": {"clip_skip": 2, "stop_at_clip_layer": -2},
+        "prompt_groups": [
+            {
+                "params": {
+                    "steps": 20,
+                    "cfg": 7.0,
+                    "sampler_name": "dpmpp_2m",
+                    "scheduler": "karras",
+                    "denoise": 1.0,
+                    "seed": 12345,
+                }
+            },
+            {"params": {"steps": 30}},
+        ],
+    }
+    params = generation_history.extract_env_params(report)
+    assert params["resolution"] == "768x1024"
+    assert params["clip_skip"] == 2
+    assert params["samplers"] == [
+        {
+            "steps": 20,
+            "cfg": 7.0,
+            "sampler_name": "dpmpp_2m",
+            "scheduler": "karras",
+            "denoise": 1.0,
+        },
+        {"steps": 30},
+    ]
+
+    empty = generation_history.extract_env_params(None)
+    assert empty == {"resolution": None, "clip_skip": None, "samplers": []}
 
 
 def test_annotate_exists_marks_present_and_missing(tmp_path):
