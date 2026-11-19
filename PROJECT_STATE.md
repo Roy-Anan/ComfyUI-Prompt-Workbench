@@ -2549,3 +2549,31 @@
 
 - 历史过滤为前端本地过滤，记忆不影响后端查询；工作流被删除后残留的工作流过滤值不匹配任何记录，
   结果为空。关键词与日期范围记忆未纳入；历史大图压缩/缓存仍为后续方向。
+
+## 110. TASK-003.1-R103 历史快照补采样参数并只读回显（2026-11-19）
+
+### 110.1 落地内容
+
+- 后端把 R92 草稿环境快照的分辨率 / Clip Skip / 采样器组提取下沉到 `generation_history`
+  （新增 `extract_env_params`，采样器仅保留 steps/cfg/sampler_name/scheduler/denoise 已知键、剔除
+  None 与 seed 等无关输入）；`extract_model_snapshot` 在四类模型文件名之外合并这三项。
+  `workflow_service._extract_env_snapshot` 改为复用该下沉函数，去掉重复的 latent/clip_skip/
+  prompt_groups 解析，草稿与历史快照同源口径。
+- 历史记录在提交时冻结的 `model_snapshot` 随之带上 `resolution` / `clip_skip` / `samplers`；
+  前端 `HistoryPanel` 类型补可选字段，详情在模型快照下新增「采样参数」行回显分辨率、Clip Skip 与
+  采样器组摘要（Steps / CFG / 采样器 / 调度器），旧记录缺字段回退 `—`。只读冻结，不改工作流。
+
+### 110.2 回归
+
+- 后端 **250 passed, 1 warning**（新增 `test_extract_env_params_freezes_resolution_clip_skip_and_samplers`，
+  覆盖分辨率/Clip Skip/两组采样器清洗与空 report 回落；保守空快照断言同步补全新字段；遗留
+  StarletteDeprecationWarning）；前端 `tsc -b && vite build` 绿，产物
+  `index-BiMPbsxm.js` 203.20 kB / gzip 64.01 kB，`index-bvjWXLUU.css` 13.42 kB / gzip 3.18 kB。
+- 按快速迭代口径未单独做真机浏览器逐条闭环，留阶段收口统一验收。
+- **提交状态**：feat 已在本地 dev（`2972428`）；不再 push 远端、不做远端核对。
+
+### 110.3 边界与 backlog
+
+- 采样参数只记录解析器已识别的节点；未识别的尺寸/采样器保持缺失，不臆造。历史快照不回填已存在的
+  旧记录（新字段对旧记录为缺失，前端回退 `—`）。采样器摘要为只读展示，不参与规则比对；历史大图
+  压缩/缓存仍为后续方向。
