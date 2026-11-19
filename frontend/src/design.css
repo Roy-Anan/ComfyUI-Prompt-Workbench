@@ -5,30 +5,31 @@
  * ============================================================ */
 
 :root {
-  /* —— 浅色主题（默认）—— 任务书 3.1 */
-  --w-bg: #F7F8FC;
+  /* —— 浅色主题（默认）—— 计划书 3.1 */
+  --w-bg: #F5F6F8;
   --w-panel: #FFFFFF;
-  --w-bg-2: #F1F4FA;
-  --w-bg-blue: #EDF3FF;
-  --w-text: #24324A;
-  --w-text-2: #667085;
-  --w-text-3: #98A2B3;
-  --w-brand: #3568F5;
-  --w-brand-hover: #2855D9;
+  --w-bg-2: #EFF1F5;
+  --w-bg-blue: #EAF1FB;
+  --w-text: #20242C;
+  --w-text-2: #747C89;
+  --w-text-3: #9AA1AC;
+  --w-brand: #3978D5;
+  --w-brand-hover: #2F68BE;
   --w-violet: #8B83F6;
-  --w-success: #16A36A;
-  --w-warn: #D99026;
-  --w-danger: #DC4C4C;
+  --w-success: #328653;
+  --w-warn: #B97720;
+  --w-danger: #C84C54;
   --w-readonly: #8490A3;
-  --w-border: #E7EBF2;
+  --w-border: #E7E9EE;
+  --w-divider: #ECEEF2;
 
   /* 语义浅色底 */
-  --w-success-bg: #E7F6EF;
-  --w-warn-bg: #FBF1E2;
-  --w-danger-bg: #FBECEC;
+  --w-success-bg: #E8F5EC;
+  --w-warn-bg: #FFF3E3;
+  --w-danger-bg: #FCEBEC;
   --w-readonly-bg: #EEF1F5;
 
-  /* 字号层级 任务书 3.3 */
+  /* 字号层级 计划书 3.2 */
   --fs-display: 28px;
   --fs-h1: 22px;
   --fs-h2: 18px;
@@ -38,20 +39,22 @@
   --fs-caption: 12px;
   --fs-micro: 11px;
 
-  /* 圆角 任务书 3.4 */
+  /* 圆角 计划书 3.3 */
   --r-lg: 14px;
   --r-card: 12px;
   --r-ctl: 8px;
   --r-tag: 6px;
 
-  /* 间距 */
+  /* 间距 计划书 3.4 */
+  --sp-0: 4px;
   --sp-1: 8px;
   --sp-2: 12px;
   --sp-3: 16px;
   --sp-4: 20px;
   --sp-5: 24px;
+  --sp-6: 32px;
 
-  --w-shadow: 0 1px 2px rgba(36, 50, 74, 0.06), 0 4px 14px rgba(36, 50, 74, 0.06);
+  --w-shadow: 0 1px 2px rgba(32, 36, 44, 0.05), 0 4px 14px rgba(32, 36, 44, 0.06);
   --font: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
 }
 
@@ -683,3 +686,60 @@ button:focus-visible { outline: 2px solid var(--w-brand); outline-offset: 2px; }
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+/* ============================================================
+ * 阶段一规范补强（计划书 3.5 按钮 / 3.6 输入 / 5.7 弹窗 / 5.8 反馈）
+ * 仅统一基础控件状态与层级，不改动页面布局与业务结构。
+ * ============================================================ */
+
+/* —— 按钮：统一高度、按下与禁用态 —— */
+.w-btn,
+button { min-height: 36px; }
+.w-btn-sm,
+button.sm { min-height: 28px; }
+.w-btn:active:not(:disabled) { transform: translateY(1px); }
+.w-btn:disabled,
+button:disabled { background: var(--w-bg-2); color: var(--w-text-3); border-color: var(--w-border); }
+
+/* —— 输入框：聚焦柔和外发光、禁用、只读、错误态 —— */
+.w-input:focus,
+.w-textarea:focus,
+.w-select:focus {
+  border-color: var(--w-brand);
+  box-shadow: 0 0 0 3px rgba(57, 120, 213, 0.12);
+}
+.w-input:disabled,
+.w-textarea:disabled,
+.w-select:disabled {
+  background: var(--w-bg-2);
+  color: var(--w-text-3);
+  cursor: not-allowed;
+}
+.w-input[readonly],
+.w-textarea[readonly] {
+  background: var(--w-readonly-bg);
+  color: var(--w-text-2);
+}
+.w-input.invalid,
+.w-textarea.invalid,
+.w-select.invalid {
+  border-color: var(--w-danger);
+  background: var(--w-danger-bg);
+}
+
+/* —— 弹窗：柔和遮罩与卡片层级 —— */
+.lightbox-overlay { background: rgba(23, 30, 43, 0.55); }
+.asset-dialog,
+.asset-detail {
+  box-shadow: var(--w-shadow);
+  border-radius: var(--r-lg);
+}
+
+/* —— 内联反馈条语义变体（独立 Toast 体系列入后续打磨） —— */
+.w-note.ok { background: var(--w-success-bg); color: var(--w-success); }
+.w-note.err { background: var(--w-danger-bg); color: var(--w-danger); }
+.w-note.warn { background: var(--w-warn-bg); color: var(--w-warn); }
+
+/* —— 导航：选中态与悬停轻反馈（计划书 4.2） —— */
+.w-nav-item:hover:not(.active) { background: var(--w-bg-2); color: var(--w-text); }
+.w-step:hover:not(.active) { background: var(--w-bg-2); color: var(--w-text); }
