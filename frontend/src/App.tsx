@@ -142,6 +142,8 @@ type IdentitySummary = {
 
 type LoraMetaStatus = "complete" | "partial" | "empty" | "missing" | "unreadable";
 
+type LoraCombo = { name: string; trigger_words: string[] };
+
 type LoraMeta = {
   name: string;
   status: LoraMetaStatus;
@@ -149,6 +151,10 @@ type LoraMeta = {
   trigger_words: string[];
   description: string;
   base_model: string;
+  source?: "manual" | "sidecar" | "none";
+  manual_present?: boolean;
+  manual_unreadable?: boolean;
+  combos?: LoraCombo[];
 };
 
 type CatalogEntry = {
@@ -164,6 +170,12 @@ const LORA_META_LABEL: Record<LoraMetaStatus, string> = {
   empty: "资料为空",
   missing: "缺资料",
   unreadable: "资料不可读",
+};
+
+const LORA_SOURCE_LABEL: Record<"manual" | "sidecar" | "none", string> = {
+  manual: "手动资料",
+  sidecar: "自动扫描",
+  none: "无资料",
 };
 
 type ModelCatalog = {
@@ -600,6 +612,16 @@ export default function App() {
 
   function ruleIdentity(rule: RuleRecord): string {
     return `${rule.level}::${rule.scope_key ?? ""}::${rule.rule_key}`;
+  }
+
+  async function copyLoraTriggers(meta: LoraMeta) {
+    if (meta.trigger_words.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(meta.trigger_words.join(", "));
+      setMessage(`已复制「${meta.name}」触发词（未写入工作副本）。`);
+    } catch (error) {
+      setMessage(`复制触发词失败：${String(error)}`);
+    }
   }
 
   async function removeRule(rule: RuleRecord) {
@@ -1090,6 +1112,10 @@ export default function App() {
                     ]
                       .filter(Boolean)
                       .join("　");
+                    const source: "manual" | "sidecar" | "none" | null = meta
+                      ? meta.source ?? (meta.manual_present ? "manual" : "sidecar")
+                      : null;
+                    const combos = meta?.combos ?? [];
                     return (
                       <li
                         key={entry.name}
@@ -1102,9 +1128,39 @@ export default function App() {
                               {LORA_META_LABEL[meta.status]}
                             </small>
                           )}
+                          {source && (
+                            <small className="lora-meta-source">
+                              {LORA_SOURCE_LABEL[source]}
+                            </small>
+                          )}
                         </span>
                         <small>{identityLabel(entry)}</small>
                         {detail && <small className="lora-meta-detail">{detail}</small>}
+                        {meta && meta.trigger_words.length > 0 && (
+                          <div className="lora-triggers">
+                            {meta.trigger_words.map((word) => (
+                              <span key={word} className="lora-trigger-chip">
+                                {word}
+                              </span>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => void copyLoraTriggers(meta)}
+                            >
+                              复制触发词
+                            </button>
+                          </div>
+                        )}
+                        {combos.length > 0 && (
+                          <ul className="lora-combos">
+                            {combos.map((combo, index) => (
+                              <li key={index}>
+                                {combo.name && <strong>{combo.name}：</strong>}
+                                {combo.trigger_words.join("、")}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </li>
                     );
                   })}

@@ -967,3 +967,46 @@ button.secondary {
 .lora-meta-unreadable .lora-meta-status {
   color: var(--danger-border);
 }
+
+.lora-meta-source {
+  white-space: nowrap;
+  font-size: 0.733rem;
+  color: var(--text-faint);
+}
+
+.lora-triggers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.lora-trigger-chip {
+  font-size: 0.733rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--border-soft);
+  color: var(--text-strong);
+}
+
+.lora-triggers button {
+  font-size: 0.733rem;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.lora-triggers button:hover {
+  background: var(--border-soft);
+}
+
+.lora-combos {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--text-faint);
+  font-size: 0.767rem;
+  line-height: 1.5;
+}

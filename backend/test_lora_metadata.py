@@ -98,3 +98,96 @@ def test_scan_groups_by_name(tmp_path):
     )
     assert report["a.safetensors"]["status"] == "complete"
     assert report["b.safetensors"]["status"] == "missing"
+
+
+def test_manual_note_overrides_sidecar_and_keeps_combos(tmp_path):
+    sidecar_dir = tmp_path / "sidecar"
+    sidecar_dir.mkdir()
+    (sidecar_dir / "hero.safetensors").write_bytes(b"x")
+    (sidecar_dir / "hero.json").write_text(
+        json.dumps(
+            {
+                "trigger_words": ["old trigger"],
+                "description": "sidecar description",
+                "base_model": "SD 1.5",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manual_dir = tmp_path / "manual" / "lora"
+    manual_dir.mkdir(parents=True)
+    (manual_dir / "hero.json").write_text(
+        json.dumps(
+            {
+                "trigger_words": ["hero name", "old trigger"],
+                "description": "curated note",
+                "combos": [
+                    {"name": "outfit A", "trigger_words": ["dress"]},
+                    {"trigger_words": ["solo"]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = lora_metadata.scan_lora_metadata(
+        str(sidecar_dir), ["hero.safetensors"], manual_dir=str(manual_dir)
+    )
+    meta = report["hero.safetensors"]
+    assert meta["source"] == "manual"
+    assert meta["manual_present"] is True
+    assert meta["trigger_words"] == ["hero name", "old trigger"]
+    assert meta["description"] == "curated note"
+    # Manual note omits base_model, so the sidecar value survives.
+    assert meta["base_model"] == "SD 1.5"
+    assert meta["combos"] == [
+        {"name": "outfit A", "trigger_words": ["dress"]},
+        {"name": "", "trigger_words": ["solo"]},
+    ]
+
+
+def test_manual_missing_falls_back_to_sidecar(tmp_path):
+    sidecar_dir = tmp_path / "sidecar"
+    sidecar_dir.mkdir()
+    (sidecar_dir / "plain.safetensors").write_bytes(b"x")
+    (sidecar_dir / "plain.json").write_text(
+        json.dumps({"trigger_words": ["sidecar trigger"]}), encoding="utf-8"
+    )
+    manual_dir = tmp_path / "manual"
+    manual_dir.mkdir()
+
+    report = lora_metadata.scan_lora_metadata(
+        str(sidecar_dir), ["plain.safetensors"], manual_dir=str(manual_dir)
+    )
+    meta = report["plain.safetensors"]
+    assert meta["source"] == "sidecar"
+    assert meta["trigger_words"] == ["sidecar trigger"]
+    assert meta["combos"] == []
+
+
+def test_manual_unreadable_falls_back_to_sidecar(tmp_path):
+    sidecar_dir = tmp_path / "sidecar"
+    sidecar_dir.mkdir()
+    (sidecar_dir / "broken.safetensors").write_bytes(b"x")
+    (sidecar_dir / "broken.json").write_text(
+        json.dumps({"description": "sidecar still readable"}), encoding="utf-8"
+    )
+    manual_dir = tmp_path / "manual"
+    manual_dir.mkdir()
+    (manual_dir / "broken.json").write_text("{not json", encoding="utf-8")
+
+    report = lora_metadata.scan_lora_metadata(
+        str(sidecar_dir), ["broken.safetensors"], manual_dir=str(manual_dir)
+    )
+    meta = report["broken.safetensors"]
+    assert meta["manual_present"] is True
+    assert meta["manual_unreadable"] is True
+    assert meta["description"] == "sidecar still readable"
+
+
+def test_manual_path_rejects_traversal(tmp_path):
+    manual_dir = tmp_path / "manual"
+    manual_dir.mkdir()
+    result = lora_metadata.load_manual(str(manual_dir), "../evil.safetensors")
+    assert result["present"] is False

@@ -1062,9 +1062,12 @@ def models_catalog():
             )
 
     # R98: read-only LoRA sidecar metadata summary, attached to LoRA entries.
+    # R114: managed manual notes under knowledge/lora win over the sidecar;
+    # the ComfyUI LoRA directory is never written to.
+    manual_lora_dir = Path(storage.get("knowledge", "")).expanduser() / "lora"
     lora_names = [entry["name"] for entry in catalog.get("loras", [])]
     lora_meta = lora_metadata.scan_lora_metadata(
-        storage.get("lora", ""), lora_names
+        storage.get("lora", ""), lora_names, manual_dir=str(manual_lora_dir)
     )
     for entry in catalog.get("loras", []):
         entry["meta"] = lora_meta.get(entry["name"])
