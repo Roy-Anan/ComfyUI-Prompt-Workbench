@@ -133,6 +133,18 @@ type TasksResponse = {
   items: ComfyTask[];
   sync_error: string | null;
 };
+type SnapshotFile = { node_id?: string; file: string };
+
+type EnvSnapshot = {
+  checkpoints?: SnapshotFile[];
+  loras?: SnapshotFile[];
+  vaes?: SnapshotFile[];
+  clips?: SnapshotFile[];
+  resolution?: string | null;
+  clip_skip?: number | null;
+  samplers?: Record<string, unknown>[];
+};
+
 type DraftEntry = {
   id: string;
   name: string;
@@ -143,9 +155,35 @@ type DraftEntry = {
   tags?: string[];
   trashed?: boolean;
   source_history_id?: string | null;
+  env_snapshot?: EnvSnapshot | null;
   created_at: string | null;
   updated_at: string | null;
 };
+
+function snapshotFiles(files: SnapshotFile[] | undefined): string {
+  return (files || []).map((item) => item.file).filter(Boolean).join("、");
+}
+
+function envSnapshotSummary(snapshot: EnvSnapshot | null | undefined): string {
+  if (!snapshot) return "";
+  const parts: string[] = [];
+  const checkpoint = snapshotFiles(snapshot.checkpoints);
+  if (checkpoint) parts.push(`模型 ${checkpoint}`);
+  const lora = snapshotFiles(snapshot.loras);
+  if (lora) parts.push(`LoRA ${lora}`);
+  if (snapshot.resolution) parts.push(`尺寸 ${snapshot.resolution}`);
+  if (typeof snapshot.clip_skip === "number") parts.push(`Clip Skip ${snapshot.clip_skip}`);
+  const sampler = (snapshot.samplers || [])[0];
+  if (sampler) {
+    const bits: string[] = [];
+    if (sampler.steps != null) bits.push(`Steps ${sampler.steps}`);
+    if (sampler.cfg != null) bits.push(`CFG ${sampler.cfg}`);
+    if (sampler.sampler_name) bits.push(String(sampler.sampler_name));
+    if (sampler.scheduler) bits.push(String(sampler.scheduler));
+    if (bits.length) parts.push(bits.join(" · "));
+  }
+  return parts.join(" · ");
+}
 
 function parseDraftTags(text: string): string[] {
   const parts = text.split(/[,，、;；\s]+/);
@@ -1729,6 +1767,11 @@ export default function WorkflowWorkbench() {
                             >
                               {draft.source_history_id.slice(0, 8)}
                             </button>
+                          </small>
+                        )}
+                        {envSnapshotSummary(draft.env_snapshot) && (
+                          <small className="workflow-meta">
+                            环境：{envSnapshotSummary(draft.env_snapshot)}
                           </small>
                         )}
                       </div>

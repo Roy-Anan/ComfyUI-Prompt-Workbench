@@ -8,6 +8,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import generation_history
 MAX_WORKFLOW_BYTES = 20 * 1024 * 1024
 MAX_PROMPT_CHARS = 200_000
 MAX_DRAFT_NAME_CHARS = 120
@@ -86,6 +88,86 @@ def _clean_source_ref(raw: Any) -> str | None:
         return None
     value = raw.strip()[:MAX_SOURCE_REF_CHARS]
     return value or None
+
+
+def _extract_env_snapshot(report: Any) -> dict[str, Any]:
+    """Freeze a read-only summary of the models and sampler parameters at save time.
+
+    Only facts the workflow parser already recognized are recorded; missing or
+    unrecognized inputs stay absent rather than being filled in. The working
+    copy and ComfyUI workflow are never modified here.
+    """
+    snapshot: dict[str, Any] = {
+        "checkpoints": [],
+        "loras": [],
+        "vaes": [],
+        "clips": [],
+        "resolution": None,
+        "clip_skip": None,
+        "samplers": [],
+    }
+    if not isinstance(report, dict):
+        return snapshot
+
+    model_snapshot = generation_history.extract_model_snapshot(report)
+    for key in ("checkpoints", "loras", "vaes", "clips"):
+        entries = model_snapshot.get(key)
+        snapshot[key] = entries if isinstance(entries, list) else []
+
+    latent = report.get("latent")
+    if isinstance(latent, dict):
+        width = latent.get("width")
+        height = latent.get("height")
+        if isinstance(width, int) and isinstance(height, int):
+            snapshot["resolution"] = f"{width}x{height}"
+
+    clip_skip = report.get("clip_skip")
+    if isinstance(clip_skip, dict) and isinstance(clip_skip.get("clip_skip"), int):
+        snapshot["clip_skip"] = clip_skip["clip_skip"]
+
+    samplers: list[dict[str, Any]] = []
+    groups = report.get("prompt_groups")
+    if isinstance(groups, list):
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            params = group.get("params")
+            if not isinstance(params, dict):
+                continue
+            clean_params = {
+                key: params[key]
+                for key in _SAMPLER_PARAM_KEYS
+                if key in params and params[key] is not None
+            }
+            if clean_params:
+                samplers.append(clean_params)
+    snapshot["samplers"] = samplers
+    return snapshot
+
+
+def _clean_env_snapshot(raw: Any) -> dict[str, Any] | None:
+    """Tolerant read-back normalization for a stored draft environment snapshot."""
+    if not isinstance(raw, dict):
+        return None
+    snapshot: dict[str, Any] = {
+        "checkpoints": [],
+        "loras": [],
+        "vaes": [],
+        "clips": [],
+        "resolution": None,
+        "clip_skip": None,
+        "samplers": [],
+    }
+    for key in ("checkpoints", "loras", "vaes", "clips", "samplers"):
+        entries = raw.get(key)
+        snapshot[key] = entries if isinstance(entries, list) else []
+    resolution = raw.get("resolution")
+    if isinstance(resolution, str) and resolution.strip():
+        snapshot["resolution"] = resolution.strip()
+    clip_skip = raw.get("clip_skip")
+    if isinstance(clip_skip, int):
+        snapshot["clip_skip"] = clip_skip
+    return snapshot
 
 
 def _clean_tags(raw: Any) -> list[str]:
@@ -1120,6 +1202,9 @@ class WorkflowStore:
                     "source_history_id": _clean_source_ref(
                         record.get("source_history_id")
                     ),
+                    "env_snapshot": _clean_env_snapshot(
+                        record.get("env_snapshot")
+                    ),
                     "created_at": record.get("created_at"),
                     "updated_at": record.get("updated_at"),
                 }
@@ -1183,6 +1268,12 @@ class WorkflowStore:
             record["note"] = clean_note
             record["tags"] = clean_tags
             record["source_history_id"] = clean_source
+            # The environment snapshot is frozen at first save; a later prompt
+            # edit does not re-freeze it from the current working copy.
+            record["env_snapshot"] = (
+                _clean_env_snapshot(record.get("env_snapshot"))
+                or _extract_env_snapshot(None)
+            )
             record.setdefault("favored", False)
             record["updated_at"] = _now()
             record.setdefault("created_at", record.get("updated_at"))
@@ -1197,6 +1288,7 @@ class WorkflowStore:
                 "note": clean_note,
                 "tags": clean_tags,
                 "source_history_id": clean_source,
+                "env_snapshot": self._current_env_snapshot(workflow_id),
                 "favored": False,
                 "trashed": False,
                 "created_at": _now(),
@@ -1216,6 +1308,18 @@ class WorkflowStore:
         if not path.is_file():
             raise WorkflowError("指定的草稿不存在")
         return self._read_draft_file(path)
+
+    def _current_env_snapshot(self, workflow_id: str) -> dict[str, Any]:
+        """Read the current workflow report and extract a frozen env snapshot.
+
+        A missing or unreadable report degrades to an empty snapshot rather
+        than failing the draft save.
+        """
+        try:
+            workflow = self.get_workflow(workflow_id)
+            return _extract_env_snapshot(workflow.get("report"))
+        except (WorkflowError, FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return _extract_env_snapshot(None)
 
     def find_linked_draft(
         self, workflow_id: str, source_history_id: str

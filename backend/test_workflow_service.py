@@ -888,3 +888,26 @@ def test_draft_source_history_link_and_lookup(tmp_path):
     )
     assert plain["source_history_id"] is None
     assert store.find_linked_draft(workflow_id, "pid-abc-123") is not None
+
+
+def test_draft_env_snapshot_frozen_on_save_and_kept_on_update(tmp_path):
+    store = WorkflowStore(tmp_path / "workflows")
+    imported = store.import_workflow("sample_api.json", sample_api_workflow())
+    workflow_id = imported["id"]
+
+    draft = store.save_draft(workflow_id, None, "快照草稿", "positive", None, "")
+    snapshot = store.list_drafts(workflow_id)[0]["env_snapshot"]
+
+    assert snapshot["checkpoints"][0]["file"] == "sample_checkpoint.safetensors"
+    assert snapshot["loras"][0]["file"] == "sample_lora.safetensors"
+    assert snapshot["clips"][0]["file"] == "text_encoder.safetensors"
+    assert snapshot["samplers"] == [{"steps": 24, "cfg": 6.5}]
+    assert snapshot["resolution"] is None
+    assert snapshot["clip_skip"] is None
+
+    # A later prompt edit keeps the originally frozen snapshot.
+    updated = store.save_draft(
+        workflow_id, draft["id"], "快照草稿改", "positive2", None, ""
+    )
+    assert updated["env_snapshot"]["checkpoints"] == snapshot["checkpoints"]
+    assert updated["env_snapshot"]["samplers"] == snapshot["samplers"]
