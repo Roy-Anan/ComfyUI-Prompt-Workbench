@@ -173,6 +173,11 @@ const DRAFT_GROUP_LABEL: Record<"pinned" | "favored" | "plain", string> = {
   plain: "普通",
 };
 
+function draftTagKey(draft: DraftEntry): string {
+  const tags = draft.tags || [];
+  return tags[0] || "未标签";
+}
+
 function snapshotFiles(files: SnapshotFile[] | undefined): string {
   return (files || []).map((item) => item.file).filter(Boolean).join("、");
 }
@@ -409,6 +414,44 @@ function persistTagFilter(value: string): void {
   }
 }
 
+function readStoredShowTrashed(): boolean {
+  try {
+    return localStorage.getItem("workbench.showTrashed") === "1";
+  } catch {
+    // 本地存储不可用时回落普通草稿箱。
+  }
+  return false;
+}
+
+function persistShowTrashed(value: boolean): void {
+  try {
+    localStorage.setItem("workbench.showTrashed", value ? "1" : "0");
+  } catch {
+    // 忽略本地存储写入失败。
+  }
+}
+
+type DraftGroupMode = "section" | "tag";
+
+function readStoredDraftGroupMode(): DraftGroupMode {
+  try {
+    return localStorage.getItem("workbench.draftGroupMode") === "tag"
+      ? "tag"
+      : "section";
+  } catch {
+    // 本地存储不可用时回落分区模式。
+  }
+  return "section";
+}
+
+function persistDraftGroupMode(value: DraftGroupMode): void {
+  try {
+    localStorage.setItem("workbench.draftGroupMode", value);
+  } catch {
+    // 忽略本地存储写入失败。
+  }
+}
+
 export default function WorkflowWorkbench() {
   const [items, setItems] = useState<WorkflowListItem[]>([]);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
@@ -442,10 +485,12 @@ export default function WorkflowWorkbench() {
   const [updatingDraftId, setUpdatingDraftId] = useState<string | null>(null);
   const [copyingDraftId, setCopyingDraftId] = useState<string | null>(null);
   const [copyTargetId, setCopyTargetId] = useState("");
-  const [showTrashed, setShowTrashed] = useState(false);
+  const [copyJumpId, setCopyJumpId] = useState<string | null>(null);
+  const [showTrashed, setShowTrashed] = useState(readStoredShowTrashed);
   const [purgingDraftId, setPurgingDraftId] = useState<string | null>(null);
   const [draftKeyword, setDraftKeyword] = useState("");
   const [favoredOnly, setFavoredOnly] = useState(readStoredFavoredOnly);
+  const [draftGroupMode, setDraftGroupMode] = useState(readStoredDraftGroupMode);
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -487,6 +532,7 @@ export default function WorkflowWorkbench() {
   }
   async function openWorkflow(id: string) {
     setBusy(true);
+    setCopyJumpId(null);
     try {
       const result = await apiGet<WorkflowDetail>(
         `/api/workflows/${id}`,
@@ -515,7 +561,9 @@ export default function WorkflowWorkbench() {
       setUpdatingDraftId(null);
       setCopyingDraftId(null);
       setCopyTargetId("");
+      setCopyJumpId(null);
       setShowTrashed(false);
+      persistShowTrashed(false);
       setPurgingDraftId(null);
       setDraftKeyword("");
       setFavoredOnly(false);
@@ -577,7 +625,9 @@ export default function WorkflowWorkbench() {
       setUpdatingDraftId(null);
       setCopyingDraftId(null);
       setCopyTargetId("");
+      setCopyJumpId(null);
       setShowTrashed(false);
+      persistShowTrashed(false);
       setPurgingDraftId(null);
       setDraftKeyword("");
       setFavoredOnly(false);
@@ -1040,12 +1090,16 @@ export default function WorkflowWorkbench() {
         note: draft.note,
         tags: draft.tags || [],
       });
-      const target = items.find((workflow) => workflow.id === copyTargetId);
+      const targetId = copyTargetId;
+      const target = items.find((workflow) => workflow.id === targetId);
+      const targetLabel = target?.filename || targetId;
       setCopyingDraftId(null);
       setCopyTargetId("");
       setShowTrashed(false);
+      persistShowTrashed(false);
       setPurgingDraftId(null);
-      setMessage(`已复制草稿「${draft.name}」到「${target?.filename || copyTargetId}」。`);
+      setCopyJumpId(targetId);
+      setMessage(`已复制草稿「${draft.name}」到「${targetLabel}」。`);
     } catch (error) {
       setMessage(`复制草稿失败：${String(error)}`);
     } finally {
@@ -1073,6 +1127,12 @@ export default function WorkflowWorkbench() {
       .toLowerCase();
     return haystack.includes(draftKeywordTerm);
   });
+  const groupedDrafts =
+    draftGroupMode === "tag"
+      ? [...filteredDrafts].sort((a, b) =>
+          draftTagKey(a).localeCompare(draftTagKey(b), "zh-Hans-CN"),
+        )
+      : filteredDrafts;
   const [restoringStamp, setRestoringStamp] = useState<string | null>(null);
   const [confirmStamp, setConfirmStamp] = useState<string | null>(null);
   const [comparingStamp, setComparingStamp] = useState<string | null>(null);
@@ -1773,6 +1833,18 @@ export default function WorkflowWorkbench() {
                       ))}
                     </select>
                   )}
+                  <select
+                    value={draftGroupMode}
+                    disabled={draftBusy || busy}
+                    onChange={(event) => {
+                      const next = event.target.value as DraftGroupMode;
+                      setDraftGroupMode(next);
+                      persistDraftGroupMode(next);
+                    }}
+                  >
+                    <option value="section">按分区</option>
+                    <option value="tag">按标签分组</option>
+                  </select>
                   <label className="workflow-meta">
                     <input
                       type="checkbox"
@@ -1793,6 +1865,7 @@ export default function WorkflowWorkbench() {
                       onChange={(event) => {
                         const next = event.target.checked;
                         setShowTrashed(next);
+                        persistShowTrashed(next);
                         if (workflowId) void loadDrafts(workflowId, next);
                       }}
                     />
@@ -1812,16 +1885,24 @@ export default function WorkflowWorkbench() {
                 <p className="muted">没有匹配的草稿。</p>
               ) : (
                 <div className="workflow-node-list">
-                  {filteredDrafts.map((draft, index) => {
-                    const previous = filteredDrafts[index - 1];
+                  {groupedDrafts.map((draft, index) => {
+                    const previous = groupedDrafts[index - 1];
+                    const groupKeyOf = (entry: DraftEntry) =>
+                      draftGroupMode === "tag"
+                        ? draftTagKey(entry)
+                        : draftGroup(entry);
+                    const groupLabelOf = (entry: DraftEntry) =>
+                      draftGroupMode === "tag"
+                        ? draftTagKey(entry)
+                        : DRAFT_GROUP_LABEL[draftGroup(entry)];
                     const showGroupHead =
-                      !showTrashed &&
-                      (!previous || draftGroup(previous) !== draftGroup(draft));
+                      (!showTrashed || draftGroupMode === "tag") &&
+                      (!previous || groupKeyOf(previous) !== groupKeyOf(draft));
                     return (
                       <Fragment key={draft.id}>
                         {showGroupHead && (
                           <div className="draft-group-head">
-                            {DRAFT_GROUP_LABEL[draftGroup(draft)]}
+                            {groupLabelOf(draft)}
                           </div>
                         )}
                         <div className="workflow-node-row">
@@ -2097,7 +2178,19 @@ export default function WorkflowWorkbench() {
         </>
       )}
       <div className="workflow-message" role="status">
-        {message}
+        <span>{message}</span>
+        {copyJumpId && (
+          <button
+            type="button"
+            onClick={() => {
+              const targetId = copyJumpId;
+              setCopyJumpId(null);
+              void openWorkflow(targetId);
+            }}
+          >
+            前往目标工作流
+          </button>
+        )}
       </div>
     </section>
   );

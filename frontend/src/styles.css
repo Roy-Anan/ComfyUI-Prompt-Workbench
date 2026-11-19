@@ -556,9 +556,17 @@ button.secondary {
   line-height: 1.5;
 }
 .workflow-message {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
   padding: 8px 2px 18px;
   color: var(--text-soft);
   overflow-wrap: anywhere;
+}
+
+.workflow-message button {
+  margin-left: auto;
 }
 @media (max-width: 760px) {
   .workflow-columns {
