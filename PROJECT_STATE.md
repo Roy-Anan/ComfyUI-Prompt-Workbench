@@ -2696,3 +2696,30 @@
 
 - 驳回为会话态，刷新后重新出现在预览；未做持久化忽略名单。候选差异预览（逐条与库内现有规则
   比对）、多模型/LoRA 组合冲突人工裁决界面仍留后续切片。
+
+## 116. TASK-003.1-R109 LLM 候选白名单生成参数与输出长度校验（2026-11-19）
+
+### 116.1 落地内容
+
+- 后端 `workflow_api.py`：`PromptCandidateRequest` 增加可选白名单字段
+  `temperature`（0.0–2.0）、`top_p`（0.0–1.0）、`num_ctx`（1024–131072），越界由 pydantic
+  判 422；端点仅把实际提供的字段组装进 options dict 透传，缺省不注入。
+- `llm_client.py`：`chat()` 增加 `options` 参数，注入 Ollama `/api/chat` payload 的 `options`；
+  新增 `MAX_CANDIDATE_CHARS = 200_000`，候选 strip 后超长保守判失败（`ok=False`），不截断、
+  不臆造；空响应判失败既有逻辑保留。
+- 前端 `WorkflowWorkbench.tsx`：候选面板补温度 / Top P / 上下文长度三个可选输入，本地解析为
+  白名单数值，空串或非法解析为 null 即不随请求发送；三项偏好接入本地记忆
+  （`workbench.candidateTemp / candidateTopP / candidateCtx`）。
+- 测试：options 白名单透传捕获断言、越界三字段 422 用例；既有 fake_chat 签名兼容 `options`。
+
+### 116.2 回归
+
+- 后端 **255 passed, 1 warning**（原 253 + 新增 2；遗留 StarletteDeprecationWarning）。
+- 前端 `tsc -b && vite build` 绿，产物 `index-CWPYWOhG.js` 206.66 kB / gzip 65.18 kB，
+  `index--eVNY1pt.css` 13.61 kB / gzip 3.23 kB。
+- **提交状态**：feat 已在本地 dev（`c066d5a`）；不再 push 远端、不做远端核对。
+
+### 116.3 边界与 backlog
+
+- 参数仅作用于候选生成当次请求，不落库、不改 Ollama 模型默认配置；未提供参数时沿用 Ollama
+  模型自身默认。采样器/出图参数不在本切片范围，候选 Prompt 之外的环境参数仍走既有闸门与核对链路。
