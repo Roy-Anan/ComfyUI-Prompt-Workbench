@@ -2888,3 +2888,34 @@
   只进剪贴板，不碰工作副本。
 - 手动资料不被自动扫描覆盖；自动 sidecar 缺失时手动资料仍独立生效。跨 LoRA 的多卡触发词
   并列组合建议、手动资料前端编辑入口留后续切片。
+
+## 122. TASK-003.1-R115 sets 专用套优先于通用指南套的比对判定（2026-11-19）
+
+### 122.1 落地内容
+
+- 后端 `rule_compare.py`：抽出单套比对 `_compare_one`（value/range/floor/resolutions/list），
+  新增 `_compare_sets` 处理 `{"kind":"sets","items":[...]}`。按 R73 专用优先口径：第一套为
+  专用/示例套，其后各套为通用/指南套；专用套命中即 `match`（`set_role=specific`）；专用套
+  未命中时依次回退通用套，首个命中记 `match`（`set_role=general`、`fell_back=true`）；
+  都不命中保留专用套未命中 verdict 并标 `general_checked`。专用套 actual 缺失/非数值保持
+  `unknown`，不回退通用套；空 sets 或非 dict 套项归 `unknown` 不臆测。
+- 比对结果回传 `set_index/set_role/fell_back/general_checked`；同层（套内）多值分歧不做
+  跨套合并，沿用既有同层冲突人工核对口径。
+- 前端 `WorkflowWorkbench`：`ComparisonEntry` 补可选套角色字段；比对徽章在专用套标注
+  「（专用套）」，回退通用套标注「（指南套放宽）」。`format.ts` sets 摘要注释同步口径。
+- 测试：专用套命中优先、回退通用套命中、两套均未命中保留专用 verdict、缺失 actual 不回落、
+  list 型通用套命中共 5 例。
+
+### 122.2 回归
+
+- 后端 **278 passed, 1 warning**（原 273 + 新增 5；遗留 StarletteDeprecationWarning）。
+- 前端 `tsc -b && vite build` 绿，产物 `index-xXjKz1iO.js` 213.11 kB / gzip 67.39 kB，
+  `index-DDGU3z47.css` 14.32 kB / gzip 3.36 kB。
+- 无新增第三方依赖；判定为纯后端比对层 + 前端只读标注。
+
+### 122.3 边界与 backlog
+
+- 套角色按档案分号书写顺序约定（首套专用、其余通用）；未在结构化记录内持久化套名/套角色，
+  后续若档案自带「示例/指南」标签可改为按标签识别。
+- 通用套是放宽参考，其命中不覆盖专用套规则的人工复核要求；跨套冲突仍不替选。多模型/启用
+  LoRA 组合的冲突人工裁决界面、global 级规则来源装载留后续切片。
