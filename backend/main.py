@@ -1196,11 +1196,22 @@ def list_profiles():
 
 @app.get("/api/profiles/{file_name}")
 def preview_profile(file_name: str):
-    """Return parsed candidates for one legacy profile note (read-only)."""
+    """Return parsed candidates for one legacy profile note (read-only).
+
+    Each candidate carries a read-only diff flag (new/override/same) against
+    rules already persisted; the preview never writes to the store.
+    """
     try:
-        return profile_source.preview_profile(file_name)
+        preview = profile_source.preview_profile(file_name)
     except FileNotFoundError:
         raise HTTPException(404, f"Profile not found: {file_name}") from None
+
+    settings = load_settings()
+    database_path = Path(settings["storage"]["database"]).expanduser() / "workbench.sqlite3"
+    with model_identity.connect(database_path) as connection:
+        rule_store.ensure_schema(connection)
+        profile_source.annotate_diff(connection, preview)
+    return preview
 
 
 @app.post("/api/profiles/import")

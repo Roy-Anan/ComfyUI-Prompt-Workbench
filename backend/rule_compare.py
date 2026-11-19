@@ -264,6 +264,19 @@ def compare_workflow(
     """
     entries = [compare_rule(field, actuals) for field in payload.get("fields", [])]
 
+    # Same-level disagreements are surfaced as a read-only adjudication list.
+    # The engine never picks a winner here; sources and the human-review message
+    # are passed through verbatim for the reviewer to reconcile manually.
+    conflict_entries = [
+        {
+            "key": field["key"],
+            "message": field.get("message"),
+            "sources": field.get("sources"),
+        }
+        for field in payload.get("fields", [])
+        if field.get("status") == "conflict"
+    ]
+
     shared = {
         key: value
         for key, value in actuals.items()
@@ -293,5 +306,8 @@ def compare_workflow(
         "actuals": actuals,
         "comparisons": entries,
         "counts": _count(entries),
+        "conflicts": payload.get("conflicts", []),
+        "unknown": payload.get("unknown", []),
+        "conflict_entries": conflict_entries,
         "sampler_group_comparisons": group_comparisons,
     }

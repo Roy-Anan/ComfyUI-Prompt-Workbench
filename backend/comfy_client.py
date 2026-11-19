@@ -14,6 +14,10 @@ from typing import Any
 
 APP_MARKER = "ComfyUI-Prompt-Workbench"
 
+# R118: minimum free VRAM required before a guarded submit, 5 GiB.
+# A probe that cannot read a free figure fails closed (unknown -> reject).
+VRAM_FREE_MIN_BYTES = 5 * 1024 ** 3
+
 
 def _post_json(
     url: str,
@@ -145,6 +149,38 @@ def comfyui_online(comfyui_url: str, timeout: float = 2.5) -> bool:
     """True only if /system_stats answers with a JSON body."""
     data, _ = _get_json(comfyui_url.rstrip("/") + "/system_stats", timeout)
     return data is not None
+
+
+def probe_vram_free(
+    comfyui_url: str,
+    timeout: float = 2.5,
+) -> dict[str, Any]:
+    """Read-only free VRAM snapshot from ``/system_stats``.
+
+    Returns ``online=False`` when the endpoint is unreachable; ``vram_free``
+    is ``None`` when the response carries no usable free figure, so the caller
+    fails closed instead of guessing. With multiple devices the conservative
+    minimum free figure is reported.
+    """
+    data, error = _get_json(comfyui_url.rstrip("/") + "/system_stats", timeout)
+    if data is None:
+        return {"online": False, "vram_free": None, "error": error}
+    devices = data.get("devices")
+    free_values: list[int] = []
+    if isinstance(devices, list):
+        for item in devices:
+            if not isinstance(item, dict):
+                continue
+            vram_free = item.get("vram_free")
+            if isinstance(vram_free, int) and vram_free >= 0:
+                free_values.append(vram_free)
+    if not free_values:
+        return {"online": True, "vram_free": None, "error": "缺少显存空闲字段"}
+    return {
+        "online": True,
+        "vram_free": min(free_values),
+        "error": None,
+    }
 
 
 def loaded_ollama_models(

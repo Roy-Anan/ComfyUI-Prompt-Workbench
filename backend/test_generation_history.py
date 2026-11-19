@@ -49,6 +49,15 @@ def _submit_one(test_client, monkeypatch, prompt_id="prompt-1"):
     )
     monkeypatch.setattr(
         workflow_api.comfy_client,
+        "probe_vram_free",
+        lambda url, timeout=2.5: {
+            "online": True,
+            "vram_free": 8 * 1024 ** 3,
+            "error": None,
+        },
+    )
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
         "loaded_ollama_models",
         lambda url: {"online": True, "models": [], "error": None},
     )

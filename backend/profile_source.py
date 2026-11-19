@@ -11,6 +11,7 @@ temporary directory.
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -91,6 +92,39 @@ def preview_profile(file_name: str, source_dir: Path | None = None) -> dict[str,
         "unknown_fields": parsed.unknown_fields,
         "candidates": records,
     }
+
+
+def _normalized(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def annotate_diff(
+    connection: sqlite3.Connection, preview: dict[str, Any]
+) -> dict[str, Any]:
+    """Attach read-only ``new`` / ``override`` / ``same`` flags to candidates.
+
+    Each parsed candidate is matched against the persisted main-table rule by
+    the level/scope/key triple. A missing row is ``new``; an existing row with
+    identical value and structured payload is ``same``; otherwise it is
+    ``override``. This only annotates the preview and never writes to the store.
+    """
+    for record in preview.get("candidates", []):
+        stored = rule_store.lookup_rule(
+            connection,
+            record["level"],
+            record.get("scope_key"),
+            record["rule_key"],
+        )
+        if stored is None:
+            record["diff"] = "new"
+            continue
+        same = _normalized(stored.get("value")) == _normalized(record.get("value")) and (
+            _normalized(stored.get("structured")) == _normalized(record.get("structured"))
+        )
+        record["diff"] = "same" if same else "override"
+        record["stored_value"] = stored.get("value")
+        record["stored_version"] = stored.get("version")
+    return preview
 
 
 def candidate_key(record: dict[str, Any]) -> str:

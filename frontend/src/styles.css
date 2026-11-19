@@ -335,6 +335,20 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.draft-tag-rename {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+.draft-tag-rename .actions {
+  margin-top: 0;
+}
+
 input:read-only {
   opacity: 0.7;
   cursor: not-allowed;
@@ -622,6 +636,24 @@ button.secondary {
 .compare-badge.unknown {
   border-color: var(--border-input);
   color: var(--text-faint);
+}
+.compare-badge.conflict {
+  border-color: var(--danger-border);
+  color: var(--danger, var(--warn-soft));
+}
+.compare-conflicts {
+  margin-bottom: 12px;
+}
+.compare-conflicts h4 {
+  margin: 0 0 6px;
+}
+.compare-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.compare-sources .rule-tag {
+  font-size: 0.76rem;
 }
 .compare-actuals {
   display: flex;

@@ -146,6 +146,15 @@ def _clean_env_snapshot(raw: Any) -> dict[str, Any] | None:
     return snapshot
 
 
+def _clean_tag(raw: Any) -> str | None:
+    """Whitelist-normalize one tag; return ``None`` when it is empty."""
+    if not isinstance(raw, str):
+        return None
+    tag = re.sub(r"[^0-9A-Za-z._\-\u4e00-\u9fff ]", "_", raw.strip())
+    tag = tag.strip(" .")[:MAX_DRAFT_TAG_CHARS]
+    return tag or None
+
+
 def _clean_tags(raw: Any) -> list[str]:
     """Strip, de-duplicate and cap draft tags; non-strings are skipped."""
     if not isinstance(raw, list):
@@ -153,10 +162,8 @@ def _clean_tags(raw: Any) -> list[str]:
     tags: list[str] = []
     seen: set[str] = set()
     for item in raw:
-        if not isinstance(item, str):
-            continue
-        tag = item.strip()[:MAX_DRAFT_TAG_CHARS]
-        if not tag or tag in seen:
+        tag = _clean_tag(item)
+        if tag is None or tag in seen:
             continue
         seen.add(tag)
         tags.append(tag)
@@ -1290,6 +1297,54 @@ class WorkflowStore:
         entries.sort(key=lambda item: item.get("updated_at") or "", reverse=True)
         entries.sort(key=lambda item: 0 if item["pinned"] else 1)
         return entries
+
+    def rename_tag(self, old_tag: str, new_tag: str) -> dict[str, Any]:
+        """Rename one draft tag to another across every workflow draft box.
+
+        Drafts under both live and trashed boxes are covered; matching tags are
+        replaced, then the whitelist clean and de-duplicate pass runs again so a
+        merged tag does not appear twice. Other draft content is untouched.
+        """
+        old = _clean_tag(old_tag)
+        new = _clean_tag(new_tag)
+        if old is None:
+            raise WorkflowError("原标签不能为空")
+        if new is None:
+            raise WorkflowError("新标签不能为空")
+        if old == new:
+            raise WorkflowError("新标签与原标签相同")
+
+        renamed = 0
+        for folder in self.root.iterdir():
+            if not folder.is_dir():
+                continue
+            drafts_dir = folder / "drafts"
+            if not drafts_dir.is_dir():
+                continue
+            for file in drafts_dir.glob("*.json"):
+                try:
+                    record = self._read_draft_file(file)
+                except WorkflowError:
+                    continue
+                raw_tags = record.get("tags")
+                if not isinstance(raw_tags, list) or old not in [
+                    tag.strip() for tag in raw_tags if isinstance(tag, str)
+                ]:
+                    continue
+                rebuilt: list[str] = []
+                seen: set[str] = set()
+                for item in raw_tags:
+                    candidate = _clean_tag(new if item.strip() == old else item)
+                    if candidate is None or candidate in seen:
+                        continue
+                    seen.add(candidate)
+                    rebuilt.append(candidate)
+                record["tags"] = rebuilt
+                record["updated_at"] = _now()
+                _atomic_json(file, record)
+                renamed += 1
+
+        return {"renamed": renamed, "old": old, "new": new}
 
     def save_draft(
         self,

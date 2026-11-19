@@ -108,6 +108,14 @@ function formatGiB(bytes: number | null): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
+// 与后端 comfy_client.VRAM_FREE_MIN_BYTES 对齐：5 GiB 空闲方可提交。
+const VRAM_FREE_MIN_BYTES = 5 * 1024 ** 3;
+
+function vramGateLabel(free: number | null): string {
+  if (free === null || Number.isNaN(free) || free < 0) return "显存未知";
+  return free >= VRAM_FREE_MIN_BYTES ? "达标" : "不足 5GB";
+}
+
 type Settings = {
   storage: Record<string, string>;
   connections: {
@@ -225,6 +233,9 @@ type ProfileCandidate = {
   confidence: string;
   version: string;
   note: string;
+  diff?: "new" | "override" | "same";
+  stored_value?: unknown;
+  stored_version?: string | null;
 };
 
 type ProfileSummary = {
@@ -1058,6 +1069,16 @@ export default function App() {
                 {device.name ?? device.type ?? `设备 ${device.index ?? "?"}`}
                 ：显存 {formatGiB(device.vram_free)} 空闲 /{" "}
                 {formatGiB(device.vram_total)}
+                <span
+                  className={
+                    device.vram_free !== null &&
+                    device.vram_free < VRAM_FREE_MIN_BYTES
+                      ? "workflow-warning"
+                      : "workflow-meta"
+                  }
+                >
+                  （{vramGateLabel(device.vram_free)}）
+                </span>
               </small>
             ))
           ) : comfyStatus?.online === true ? (
@@ -1507,6 +1528,25 @@ export default function App() {
                                         {RULE_CONFIDENCE_LABEL[candidate.confidence] ??
                                           candidate.confidence}
                                       </span>
+                                      {candidate.diff ? (
+                                        <span
+                                          className={
+                                            candidate.diff === "override"
+                                              ? "rule-tag workflow-warning"
+                                              : "rule-tag workflow-meta"
+                                          }
+                                        >
+                                          {candidate.diff === "new"
+                                            ? "新增"
+                                            : candidate.diff === "override"
+                                              ? "将覆盖"
+                                              : "一致"}
+                                          {candidate.diff === "override" &&
+                                          candidate.stored_value !== undefined
+                                            ? `：${formatRuleValue(candidate.stored_value)}`
+                                            : ""}
+                                        </span>
+                                      ) : null}
                                       <span className="rule-tag">
                                         v{candidate.version}
                                       </span>

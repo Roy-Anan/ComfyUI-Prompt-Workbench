@@ -99,6 +99,19 @@ type GroupComparison = {
   comparisons: ComparisonEntry[];
   counts: Record<string, number>;
 };
+type ConflictSource = {
+  level: string;
+  scope_key: string | null;
+  provenance: string;
+  confidence: string;
+  version: string;
+  note: string;
+};
+type ConflictEntry = {
+  key: string;
+  message: string | null;
+  sources: ConflictSource[];
+};
 type ComparePayload = {
   status: string;
   checkpoint: string | null;
@@ -108,6 +121,9 @@ type ComparePayload = {
   actuals: Record<string, unknown>;
   comparisons: ComparisonEntry[];
   counts: Record<string, number>;
+  conflicts?: string[];
+  unknown?: string[];
+  conflict_entries?: ConflictEntry[];
   sampler_group_comparisons?: GroupComparison[];
 };
 type RoleChoice = "" | "positive" | "negative";
@@ -118,6 +134,7 @@ type OllamaModelsResponse = {
 };
 type CandidateResponse = {
   model: string;
+  mode: string;
   candidates: string[];
   rule_status: string;
   conflicts: unknown[];
@@ -204,10 +221,12 @@ const DRAFT_GROUP_LABEL: Record<"pinned" | "favored" | "plain", string> = {
   plain: "普通",
 };
 
-function draftTagKey(draft: DraftEntry): string {
+function draftTagKeys(draft: DraftEntry): string[] {
   const tags = draft.tags || [];
-  return tags[0] || "未标签";
+  return tags.length > 0 ? tags : ["未标签"];
 }
+
+type ExpandedDraft = { draft: DraftEntry; groupKey: string };
 
 function snapshotFiles(files: SnapshotFile[] | undefined): string {
   return (files || []).map((item) => item.file).filter(Boolean).join("、");
@@ -251,8 +270,16 @@ const STATUS_LABEL: Record<string, string> = {
   match: "匹配",
   out_of_range: "超出范围",
   out_of_set: "不在集合",
+  conflict: "冲突",
   unknown: "无法判定",
 };
+
+const CANDIDATE_MODE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "draft", label: "起草补全" },
+  { value: "polish", label: "润色" },
+  { value: "trim", label: "精简" },
+  { value: "bilingual", label: "中英对照" },
+];
 
 const TASK_STATUS_LABEL: Record<string, string> = {
   submitted: "待运行",
@@ -552,6 +579,12 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
   const [candidateCtx, setCandidateCtx] = useState(() =>
     readStoredParam("workbench.candidateCtx"),
   );
+  const [candidateMode, setCandidateMode] = useState(() => {
+    const stored = readStoredParam("workbench.candidateMode");
+    return CANDIDATE_MODE_OPTIONS.some((opt) => opt.value === stored)
+      ? stored
+      : "draft";
+  });
   const [candidate, setCandidate] = useState<string | null>(null);
   const [candidateBusy, setCandidateBusy] = useState(false);
   const [importedPrompt, setImportedPrompt] = useState<PromptImport | null>(null);
@@ -566,6 +599,9 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [queuePaused, setQueuePaused] = useState(false);
   const [queueBusy, setQueueBusy] = useState(false);
+  const [queueGlobal, setQueueGlobal] = useState(
+    () => readStoredParam("workbench.queueGlobal") === "1",
+  );
   const taskWsRef = useRef<WebSocket | null>(null);
   const activePromptRef = useRef<string | null>(null);
   const wsReconnectRef = useRef<number | null>(null);
@@ -583,9 +619,15 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
   const [copyJumpId, setCopyJumpId] = useState<string | null>(null);
   const [showTrashed, setShowTrashed] = useState(readStoredShowTrashed);
   const [purgingDraftId, setPurgingDraftId] = useState<string | null>(null);
-  const [draftKeyword, setDraftKeyword] = useState("");
+  const [draftKeyword, setDraftKeyword] = useState(
+    () => readStoredParam("workbench.draftKeyword"),
+  );
   const [favoredOnly, setFavoredOnly] = useState(readStoredFavoredOnly);
   const [draftGroupMode, setDraftGroupMode] = useState(readStoredDraftGroupMode);
+  const [tagRenameOpen, setTagRenameOpen] = useState(false);
+  const [renameOld, setRenameOld] = useState("");
+  const [renameNew, setRenameNew] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
   async function refreshList() {
     const result = await apiGet<{ items: WorkflowListItem[] }>(
       "/api/workflows",
@@ -661,6 +703,7 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
       persistShowTrashed(false);
       setPurgingDraftId(null);
       setDraftKeyword("");
+      persistParam("workbench.draftKeyword", "");
       setFavoredOnly(false);
       persistFavoredOnly(false);
       setConfirmStamp(null);
@@ -726,6 +769,7 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
       persistShowTrashed(false);
       setPurgingDraftId(null);
       setDraftKeyword("");
+      persistParam("workbench.draftKeyword", "");
       setFavoredOnly(false);
       persistFavoredOnly(false);
       setComparingStamp(null);
@@ -823,6 +867,7 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
       const body: Record<string, unknown> = {
         model: selectedModel,
         task: taskText.trim() || null,
+        mode: candidateMode,
       };
       const temperature = parseOptionalFloat(candidateTemp, 0, 2);
       const topP = parseOptionalFloat(candidateTopP, 0, 1);
@@ -983,16 +1028,23 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
   }
 
   async function loadQueue() {
-    if (!workflowId) return;
     try {
-      const result = await apiGet<QueueResponse>(
-        `/api/queue?workflow_id=${encodeURIComponent(workflowId)}`,
-      );
+      const url =
+        queueGlobal || !workflowId
+          ? "/api/queue"
+          : `/api/queue?workflow_id=${encodeURIComponent(workflowId)}`;
+      const result = await apiGet<QueueResponse>(url);
       setQueueItems(result.items);
       setQueuePaused(result.global_paused);
     } catch {
       // Queue is an enhancement; leave the existing task panel intact on error.
     }
+  }
+
+  function toggleQueueGlobal(next: boolean) {
+    setQueueGlobal(next);
+    persistParam("workbench.queueGlobal", next ? "1" : "0");
+    void loadQueue();
   }
 
   async function enqueueTask() {
@@ -1230,6 +1282,33 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
     }
   }
 
+  async function submitTagRename() {
+    const oldTag = renameOld.trim();
+    const newTag = renameNew.trim();
+    if (!oldTag || !newTag) {
+      setMessage("请填写原标签与新标签。");
+      return;
+    }
+    setRenameBusy(true);
+    try {
+      const result = await apiPost<{ renamed: number; old: string; new: string }>(
+        "/api/workflows/tags/rename",
+        { old_tag: oldTag, new_tag: newTag },
+      );
+      if (workflowId) await loadDrafts(workflowId, showTrashed);
+      setTagRenameOpen(false);
+      setRenameOld("");
+      setRenameNew("");
+      setMessage(
+        `已重命名标签「${result.old}」→「${result.new}」，涉及 ${result.renamed} 份草稿。`,
+      );
+    } catch (error) {
+      setMessage(`标签重命名失败：${String(error)}`);
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
   function adoptDraft(draft: DraftEntry) {
     setPositiveText(draft.positive);
     setNegativeText(draft.negative);
@@ -1427,12 +1506,14 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
       .toLowerCase();
     return haystack.includes(draftKeywordTerm);
   });
-  const groupedDrafts =
+  const groupedDrafts: ExpandedDraft[] =
     draftGroupMode === "tag"
-      ? [...filteredDrafts].sort((a, b) =>
-          draftTagKey(a).localeCompare(draftTagKey(b), "zh-Hans-CN"),
-        )
-      : filteredDrafts;
+      ? filteredDrafts
+          .flatMap((draft) =>
+            draftTagKeys(draft).map((groupKey) => ({ draft, groupKey })),
+          )
+          .sort((a, b) => a.groupKey.localeCompare(b.groupKey, "zh-Hans-CN"))
+      : filteredDrafts.map((draft) => ({ draft, groupKey: draftGroup(draft) }));
   const [restoringStamp, setRestoringStamp] = useState<string | null>(null);
   const [confirmStamp, setConfirmStamp] = useState<string | null>(null);
   const [comparingStamp, setComparingStamp] = useState<string | null>(null);
@@ -1751,6 +1832,45 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
                       CLIP 跳过层节点，Clip Skip 结论取首个；其余节点未参与比对。
                     </p>
                   )}
+                  {compare.conflict_entries &&
+                  compare.conflict_entries.length > 0 ? (
+                    <div className="compare-conflicts">
+                      <h4>
+                        待人工裁决的冲突（{compare.conflict_entries.length}）
+                      </h4>
+                      <p className="workflow-warning">
+                        同一层级存在相互冲突的规则，系统不替选；请人工核对下列来源后再采用。
+                      </p>
+                      <div className="compare-table">
+                        {compare.conflict_entries.map((entry) => (
+                          <div className="compare-row" key={entry.key}>
+                            <div className="compare-row-main">
+                              <strong>{entry.key}</strong>
+                              <small>
+                                {entry.message ?? "需人工核对后再采用"}
+                              </small>
+                              <div className="compare-sources">
+                                {(entry.sources ?? []).map((source, idx) => (
+                                  <span
+                                    className="rule-tag"
+                                    key={`${source.level}-${source.scope_key ?? ""}-${idx}`}
+                                  >
+                                    {source.level}
+                                    {source.scope_key ? ` · ${source.scope_key}` : ""}
+                                    {` · ${source.provenance}`}
+                                    {` · ${source.confidence}`}
+                                    {` · v${source.version}`}
+                                    {source.note ? ` · ${source.note}` : ""}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <span className="compare-badge conflict">冲突</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <h4>比对条目</h4>
                   <div className="compare-table">
                     {compare.comparisons.length === 0 ? (
@@ -1922,6 +2042,23 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
                       {ollamaModels.map((model) => (
                         <option key={model} value={model}>
                           {model}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={candidateMode}
+                      disabled={busy || candidateBusy}
+                      onChange={(event) => {
+                        setCandidateMode(event.target.value);
+                        persistParam(
+                          "workbench.candidateMode",
+                          event.target.value,
+                        );
+                      }}
+                    >
+                      {CANDIDATE_MODE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
                         </option>
                       ))}
                     </select>
@@ -2139,13 +2276,17 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
                 </button>
               </div>
               {drafts.length > 0 && (
+                <>
                 <div className="actions">
                   <input
                     type="text"
                     placeholder="按名称 / 备注 / Prompt 过滤草稿"
                     value={draftKeyword}
                     disabled={draftBusy || busy}
-                    onChange={(event) => setDraftKeyword(event.target.value)}
+                    onChange={(event) => {
+                      setDraftKeyword(event.target.value);
+                      persistParam("workbench.draftKeyword", event.target.value);
+                    }}
                   />
                   {allDraftTags.length > 0 && (
                     <select
@@ -2208,7 +2349,64 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
                   >
                     导出 JSON
                   </button>
+                  <button
+                    onClick={() => setTagRenameOpen((open) => !open)}
+                    disabled={draftBusy || busy || allDraftTags.length === 0}
+                  >
+                    标签重命名
+                  </button>
                 </div>
+                {tagRenameOpen && (
+                  <div className="draft-tag-rename">
+                    <small className="muted">
+                      跨所有草稿把原标签替换为新标签并去重；其他内容不变。
+                    </small>
+                    <div className="actions">
+                      <select
+                        value={renameOld}
+                        disabled={renameBusy || draftBusy}
+                        onChange={(event) => setRenameOld(event.target.value)}
+                      >
+                        <option value="">选择原标签</option>
+                        {allDraftTags.map((tag) => (
+                          <option key={tag} value={tag}>
+                            {tag}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        placeholder="新标签"
+                        value={renameNew}
+                        disabled={renameBusy || draftBusy}
+                        maxLength={30}
+                        onChange={(event) => setRenameNew(event.target.value)}
+                      />
+                      <button
+                        onClick={() => void submitTagRename()}
+                        disabled={
+                          renameBusy ||
+                          draftBusy ||
+                          !renameOld.trim() ||
+                          !renameNew.trim()
+                        }
+                      >
+                        {renameBusy ? "处理中…" : "确认重命名"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setTagRenameOpen(false);
+                          setRenameOld("");
+                          setRenameNew("");
+                        }}
+                        disabled={renameBusy || draftBusy}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+                </>
               )}
               {drafts.length === 0 ? (
                 <p className="muted">还没有保存的草稿。</p>
@@ -2216,24 +2414,21 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
                 <p className="muted">没有匹配的草稿。</p>
               ) : (
                 <div className="workflow-node-list">
-                  {groupedDrafts.map((draft, index) => {
+                  {groupedDrafts.map((entry, index) => {
                     const previous = groupedDrafts[index - 1];
-                    const groupKeyOf = (entry: DraftEntry) =>
+                    const { draft } = entry;
+                    const groupLabel =
                       draftGroupMode === "tag"
-                        ? draftTagKey(entry)
-                        : draftGroup(entry);
-                    const groupLabelOf = (entry: DraftEntry) =>
-                      draftGroupMode === "tag"
-                        ? draftTagKey(entry)
-                        : DRAFT_GROUP_LABEL[draftGroup(entry)];
+                        ? entry.groupKey
+                        : DRAFT_GROUP_LABEL[draftGroup(draft)];
                     const showGroupHead =
                       (!showTrashed || draftGroupMode === "tag") &&
-                      (!previous || groupKeyOf(previous) !== groupKeyOf(draft));
+                      (!previous || previous.groupKey !== entry.groupKey);
                     return (
-                      <Fragment key={draft.id}>
+                      <Fragment key={`${draft.id}-${entry.groupKey}`}>
                         {showGroupHead && (
                           <div className="draft-group-head">
-                            {groupLabelOf(draft)}
+                            {groupLabel}
                           </div>
                         )}
                         <div className="workflow-node-row">
@@ -2518,9 +2713,24 @@ export default function WorkflowWorkbench({ comfyuiUrl }: WorkbenchProps) {
                     </div>
                   )}
                   <div className="workflow-queue">
-                    <h4>本地待发队列{queuePaused ? "（调度已暂停）" : ""}</h4>
+                    <div className="actions">
+                      <h4>本地待发队列{queuePaused ? "（调度已暂停）" : ""}</h4>
+                      <label className="workflow-meta">
+                        <input
+                          type="checkbox"
+                          checked={queueGlobal}
+                          disabled={queueBusy || busy}
+                          onChange={(event) => toggleQueueGlobal(event.target.checked)}
+                        />
+                        全部工作流
+                      </label>
+                    </div>
                     {queueItems.length === 0 ? (
-                      <p className="muted">当前工作流没有排队中的任务。</p>
+                      <p className="muted">
+                        {queueGlobal
+                          ? "所有工作流都没有排队中的任务。"
+                          : "当前工作流没有排队中的任务。"}
+                      </p>
                     ) : (
                       <div className="workflow-node-list">
                         {queueItems.map((item, index) => {

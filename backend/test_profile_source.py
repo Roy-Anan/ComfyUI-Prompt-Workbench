@@ -72,6 +72,55 @@ def test_preview_profile_candidates(client, tmp_path, monkeypatch):
     assert stored.json()["items"] == []
 
 
+def test_preview_flags_new_candidates_when_store_empty(client, tmp_path, monkeypatch):
+    test_client, _ = client
+    _seed_profiles(tmp_path, monkeypatch)
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    response = test_client.get("/api/profiles/Alpha.txt", headers=headers)
+    records = response.json()["candidates"]
+    assert {r["diff"] for r in records} == {"new"}
+    assert all("stored_value" not in r for r in records)
+
+
+def test_preview_flags_same_and_override_after_import(client, tmp_path, monkeypatch):
+    test_client, _ = client
+    _seed_profiles(tmp_path, monkeypatch)
+    headers = {"Authorization": "Bearer test-session-token"}
+
+    imported = test_client.post(
+        "/api/profiles/import", headers=headers, json={"file_name": "Alpha.txt"}
+    )
+    assert imported.status_code == 200
+
+    after_import = test_client.get("/api/profiles/Alpha.txt", headers=headers).json()
+    records = {r["rule_key"]: r for r in after_import["candidates"]}
+    assert {r["diff"] for r in records.values()} == {"same"}
+
+    changed = test_client.post(
+        "/api/rules",
+        headers=headers,
+        json={
+            "level": "checkpoint",
+            "scope_key": "alpha.safetensors",
+            "rule_key": "GENERATION SETTINGS::Steps",
+            "value": "30",
+            "provenance": "unverified",
+            "confidence": "unverified",
+        },
+    )
+    assert changed.status_code == 200
+
+    after_change = test_client.get("/api/profiles/Alpha.txt", headers=headers).json()
+    updated = {r["rule_key"]: r for r in after_change["candidates"]}
+    assert updated["GENERATION SETTINGS::Steps"]["diff"] == "override"
+    assert updated["GENERATION SETTINGS::Steps"]["stored_value"] == "30"
+    others = [
+        r for key, r in updated.items() if key != "GENERATION SETTINGS::Steps"
+    ]
+    assert {r["diff"] for r in others} == {"same"}
+
+
 def test_preview_profile_unknown_file_returns_404(client, tmp_path, monkeypatch):
     test_client, _ = client
     _seed_profiles(tmp_path, monkeypatch)

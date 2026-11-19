@@ -44,9 +44,14 @@ def _confirm(test_client, workflow_id):
     assert response.status_code == 200
 
 
-def _patch_gates(monkeypatch, online=True, loaded=None, submit=None):
+def _patch_gates(monkeypatch, online=True, loaded=None, submit=None, vram=None):
     monkeypatch.setattr(
         workflow_api.comfy_client, "comfyui_online", lambda url: online
+    )
+    if vram is None:
+        vram = {"online": True, "vram_free": 8 * 1024 ** 3, "error": None}
+    monkeypatch.setattr(
+        workflow_api.comfy_client, "probe_vram_free", lambda url, timeout=2.5: vram
     )
     if loaded is None:
         loaded = {"online": True, "models": [], "error": None}
@@ -121,6 +126,34 @@ def test_submit_rejects_when_llm_still_loaded(client, monkeypatch):
     )
     assert response.status_code == 409
     assert response.json()["detail"]["loaded"] == ["qwen3:latest"]
+
+
+def test_submit_rejects_when_vram_below_threshold(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    _confirm(test_client, workflow_id)
+    vram = {"online": True, "vram_free": 2 * 1024 ** 3, "error": None}
+    _patch_gates(monkeypatch, vram=vram)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks", headers=AUTH
+    )
+    assert response.status_code == 409
+    assert "5GB" in response.json()["detail"]["error"]
+
+
+def test_submit_rejects_when_vram_unknown(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    _confirm(test_client, workflow_id)
+    vram = {"online": True, "vram_free": None, "error": "缺少显存空闲字段"}
+    _patch_gates(monkeypatch, vram=vram)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/tasks", headers=AUTH
+    )
+    assert response.status_code == 502
+    assert "显存空闲" in response.json()["detail"]["error"]
 
 
 def test_submit_records_task_when_gates_pass(client, monkeypatch):
@@ -631,6 +664,51 @@ def test_candidate_allowed_when_comfyui_offline(client, monkeypatch):
     assert called.get("chat") is True
 
 
+def test_candidate_mode_polish_passes_instruction(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": True, "active": False, "error": None},
+    )
+    captured: dict = {}
+
+    def fake_chat(url, model, messages, timeout=30.0, options=None):
+        captured["messages"] = messages
+        return {"ok": True, "content": "polished", "model": model, "error": None}
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={"model": "qwen3:latest", "mode": "polish"},
+    )
+    assert response.status_code == 200
+    assert response.json()["mode"] == "polish"
+    user_message = captured["messages"][-1]["content"]
+    assert "润色" in user_message
+
+
+def test_candidate_rejects_unknown_mode(client, monkeypatch):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+    monkeypatch.setattr(
+        workflow_api.comfy_client,
+        "queue_has_active_task",
+        lambda url: {"online": True, "active": False, "error": None},
+    )
+    monkeypatch.setattr(llm_client, "chat", _fake_chat_record({}))
+
+    response = test_client.post(
+        f"/api/workflows/{workflow_id}/prompt/candidates",
+        headers=AUTH,
+        json={"model": "qwen3:latest", "mode": "rocket"},
+    )
+    assert response.status_code == 422
+
+
 def test_draft_create_read_update_delete_roundtrip(client):
     test_client, _ = client
     workflow_id = _import(test_client, _api_workflow())
@@ -671,6 +749,56 @@ def test_draft_create_read_update_delete_roundtrip(client):
         f"/api/workflows/{workflow_id}/drafts", headers=AUTH
     ).json()["items"]
     assert after == []
+
+
+def test_draft_tag_rename_merges_across_drafts(client):
+    test_client, _ = client
+    workflow_id = _import(test_client, _api_workflow())
+
+    first = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={
+            "name": "草稿甲",
+            "positive": "p1",
+            "negative": "",
+            "tags": ["旧标签", "通用"],
+        },
+    )
+    assert first.status_code == 200
+    second = test_client.post(
+        f"/api/workflows/{workflow_id}/drafts",
+        headers=AUTH,
+        json={"name": "草稿乙", "positive": "p2", "negative": "", "tags": ["旧标签"]},
+    )
+    assert second.status_code == 200
+
+    renamed = test_client.post(
+        "/api/workflows/tags/rename",
+        headers=AUTH,
+        json={"old_tag": "旧标签", "new_tag": "新标签"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["renamed"] == 2
+
+    listed = test_client.get(
+        f"/api/workflows/{workflow_id}/drafts", headers=AUTH
+    ).json()["items"]
+    tags_by_name = {item["name"]: item["tags"] for item in listed}
+    assert tags_by_name["草稿甲"] == ["新标签", "通用"]
+    assert tags_by_name["草稿乙"] == ["新标签"]
+
+
+def test_draft_tag_rename_rejects_same_tag(client):
+    test_client, _ = client
+    _import(test_client, _api_workflow())
+
+    response = test_client.post(
+        "/api/workflows/tags/rename",
+        headers=AUTH,
+        json={"old_tag": "相同", "new_tag": "相同"},
+    )
+    assert response.status_code == 400
 
 
 def test_draft_update_preserves_name_and_note(client):

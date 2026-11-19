@@ -102,9 +102,30 @@ class PromptWrite(BaseModel):
     negative_text: str | None = None
 
 
+CANDIDATE_MODES: dict[str, dict[str, str]] = {
+    "draft": {
+        "label": "起草补全",
+        "instruction": "请基于上述规则与现有内容补全一份 Prompt 候选；未提供的参数不要臆造。",
+    },
+    "polish": {
+        "label": "润色",
+        "instruction": "请在现有内容基础上润色措辞，保持规则事实与已规定参数不变，不新增未提供的参数；未提供的不要臆造。",
+    },
+    "trim": {
+        "label": "精简",
+        "instruction": "请精简现有 Prompt，去除重复与冗余表述，保留核心主体、构图与已规定参数；未提供的参数不要臆造。",
+    },
+    "bilingual": {
+        "label": "中英对照",
+        "instruction": "请在现有内容基础上给出中英对照版本，保留语义与已规定参数；未提供的参数不要臆造。",
+    },
+}
+
+
 class PromptCandidateRequest(BaseModel):
     model: str = Field(min_length=1, max_length=120)
     task: str | None = Field(default=None, max_length=2000)
+    mode: str = "draft"
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
     num_ctx: int | None = Field(default=None, ge=1024, le=131_072)
@@ -115,6 +136,19 @@ class PromptCandidateRequest(BaseModel):
         if not value.strip():
             raise ValueError("model must not be blank")
         return value.strip()
+
+    @field_validator("mode")
+    @classmethod
+    def _mode_known(cls, value: str) -> str:
+        normalized = (value or "draft").strip() or "draft"
+        if normalized not in CANDIDATE_MODES:
+            raise ValueError(f"unknown mode: {normalized}")
+        return normalized
+
+
+class TagRename(BaseModel):
+    old_tag: str = Field(min_length=1, max_length=30)
+    new_tag: str = Field(min_length=1, max_length=30)
 
 
 class DraftSave(BaseModel):
@@ -192,7 +226,9 @@ def _rules_system_message(rule_payload: dict[str, Any]) -> str:
 
 
 def _user_message(
-    working_prompts: list[dict[str, Any]], task: str | None
+    working_prompts: list[dict[str, Any]],
+    task: str | None,
+    mode: str = "draft",
 ) -> str:
     by_role: dict[str, list[str]] = {"positive": [], "negative": []}
     for item in working_prompts:
@@ -208,13 +244,21 @@ def _user_message(
         lines.append("负向：" + " / ".join(by_role["negative"]))
     if task and task.strip():
         lines.append(f"任务要求：{task.strip()}")
-    lines.append(
-        "请基于上述规则与现有内容给出 Prompt 候选；未提供的参数不要臆造。"
-    )
+    instruction = CANDIDATE_MODES.get(mode, CANDIDATE_MODES["draft"])["instruction"]
+    lines.append(instruction)
     return "\n".join(lines)
 @router.get("")
 def list_workflows():
     return {"items": store().list_workflows()}
+@router.post("/tags/rename")
+def rename_draft_tag(payload: TagRename):
+    """Rename one draft tag across every workflow draft box (read-write)."""
+    try:
+        return store().rename_tag(payload.old_tag, payload.new_tag)
+    except (WorkflowError, FileNotFoundError, OSError) as exc:
+        _raise_api_error(exc)
+
+
 @router.post("/import")
 def import_workflow(payload: WorkflowImport):
     try:
@@ -463,7 +507,9 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
         {"role": "system", "content": _rules_system_message(rule_payload)},
         {
             "role": "user",
-            "content": _user_message(workflow.get("working_prompts", []), payload.task),
+            "content": _user_message(
+                workflow.get("working_prompts", []), payload.task, payload.mode
+            ),
         },
     ]
     queue = comfy_client.queue_has_active_task(_comfyui_url())
@@ -496,6 +542,7 @@ def prompt_candidates(workflow_id: str, payload: PromptCandidateRequest):
 
     return {
         "model": result["model"],
+        "mode": payload.mode,
         "candidates": [result["content"]],
         "rule_status": rule_payload["status"],
         "conflicts": rule_payload["conflicts"],
@@ -536,6 +583,23 @@ def _submit_guarded(workflow_id: str) -> dict[str, Any]:
         raise HTTPException(
             status_code=502,
             detail={"online": False, "error": "ComfyUI 不可达，未提交任务。"},
+        )
+
+    vram = comfy_client.probe_vram_free(comfyui_url)
+    if not vram["online"] or vram["vram_free"] is None:
+        raise HTTPException(
+            status_code=502,
+            detail={"online": False, "error": "无法确认显存空闲，未提交任务。"},
+        )
+    if vram["vram_free"] < comfy_client.VRAM_FREE_MIN_BYTES:
+        free_gb = vram["vram_free"] / 1024 ** 3
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "online": True,
+                "vram_free": vram["vram_free"],
+                "error": f"显存空闲不足 5GB（当前约 {free_gb:.1f}GB），请释放显存后再提交。",
+            },
         )
 
     loaded = comfy_client.loaded_ollama_models(ollama_url)

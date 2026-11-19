@@ -290,9 +290,9 @@ export default function HistoryPanel() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState(() => readStoredFilter("workbench.historyStatus"));
   const [workflowFilter, setWorkflowFilter] = useState(() => readStoredFilter("workbench.historyWorkflow"));
-  const [keyword, setKeyword] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [keyword, setKeyword] = useState(() => readStoredFilter("workbench.historyKeyword"));
+  const [fromDate, setFromDate] = useState(() => readStoredFilter("workbench.historyFrom"));
+  const [toDate, setToDate] = useState(() => readStoredFilter("workbench.historyTo"));
   const [view, setView] = useState<HistoryView>(readStoredView);
   const [draftingId, setDraftingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -716,7 +716,10 @@ export default function HistoryPanel() {
               type="text"
               value={keyword}
               placeholder="Prompt 或模型文件名"
-              onChange={(event) => setKeyword(event.target.value)}
+              onChange={(event) => {
+                setKeyword(event.target.value);
+                persistFilter("workbench.historyKeyword", event.target.value);
+              }}
             />
           </label>
           <label>
@@ -724,7 +727,10 @@ export default function HistoryPanel() {
             <input
               type="date"
               value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
+              onChange={(event) => {
+                setFromDate(event.target.value);
+                persistFilter("workbench.historyFrom", event.target.value);
+              }}
             />
           </label>
           <label>
@@ -732,7 +738,10 @@ export default function HistoryPanel() {
             <input
               type="date"
               value={toDate}
-              onChange={(event) => setToDate(event.target.value)}
+              onChange={(event) => {
+                setToDate(event.target.value);
+                persistFilter("workbench.historyTo", event.target.value);
+              }}
             />
           </label>
         </div>

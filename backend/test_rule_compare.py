@@ -215,6 +215,43 @@ def test_sets_list_general_match():
     assert verdict["set_role"] == "general"
 
 
+def test_compare_workflow_surfaces_conflict_entries():
+    payload = {
+        "status": "registered",
+        "checkpoint": "pony.safetensors",
+        "architecture": "SD1.5",
+        "conflicts": ["MODEL BEHAVIOR::Style"],
+        "unknown": ["GENERATION SETTINGS::Steps"],
+        "fields": [
+            {
+                "key": "MODEL BEHAVIOR::Style",
+                "status": "conflict",
+                "value": None,
+                "structured": None,
+                "source_level": "checkpoint",
+                "sources": [
+                    {"level": "checkpoint", "scope_key": "pony.safetensors",
+                     "provenance": "author", "confidence": "authoritative",
+                     "version": "1", "note": "A"},
+                    {"level": "checkpoint", "scope_key": "pony.safetensors",
+                     "provenance": "unverified", "confidence": "partial",
+                     "version": "2", "note": "B"},
+                ],
+                "message": "同一层级存在冲突规则，需人工核对后再采用",
+            },
+            _field("GENERATION SETTINGS::Steps", structured={"kind": "range", "low": 6, "high": 12}),
+        ],
+    }
+    result = rule_compare.compare_workflow(payload, {"steps": 10})
+    assert result["conflicts"] == ["MODEL BEHAVIOR::Style"]
+    assert result["unknown"] == ["GENERATION SETTINGS::Steps"]
+    assert len(result["conflict_entries"]) == 1
+    entry = result["conflict_entries"][0]
+    assert entry["key"] == "MODEL BEHAVIOR::Style"
+    assert len(entry["sources"]) == 2
+    assert "人工核对" in entry["message"]
+
+
 def test_compare_workflow_counts():
     payload = {
         "status": "registered",
