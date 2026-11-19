@@ -2598,3 +2598,25 @@
 
 - 草稿计数为文件遍历结果，损坏草稿文件按既有 `list_drafts` 口径跳过；计数不区分收藏/置顶/标签。
   备份恢复写入与冲突合并、队列暂停/实时进度、历史大图压缩缓存仍为后续方向。
+
+## 112. TASK-003.1-R105 API 错误消息提取后端 detail 文案（2026-11-19）
+
+### 112.1 落地内容
+
+- `frontend/src/api.ts` 新增 `describeError`：失败响应先尝试解析 JSON，取字符串型 `detail`
+  作为错误文案；`detail` 为对象（如在线状态结构）或响应非 JSON 时回退原始响应文本。bootstrap、
+  通用 `request`、二进制 `apiGetBlob` 三处入口复用同一 helper。此前前端直接把整段响应文本
+  （含 JSON 包裹）抛给 `String(error)`，用户看到的是 `400: {"detail":"…"}`。
+- 各调用点仍以 `String(error)` 展示，未改动错误分支逻辑；对象型 detail 行为与改前一致。
+
+### 112.2 回归
+
+- 纯前端切片，后端未改动（基线 **251 passed, 1 warning** 保持有效）；前端 `tsc -b && vite build`
+  绿，产物 `index-C4qBO-Yk.js` 203.34 kB / gzip 64.05 kB，`index-bvjWXLUU.css` 13.42 kB /
+  gzip 3.18 kB。未单独真机逐条闭环，留阶段收口统一验收。
+- **提交状态**：feat 已在本地 dev（`9a2ba27`）；不再 push 远端、不做远端核对。
+
+### 112.3 边界与 backlog
+
+- 仅提取字符串 detail；对象型 detail（服务在线状态结构）不做二次翻译，仍回退原文。错误文案为
+  只读展示，不参与重试或状态判定。
